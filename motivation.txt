@@ -1,0 +1,84 @@
+TSL2 design motivation
+======================
+
+* Simplify partial information hints.  
+
+Although we will keep working on automating partial information,   
+there will always be situations when user hints are required to   
+generate correct or optimal code.  At the moment, a hint must be   
+specified as a separate state machine that runs concurrently   
+with the rest of the system and constrains its transitions.  This 
+model proved difficult to use, as it relies on synchronisation of 
+transitions across multiple state machines to prune undesired 
+transitions and direct the driver to perform actions that help 
+resolve partial information.  
+
+In TSL2, the user explicitly specifies that an action must be 
+taken in the given state by writing a corresponding line of C-like 
+code.  This way, instead of writing a separate state machine he 
+directly modifies the driver template state machine.  In addition, 
+since the template has exactly the same structure as the resulting 
+code, the manually written lines are copied to the synthesised 
+driver directly, making the connection between the specification 
+and the generated code more straightforward.
+
+* Overcome limitations of Statecharts
+
+Statecharts proved to be a clumsy way of specifying the driver-OS 
+interface.  In particular:
+  - They require dealing with two separate entities: the template 
+    that contains various declarations and the visual part that
+    describes the actual behaviour.
+  - Statecharts don't capture the structure of the driver well.  A 
+    Statechart consists of atomic transitions, whereas a driver is
+    a collection of functions.  As a result, it is difficult to
+    model control flow between the driver and the OS using a
+    Statechart.  This includes specifying the function return
+    point (which is currently modeled as a completion messages)
+    and defining constraints on when a new function call can
+    happen (e.g., only after the previous function returns).
+  - Complex labels make Statecharts difficult to read.  Examples
+    include complex variable update expressions and the use of
+    additional conditional variables to model transition guards
+    (e.g., send cannot be called while synchronisation is in
+    progress).
+
+TSL2 will close this gap by providing control structures similar 
+to C, while still having well-defined state machine semantics and 
+allowing for non-determinism, which is essential to writing driver 
+specifications for synthesis.
+
+* Use a single design artifact at all stages of synthesis.
+
+At the moment, in writing and debugging specifications the user 
+must work with Statecharts, DML, TSL, abstracted TSL, the state 
+graph in the debugger, and the generated source.  This often gets 
+frustrating.  With a better language and tool support, the number 
+of specifications the user needs to see can be reduced to one or 
+two.  In particular, the user should be able to see and modify the 
+driver source code at all stages of the synthesis work flow.
+
+* Explore the design space between verification and synthesis
+
+Our current solution implements the all-or-nothing approach.  It 
+tries to generate a complete driver implementation from the input 
+specs.  If the resulting driver does not satisfy the user or if 
+synthesis fails due to an unsupported feature or a state 
+explosion, the user can only affect the result in a very indirect 
+way, by writing additional state machines to constrain possible 
+driver behaviours and direct Termite towards the desired solution.
+
+The other extreme involves completely manual driver development, 
+using Termite to verify the implementation.  
+
+Intermediate approaches are likely to be the most useful in 
+practice.  TSL2 should give the user complete control over 
+generated code, so that they can add arbitrary constraints either 
+interactively or offline.
+
+* Easier compilation from HDLs
+
+TSL2 will contain some high-level constucts for modelling hardware 
+this should simplify the development of front-end compilers, since 
+some of the complexity of compiling hardware specs will be handled 
+in the TSL2 compiler.
