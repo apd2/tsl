@@ -27,6 +27,7 @@ template my_template
 /* task declarations */
 /* function declarations */
 /* goal declarations */
+/* continuous assignments */
 endtemplate
 //------------------------------
 
@@ -364,11 +365,26 @@ process my_process{
 //------------------------------
 
 
-if, do, while
--------------
+if, do, while, switch
+---------------------
 
 These constructs have the normal C semantics.  They do not start a new 
 transition.
+
+ternary expression, case
+------------------------
+
+Expression syntax includes TSL-1-style case expressions and 
+C-style ternary expressions.
+
+//------------------------------
+x = (y==0) ? 0 : 1;
+x = case (y) {
+        0: 0;
+        default: 1;
+    }
+//------------------------------
+
 
 function
 --------
@@ -442,6 +458,25 @@ place in a single transition.
 Note: recursive invocations of functions, procedures and tasks are 
 not allowed.
 
+non-deterministic values
+------------------------
+
+Non-deterministic choice of values by the environment can be 
+modelled using the star (*) symbol.  In combination with the 
+"assume" construct it can be used to model arbitrary constraints 
+of values.  
+
+//------------------------------
+process my_process {
+    drv_set_baud(*);
+}
+
+uncontrollable drv_set_baud(baud_t baud) {
+    assume ((baud == 115200) || (baud == 9600));
+}
+//------------------------------
+
+
 goal
 ----
 
@@ -482,14 +517,39 @@ whereas the send() task only queues data to be sent in the future.
 Thus the {...} construct allows the user to manually schedule 
 goals, which seens necessary to produce sensible code.
 
+Continuous assignments
+----------------------
 
-@-statement
------------
+A continuous assignment binds a variable to an expression.  The 
+assignment is effective on every transition.  The RHS of a 
+continuous assignment is an expression over state variables and 
+other continuously assigned variables.  State variable values are 
+taken at the start of the current transition.  
 
-TODO
+//------------------------------
+template my_template
+
+int<32> dev_baud;
+
+assign dev_baud = case reg_baud {
+                      0: 9600;
+                      1: 115200;
+                  }
+endtemplate
+//------------------------------
+
+Circular dependencies between continuously assigned variables are 
+not allowed. Continuous assignments are specified at the top level 
+inside the template.  A continuously assigned variable is declared 
+as a normal state variable.  It can be read by any process, but 
+can only be assigned by a single continuous assignment expression.
+
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
 Full TSL
 ========
+
+Full TSL syntax supports two methods of combining templates: 
+inheritance and 
