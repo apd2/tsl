@@ -1,11 +1,12 @@
-We define TSL v2 syntax in two steps.  First, we define basic TSL syntax that 
-does not support modules.  Next we define full TSL that add support for module 
-composition and inheritance to basic TSL.
+We define TSL v2 syntax in two steps.  First, we define basic TSL 
+syntax that does not support modules.  Next we define full TSL 
+that add support for module composition and inheritance to basic 
+TSL.
 
-The following description only describes features necessary for modelling 
-software components of the system (the OS and the driver), and hardware 
-components written C-based HDLs (e.g., DML).  Support for Verilog-style HDLs is 
-coming soon.
+The following description only describes features necessary for 
+modelling software components of the system (the OS and the 
+driver), and hardware components written C-based HDLs (e.g., DML).  
+Support for Verilog-style HDLs is coming soon.
 
 
 Basic TSL
@@ -14,8 +15,9 @@ Basic TSL
 Templates
 ---------
 
-A specification in basic TSL consists of a single template that describes the 
-complete system, including, the driver, the device, and the OS.
+A specification in basic TSL consists of a single template that 
+describes the complete system, including, the driver, the device, 
+and the OS.
 
 //------------------------------
 template my_template
@@ -44,13 +46,14 @@ Type declarations can appear in top-level and template scopes
 Variables
 ---------
 
-Variables can be declared anywhere inside the template, process, function or 
-task.  
+Variables can be declared anywhere inside the template, process, 
+function or task.  
 
-A variable can have an "invisible" attribute.  Variables that don't have this 
-attribute can only be modified by visible transitions (see below).  This 
-attribute does not increase the expressive power of the language, but prevents 
-accidental misuse of variables.  
+A variable can have an "invisible" attribute.  Variables that 
+don't have this attribute can only be modified by visible 
+transitions (see below).  This attribute does not increase the 
+expressive power of the language, but prevents accidental misuse 
+of variables.  
 
 //------------------------------
 baud_t baud;
@@ -62,14 +65,15 @@ int<20> xs[20];
 Processes
 ---------
 
-A template can contain one or more processes.  Every state transition of 
-the system occurs in the context of a single process, i.e., only one process
-can perform a transition at a time.  Processes become runnable as soon as the 
-template is instantiated.
+A template can contain one or more processes.  Every state 
+transition of the system occurs in the context of a single 
+process, i.e., only one process can perform a transition at a 
+time.  Processes become runnable as soon as the template is 
+instantiated.
 
-The body of a process is a statement.  Types of statements: variable 
-assignment, sequential block, parallel block, non-deterministic choice, 
-termination, loop, etc.  (see below).
+The body of a process is a statement.  Types of statements: 
+variable assignment, sequential block, parallel block, 
+non-deterministic choice, termination, loop, etc.  (see below).
 
 //------------------------------
 
@@ -108,17 +112,19 @@ end template
 Assignments
 -----------
 
-Assignments have C-style semantics.  An assignment completes instantaneously.  
-Multiple assignments can be performed in a single transition.  Multiple 
-assignments to the same variable as converted to SSA form by replacing 
-intermediate assignments with assignments to temporary variables.
+Assignments have C-style semantics.  An assignment completes 
+instantaneously.  Multiple assignments can be performed in a 
+single transition.  Multiple assignments to the same variable as 
+converted to SSA form by replacing intermediate assignments with 
+assignments to temporary variables.
 
 pause
 -----
 
-The pause statement terminates previous transition.  It is likely to be of 
-limited use, as other means of starting a new transition without an explicit 
-pause are likely to be more sufficient in most situations (see below)
+The pause statement terminates previous transition.  It is likely 
+to be of limited use, as other means of starting a new transition 
+without an explicit pause are likely to be more sufficient in most 
+situations (see below)
 
 //------------------------------
 
@@ -153,11 +159,11 @@ process {P1; choice{P2;P3}} behaves as follows:
           \     /
            --c--
 
-i.e., the last action of process P1 is followed by the first action of one of 
-the processes P1 and P2.  
+i.e., the last action of process P1 is followed by the first 
+action of one of the processes P1 and P2.  
 
-Note that the choice operator implicitly terminates the precedding transition.  
-For example:
+Note that the choice operator implicitly terminates the precedding 
+transition.  For example:
 
 //------------------------------
 process my_process {
@@ -170,15 +176,16 @@ process my_process {
 }
 //------------------------------
 
-The first two assignments are performed automically.  The following assignment
-(x=2) or (y=0) is performed in a separate transition.
+The first two assignments are performed automically.  The 
+following assignment (x=2) or (y=0) is performed in a separate 
+transition.
 
 fork
 ----
 
-The fork process defines (interleaved) parallel composition of two or more 
-processes.  The fork process terminates when all forked processes terminate.  
-For example, given processes P1, P2, and P3:
+The fork process defines (interleaved) parallel composition of two 
+or more processes.  The fork process terminates when all forked 
+processes terminate.  For example, given processes P1, P2, and P3:
 
 P1:
 ->o--a-->o
@@ -198,8 +205,9 @@ process {P1; fork{P2;P3}} behaves as follows:
            --c-->o--b--
 
 
-Note that fork cannot be used to create an unbounded number of processes, e.g., 
-it cannot be used inside a loop with variable bounds.  
+Note that fork cannot be used to create an unbounded number of 
+processes, e.g., it cannot be used inside a loop with variable 
+bounds.  
 
 Similar to choice, fork terminates the preceding transition.  
 
@@ -207,13 +215,13 @@ Similar to choice, fork terminates the preceding transition.
 stop
 ----
 
-The stop statement terminates either the top-level process or the innermost 
-forked or forever process.  By default, a process terminates after performing 
-its (syntactically) last action.  stop allows teminating the process at any 
-time.
+The stop statement terminates either the top-level process or the 
+innermost forked or forever process.  By default, a process 
+terminates after performing its (syntactically) last action.  stop 
+allows teminating the process at any time.
 
-stop does not represent a transition, but rather a state marker that marks a 
-final state of the process.  For example:
+stop does not represent a transition, but rather a state marker 
+that marks a final state of the process.  For example:
 
 //------------------------------
 process my_process {
@@ -224,8 +232,8 @@ process my_process {
 }
 //------------------------------
 
-Assume that the drv_probe task consists of a single transition.  Then the above 
-process has the following transition relation.
+Assume that the drv_probe task consists of a single transition.  
+Then the above process has the following transition relation.
 
     --drv_probe(ret!=0)-->(F)
    /
@@ -235,10 +243,11 @@ process has the following transition relation.
 
 where (F) denotes a final state.  
 
-A fork process reaches a final state once each of the forked processes is in a 
-final state.  For example, the following process forks two subprocesses.  The 
-first performs a non-deterministic choice between executing action "a" or 
-terminating immediately.  The second subprocess performs action "b".  
+A fork process reaches a final state once each of the forked 
+processes is in a final state.  For example, the following process 
+forks two subprocesses.  The first performs a non-deterministic 
+choice between executing action "a" or terminating immediately.  
+The second subprocess performs action "b".  
 
 //------------------------------
 process my_process {
@@ -257,7 +266,8 @@ Here, the transition relation of the choice{..} process is:
 
 -->(F)--a-->(F)
 
-i.e., both the initial state and the state after action "a" are final states.  
+i.e., both the initial state and the state after action "a" are 
+final states.  
 
 This transiton relation of the whole my_process process is:
 
@@ -272,9 +282,8 @@ This transiton relation of the whole my_process process is:
 forever
 -------
 
-The forever construct executes a process forever (or until a stop statement).
-
-In the following process,
+The forever construct executes a process forever (or until a stop 
+statement).  In the following process,
 
 //------------------------------
 process my_process {
@@ -308,8 +317,9 @@ Hence the transition relation of my_process is:
 assume
 ------
 
-The assume statement defines transition guard enforced by the environment.  It 
-can occur at the start of a transition or anywhere inside of the transition.  
+The assume statement defines transition guard enforced by the 
+environment.  It can occur at the start of a transition or 
+anywhere inside of the transition.  
 
 //------------------------------
 process my_process {
@@ -321,18 +331,24 @@ process my_process {
            y = x;
        };
        {
-           assume(y<0);
+           assume(x<0);
            y = z;
        };
 }
 //------------------------------
 
-Here, the initial transition initialises x to 0.  The process than waits until 
-x becomes non-zero (e.g., after being modified by another process), which 
-enables one of the two transitions inside the choice construct.  Note that 
-although choice represents non-deterministic choice, it only chooses among 
-enabled transition.  In this example at most one of the two transitions can be 
-enabled at any time.
+Here, the initial transition initialises x to 0.  The process than 
+waits until x becomes non-zero (e.g., after being modified by 
+another process), which enables one of the two transitions inside 
+the choice construct.  Note that although choice represents 
+non-deterministic choice, it only chooses among enabled 
+transition.  In this example at most one of the two transitions 
+can be enabled at any time.
+
+The assume construct can be used to implement process 
+synchronisation mechanisms such as events, semaphores, waiting on 
+a condition, etc.
+
 
 assert
 ------
@@ -357,10 +373,11 @@ transition.
 function
 --------
 
-Functions represent atomic computations without side effects.  A function 
-cannot modify state variables or start a new transition.  It is allowed to read 
-values of state variables.  Functions can be used for example inside assume and 
-assert statements that must be side-effect-free
+Functions represent atomic computations without side effects.  A 
+function cannot modify state variables or start a new transition.  
+It is allowed to read values of state variables.  Functions can be 
+used for example inside assume and assert statements that must be 
+side-effect-free
 
 //------------------------------
 function bool configured() {
@@ -371,8 +388,8 @@ function bool configured() {
 procedure
 ---------
 
-Procedures are similar to functions, except they are allowed to have side 
-effects.
+Procedures are similar to functions, except they are allowed to 
+have side effects.
 
 //------------------------------
 procedure int<8> update_state{
@@ -385,11 +402,12 @@ procedure int<8> update_state{
 task
 ----
 
-A task represents a named process that can be instantiated from multiple other 
-processes.  Task invocation always starts a new transition.  A task can have 
-arguments and a return value (do we want in/out arguments?).  A task can have 
-one of the following types: controllable/uncontrollable/invisible.  Only 
-controllable tasks can be invoked from synthesised code.  
+A task represents a named process that can be instantiated from 
+multiple other processes.  Task invocation always starts a new 
+transition.  A task can have arguments and a return value (do we 
+want in/out arguments?).  A task can have one of the following 
+types: controllable/uncontrollable/invisible.  Only controllable 
+tasks can be invoked from synthesised code.  
 
 //------------------------------
 controllable int<8> probe() {
@@ -399,12 +417,14 @@ controllable int<8> probe() {
 };
 //------------------------------
 
-A task is terminated by return statement rather that stop.  A stop statement 
-inside a task terminates the process containing the task.  
+A task is terminated by return statement rather that stop.  A stop 
+statement inside a task terminates the process containing the 
+task.  
 
-A return statement does not start a new transition.  Furthermore, it does not 
-terminate the current transition, so that statements following task invocation 
-can be executed as part of the final transition of the task.  For example,
+A return statement does not start a new transition.  Furthermore, 
+it does not terminate the current transition, so that statements 
+following task invocation can be executed as part of the final 
+transition of the task.  For example,
 
 //------------------------------
 process my_process {
@@ -415,32 +435,36 @@ process my_process {
 }
 //------------------------------
 
-Here the write8 call inside the probe() task, the return from the task and the 
-subsequent assignment (x=0) or task termination take place in a single 
-transition.
+Here the write8 call inside the probe() task, the return from the 
+task and the subsequent assignment (x=0) or task termination take 
+place in a single transition.
 
-Note: recursive invocations of functions, procedures and tasks are not allowed.
+Note: recursive invocations of functions, procedures and tasks are 
+not allowed.
 
 goal
 ----
 
-A template can contain a list of named goals.  The syntax for goals is not 
-defined yet.
+A template can contain a list of named goals.  The syntax for 
+goals is not defined yet.
 
 {...}
 -----
 
-The {...} statement represents a block of code that must be synthesised.  It 
-can have two forms.  The first form specifies a postcondition that must hold 
-when the synthesised block terminates.  This postcondition is translated into 
-an implicit goal and the goal synthesised for the block follows a strategy for 
-this goal (while staying within the winning region for other goals).
+The {...} statement represents a block of code that must be 
+synthesised.  It can have two forms.  The first form specifies a 
+postcondition that must hold when the synthesised block 
+terminates.  This postcondition is translated into an implicit 
+goal and the goal synthesised for the block follows a strategy for 
+this goal (while staying within the winning region for other 
+goals).
 
 //------------------------------
 {...} post(configured());
 //------------------------------
 
-The second goal specifies a named goal instead of the postcondition.  
+The second goal specifies a named goal instead of the 
+postcondition.  
 
 //------------------------------
 task send(int<8> dat) {
@@ -448,21 +472,16 @@ task send(int<8> dat) {
 }
 //------------------------------
 
-This means that the synthesised code will follow the strategy for the specified 
-goal while staying within the winning set for other goals.  This does not 
-guarantee that the system will be within the goal when the synthesised block 
-terminates.  In this example, the send_goal goal can only be reached inside the 
-interrupt handler, whereas the send() task only queues data to be sent in the 
-future.
+This means that the synthesised code will follow the strategy for 
+the specified goal while staying within the winning set for other 
+goals.  This does not guarantee that the system will be within the 
+goal when the synthesised block terminates.  In this example, the 
+send_goal goal can only be reached inside the interrupt handler, 
+whereas the send() task only queues data to be sent in the future.
 
-Thus the {...} construct allows the user to manually schedule goals, which 
-seens necessary to produce sensible code.
+Thus the {...} construct allows the user to manually schedule 
+goals, which seens necessary to produce sensible code.
 
-
-wait
-----
-
-TODO
 
 @-statement
 -----------
