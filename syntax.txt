@@ -105,7 +105,7 @@ process os_model {
     
 }
 
-end template
+endtemplate
 
 //------------------------------
 
@@ -422,7 +422,8 @@ A task represents a named process that can be instantiated from
 multiple other processes.  Task invocation always starts a new 
 transition.  A task can have arguments and a return value (do we 
 want in/out arguments?).  A task can have one of the following 
-types: controllable/uncontrollable/invisible.  Only controllable 
+types: controllable/uncontrollable/invisible.  If no type is 
+provides, the task is assumed to be invisible.  Only controllable 
 tasks can be invoked from synthesised code.  
 
 //------------------------------
@@ -457,6 +458,9 @@ place in a single transition.
 
 Note: recursive invocations of functions, procedures and tasks are 
 not allowed.
+
+Note 2: functions, procedures, and tasks are collectively referred 
+to as methods.
 
 non-deterministic values
 ------------------------
@@ -551,5 +555,130 @@ can only be assigned by a single continuous assignment expression.
 Full TSL
 ========
 
-Full TSL syntax supports two methods of combining templates: 
-inheritance and 
+Full TSL syntax allows composing templates using inheritance and 
+connections.
+
+Inheritance
+-----------
+
+In full TSL, a template can be derived from an existing template.  
+The parent template can only describe the interface to be 
+implemented by the client or provide partial or complete 
+implementation of this interface.  The derived template inherits 
+the entire content of the parent.  It can declare additional 
+variables, methods, and goals.  It can also change or extend 
+definitions from the parent template.  
+
+//------------------------------
+template parent
+controllable t1();
+endtemplate
+
+template child
+derive parent;
+
+// example of invoking an inherited task
+process test{
+    t1();
+};
+
+// redefining inherited task
+controllable t1() {
+    write8(REG_CTL,0);
+};
+endtemplate
+
+//------------------------------
+
+The parent template can contain partially defined methods.  A 
+partially defined task can consist of a prototype with optional 
+"before" and "after" blocks.  The content of these blocks is 
+inserted respectively before and after the actual code for the 
+task.  A partially defined function or procedure consists of a 
+prototype without a body.
+
+//------------------------------
+template parent
+
+// Define pre- and post- conditions of the task
+uncontrollable drv_set_baud(baud_t baud)
+    before{
+        assume (baud == 115200);
+    }
+    after{
+        assert(configured());
+    }
+endtemplate
+
+template child
+derive parent;
+
+// Fill in implementation details
+uncontrollable drv_set_baud(baud_t baud) {
+    write8(REG_CTL, 0);
+    {...} post (configured());
+}
+endtemplate
+
+/* The above task definition compiles to:
+uncontrollable drv_set_baud(baud_t baud) {
+    assume (baud == 115200);
+    write8(REG_CTL, 0);
+    {...} post (configured());
+    assert(configured());
+}
+*/
+
+endtemplate
+//------------------------------
+
+
+
+Connections
+-----------
+
+A template can be instantiated inside another template.  For 
+example, the top-level template can instantiate driver, bus, and 
+device templates.
+
+A template can require access to variables and methods provided by 
+another template.  For example, the driver template needs to 
+invoke register access methods declared in the bus template, 
+whereas the device can invoke device-class callbacks in the driver 
+template.  To this end the importing template is parameterised 
+with references to one or more other templates.
+
+A parameter declaration usually refers to an abstract template, 
+whereas the actual parameter used to instantiate the template must 
+refer to a concrete template that defines bodies of all methods.
+
+//------------------------------
+template parent
+export controllable write8(int<8> offset, int<8> val);
+endtemplate
+
+template child
+derive parent;
+controllable p.write8(int<8> offset, int<8> val){
+    // do stuff
+};
+endtemplate
+
+// parameterised template
+template X(parent p)
+process my_process {
+    p.write8(REG_CTL, 0); // call a method of p
+}
+endtemplate
+
+template complex
+// create two template instances
+child c;
+X x(.p = c); // pass child's implementation of parent as an
+             // argument to X
+endtemplate
+//------------------------------
+
+The importing template only has access to variables and methods of 
+the parameter template declared with the "export" keyword (see the 
+write8 method in the above example).
