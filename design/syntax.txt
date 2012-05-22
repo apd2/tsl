@@ -24,6 +24,7 @@ template my_template
 /* type declarations */
 /* constant declaration */
 /* variable declarations */
+/* init blocks */
 /* process declarations */
 /* task declarations */
 /* function declarations */
@@ -72,6 +73,21 @@ invisible baud_t dev_baud;
 int<20> x;
 int<20> xs[20];
 //------------------------------
+
+Init blocks
+-----------
+
+An init block specifies a constraint on initial values of template 
+variables.  It is a function (see below) without arguments and 
+with implicit return type Bool.  A template can have multiple init 
+blocks.
+
+//------------------------------
+init {
+    return (x == 0) && (xs[0] == 5);
+}
+//------------------------------
+
 
 Processes
 ---------
@@ -138,14 +154,12 @@ without an explicit pause are likely to be more sufficient in most
 situations (see below)
 
 //------------------------------
-
 process my_process {
     x = 0;
     y = x;
     pause;
     
 }
-
 //------------------------------
 
 choice
@@ -375,24 +389,25 @@ process my_process{
 //------------------------------
 
 
-if, do, while, switch
----------------------
+if, do, while, for
+-------------------------
 
-These constructs have the normal C semantics.  They do not start a new 
-transition.
+These constructs have the normal C semantics.  They do not start a 
+new transition.  
 
-ternary expression, case
-------------------------
+Do we want "break"?
 
-Expression syntax includes TSL-1-style case expressions and 
-C-style ternary expressions.
+case
+----
+
+A cleaner version of the C-style switch statement.  Does not 
+require break; executes the first matching clause only.
 
 //------------------------------
-x = (y==0) ? 0 : 1;
-x = case (y) {
-        0: 0;
-        default: 1;
-    }
+case (y) {
+    0: x = 1;
+    default: x = 2;
+}
 //------------------------------
 
 
@@ -415,10 +430,10 @@ procedure
 ---------
 
 Procedures are similar to functions, except they are allowed to 
-have side effects.
+have side effects.  
 
 //------------------------------
-procedure int<8> update_state{
+procedure update_state{
     x=2;
     y=z;
     return y;
@@ -558,6 +573,53 @@ inside the template.  A continuously assigned variable is declared
 as a normal state variable.  It can be read by any process, but 
 can only be assigned by a single continuous assignment expression.
 
+Expression syntax
+-----------------
+
+Expression syntax includes: 
+* Literals: 
+  - true, false Boolean literals
+  - enum literals
+  - const literals
+  - integer literals (binary, octal, decimal, and hex) with 
+    optional width specifier: 5'b110001, 16'o137,
+    32'd123456, 16'h56ab
+    
+* C-style Boolean, arithmetic and bit-wise operators are 
+supported.
+* Array indexing: xs[i], where i is a (potentially variable) 
+expression
+* Bit slice: x[h:l], where h and l are integer constants.
+* Two versions of case expressions (in addition to the case 
+statement described above):
+
+//------------------------------
+x = case (y) {
+        0: z;
+        1: 0;
+        default: x;
+    }
+
+x = cond {
+        (y>z): y;
+        default: z;
+    }
+//------------------------------
+
+* Function or procedure application: x = f(y,z).  Procedure calls
+  are illegal in contexts where side effects are not permitted,
+  e.g., inside assert and assume statements.
+* Struct expression:
+//------------------------------
+typedef struct {
+    bool x;
+    int<8> y;
+} foo_t;
+
+foo_t f;
+
+f = foo_t{.x = true, .y = 2}
+//------------------------------
 
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
