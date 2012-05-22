@@ -22,6 +22,7 @@ and the OS.
 //------------------------------
 template my_template
 /* type declarations */
+/* constant declaration */
 /* variable declarations */
 /* process declarations */
 /* task declarations */
@@ -43,6 +44,15 @@ typedef int<20> baud_t;
 
 Type declarations can appear in top-level and template scopes
 
+Constant declarations
+---------------------
+
+//------------------------------
+const int<8> SENDQ_SIZE = 128;
+
+typedef struct {bool x; bool y;} dummy_t;
+const dummy_t DUMMY = {.x = true, .y = false};
+//------------------------------
 
 Variables
 ---------
@@ -549,6 +559,7 @@ as a normal state variable.  It can be read by any process, but
 can only be assigned by a single continuous assignment expression.
 
 
+
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -587,7 +598,6 @@ controllable t1() {
     write8(REG_CTL,0);
 };
 endtemplate
-
 //------------------------------
 
 The parent template can contain partially defined methods.  A 
