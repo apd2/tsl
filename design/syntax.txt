@@ -426,6 +426,8 @@ function bool configured() {
 }
 //------------------------------
 
+A function argument declaration can have optional "out" attribute.
+
 procedure
 ---------
 
@@ -445,14 +447,14 @@ task
 
 A task represents a named process that can be instantiated from 
 multiple other processes.  Task invocation always starts a new 
-transition.  A task can have arguments and a return value (do we 
-want in/out arguments?).  A task can have one of the following 
-types: controllable/uncontrollable/invisible.  If no type is 
-provides, the task is assumed to be invisible.  Only controllable 
-tasks can be invoked from synthesised code.  
+transition.  A task can have arguments and a return value.  A task 
+can have one of the following types: 
+controllable/uncontrollable/invisible.  If no type is provides, 
+the task is assumed to be invisible.  Only controllable tasks can 
+be invoked from synthesised code.  
 
 //------------------------------
-controllable int<8> probe() {
+task controllable int<8> probe() {
     os_baud = 115200;
     write8(REG_BAUD,4);
     return 0;
@@ -478,8 +480,8 @@ process my_process {
 //------------------------------
 
 Here the write8 call inside the probe() task, the return from the 
-task and the subsequent assignment (x=0) or task termination take 
-place in a single transition.
+task and the subsequent assignment (x=0) or task termination 
+(stop) take place in a single transition.
 
 Note: recursive invocations of functions, procedures and tasks are 
 not allowed.
@@ -500,7 +502,7 @@ process my_process {
     drv_set_baud(*);
 }
 
-uncontrollable drv_set_baud(baud_t baud) {
+task uncontrollable drv_set_baud(baud_t baud) {
     assume ((baud == 115200) || (baud == 9600));
 }
 //------------------------------
@@ -644,7 +646,7 @@ definitions from the parent template.
 
 //------------------------------
 template parent
-controllable t1();
+task controllable t1();
 endtemplate
 
 template child
@@ -656,7 +658,7 @@ process test{
 };
 
 // redefining inherited task
-controllable t1() {
+task controllable t1() {
     write8(REG_CTL,0);
 };
 endtemplate
@@ -673,7 +675,7 @@ prototype without a body.
 template parent
 
 // Define pre- and post- conditions of the task
-uncontrollable drv_set_baud(baud_t baud)
+task uncontrollable drv_set_baud(baud_t baud)
     before{
         assume (baud == 115200);
     }
@@ -686,14 +688,14 @@ template child
 derive parent;
 
 // Fill in implementation details
-uncontrollable drv_set_baud(baud_t baud) {
+task uncontrollable drv_set_baud(baud_t baud) {
     write8(REG_CTL, 0);
     {...} post (configured());
 }
 endtemplate
 
 /* The above task definition compiles to:
-uncontrollable drv_set_baud(baud_t baud) {
+task uncontrollable drv_set_baud(baud_t baud) {
     assume (baud == 115200);
     write8(REG_CTL, 0);
     {...} post (configured());
@@ -726,12 +728,12 @@ refer to a concrete template that defines bodies of all methods.
 
 //------------------------------
 template parent
-export controllable write8(int<8> offset, int<8> val);
+export task controllable write8(int<8> offset, int<8> val);
 endtemplate
 
 template child
 derive parent;
-controllable p.write8(int<8> offset, int<8> val){
+task controllable p.write8(int<8> offset, int<8> val){
     // do stuff
 };
 endtemplate
