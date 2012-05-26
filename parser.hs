@@ -1,18 +1,22 @@
-{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TupleSections, FlexibleContexts #-}
 
 module Main where
 
-import Control.Applicative hiding (many)
-
+import Control.Applicative hiding (many,optional)
 import Text.Parsec hiding ((<|>))
 import Text.Parsec.String
 import Text.Parsec.Expr
 import qualified Text.Parsec.Token as T
 import Text.Parsec.Language
+import Numeric
+import Data.List
+import Data.Bits
+import System.Environment
+import qualified Text.PrettyPrint as P
 
 import Syntax
 
-reservedOpNames = ["!", "~", "&", "|", "^", "->", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "..."]
+reservedOpNames = ["!", "?", "~", "&", "|", "^", "->", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "..."]
 reservedNames = ["assert",
                  "assign",
                  "assume", 
@@ -85,7 +89,7 @@ stringLit  = T.stringLiteral lexer
 ----------------------------------------------------------------
 -- Common declarations that occur in different syntactic scopes
 ----------------------------------------------------------------
-withPos x = AtPos <$> x <*> getPosition
+withPos x = atPos <$> getPosition <*> x <*> getPosition
 
 quote :: String -> String
 quote s = "\"" ++ s ++ "\""
@@ -109,36 +113,34 @@ slice = brackets $ f <$> natural <*> (colon *> natural)
 
 -- Constant declaration
 constDecl = ConstDecl <$> constant
-constant = ConstDef <$ reserved "const" <*> ptypeSpec <*> pident <*> ((reservedOp "=" *> pexpr) <* semi)
+constant = ConstDef <$ reserved "const" <*> ptypeSpec <*> pident <*> (reservedOp "=" *> pexpr)
 
 -- Type declaration
 typeDecl = TypeDecl <$> typeDef
 
-typeSpec =  try arrayType 
-        <|> intType 
-        <|> boolType 
-        <|> userType 
-        <|> enumType 
-        <|> structType 
+ptypeSpec =  mkType <$> (withPos $ intType <|> boolType <|> userType <|> enumType <|> structType) 
+                   <*> (many $ withPos $ brackets pexpr)
+
+mkType :: PType -> [AtPos PExpr] -> PType
+mkType t [] = t
+mkType t@(AtPos _ (start,_)) ((AtPos e (_,end)):es) = mkType (AtPos (ArrayType t e) (start,end)) es
 
 intType    = IntType <$> ((True <$ reserved "sint") <|> (False <$ reserved "uint")) <*> (fromIntegral <$> angles decimal)
 boolType   = BoolType <$ reserved "bool"
 userType   = UserType <$> pident
 enumType   = EnumType <$ reserved "enum" <*> (braces $ commaSep1 $ (,) <$> ident <*> optionMaybe (reservedOp "=" *> pexpr))
 structType = StructType <$ reserved "struct" <*> (braces $ many1 $ (,) <$> ptypeSpec <*> (pident <* semi))
-arrayType  = ArrayType <$> ptypeSpec <*> brackets pexpr
-
-ptypeSpec = withPos typeSpec
 
 -------------------------------------------------------------------------
 -- Top-level scope
 -------------------------------------------------------------------------
 
 -- A TSL spec is a list of template, type, and constant declarations.  
-tslSpec = many (pdecl <* reservedOp ";")
-decl =  constDecl 
+grammar = (optional whiteSpace) *> (many pdecl) <* eof
+decl =  (constDecl <* semi)
     <|> (typeDecl <* semi)
     <|> templateDecl
+    <?> "constant, type or template declaration"
 
 pdecl = withPos decl
 
@@ -164,6 +166,7 @@ templateItem =  tderive
             <|> tprocDecl
             <|> tgoalDecl
             <|> tassign
+            <?> "declaration"
 
 ptemplateItem = withPos templateItem
 
@@ -179,10 +182,10 @@ tprocDecl    = TProcedureDecl <$> signature <*> pstatement
 tgoalDecl    = TGoalDecl <$ reserved "goal" <*> (pident <* reservedOp "=") <*> pexpr
 tassign      = TAssign <$ reserved "assign" <*> (plexpr <* reservedOp "=") <*> pexpr
 
-taskBody =  Left <$ reserved "before" <*> ((,) <$> (Just <$> pstatement) <*> optionMaybe (reserved "after" *> pstatement))
+taskBody = option (Left (Nothing, Nothing)) $
+            Left <$ reserved "before" <*> ((,) <$> (Just <$> pstatement) <*> optionMaybe (reserved "after" *> pstatement))
         <|> Left <$ reserved "after" <*> ((Nothing,) <$> (Just <$> pstatement))
         <|> Right <$> pstatement
-        <|> Left (Nothing,Nothing) <$ empty
 
 signature = Signature <$> (Nothing <$ reserved "void" <|> Just <$> ptypeSpec) <*> pident <*> (parens $ commaSep parg)
 arg = Arg <$> (option ArgIn (ArgOut <$ reserved "out")) <*> ptypeSpec <*> pident
@@ -209,6 +212,7 @@ statement =  try svarDecl
          <|> try smagic 
          <|> try sinvoke
          <|> try sassign
+         <?> "statement"
 
 pstatement = withPos statement
 
@@ -235,11 +239,96 @@ smagic   = SMagic <$ (braces $ reservedOp "...")
 ------------------------------------------------------------------
 -- Expression
 ------------------------------------------------------------------
-expr = undefined 
-pexpr = withPos expr
+
+pterm = parens pexpr <|> pterm'
+
+term' =  try estruct
+     <|> try eapply
+--     <|> try etern
+     <|> elit
+     <|> ebool
+     <|> eterm
+     <|> ecase
+     <|> econd 
+pterm' = withPos term'
+
+estruct = EStruct <$> pident <*> (braces $ (Left <$> namedfields) <|> (Right <$> anonfields))
+anonfields = commaSep $ pexpr
+namedfields = commaSep $ ((,) <$ reservedOp "." <*> pident <*> pexpr)
+
+eapply = EApply <$> psym <*> (parens $ commaSep pexpr)
+eterm = ETerm <$> psym
+ebool = EBool <$> ((True <$ reserved "true") <|> (False <$ reserved "false"))
+elit = lexeme elit'
+etern = ETernOp <$> pexpr <* reservedOp "?" <*> pexpr <* colon <*> pexpr
+ecase = (fmap uncurry (ECase <$ reserved "case" <*> (parens pexpr))) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pexpr <* semi) 
+                                                                                       <*> optionMaybe (reserved "default" *> colon *> pexpr <* semi))
+econd = (fmap uncurry (ECond <$ reserved "cond")) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pexpr <* semi) 
+                                                                    <*> optionMaybe (reserved "default" *> colon *> pexpr <* semi))
+elit' = (lookAhead $ char '\'' <|> digit) *> (fmap uncurry $ ELit <$> width) <*> radval
+width = optionMaybe (try $ ((fmap fromIntegral parseDec) <* (lookAhead $ char '\'')))
+radval =  ((,) <$> (Rad2  <$ (try $ string "'b")) <*> parseBin)
+      <|> ((,) <$> (Rad8  <$ (try $ string "'o")) <*> parseOct)
+      <|> ((,) <$> (Rad10 <$ (try $ string "'d")) <*> parseDec)
+      <|> ((,) <$> (Rad16 <$ (try $ string "'h")) <*> parseHex)
+      <|> ((Rad10,) <$> parseDec)
+parseBin :: Stream s m Char => ParsecT s u m Integer
+parseBin = readBin <$> (many1 $ (char '0') <|> (char '1'))
+parseOct :: Stream s m Char => ParsecT s u m Integer
+parseOct = (fst . head . readOct) <$> many1 octDigit
+parseDec :: Stream s m Char => ParsecT s u m Integer
+parseDec = (fst . head . readDec) <$> many1 digit
+parseHex :: Stream s m Char => ParsecT s u m Integer
+parseHex = (fst . head . readHex) <$> many1 hexDigit
+readBin :: String -> Integer
+readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
+                              case c of
+                                   '0' -> 0
+                                   '1' -> 1) 0 s
+
+pexpr =  buildExpressionParser table pterm
+     <?> "expression"
+
+table = [[postIndex]
+        ,[prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus]
+        ,[binary "==" Eq AssocLeft, 
+          binary "!=" Neq AssocLeft,
+          binary "<"  Lt AssocNone, 
+          binary "<=" Lte AssocNone, 
+          binary ">"  Gt AssocNone, 
+          binary ">=" Gte AssocNone]
+        ,[binary "&" BAnd AssocLeft]
+        ,[binary "^" BXor AssocLeft]
+        ,[binary "|" BOr AssocLeft]
+        ,[binary "&&" And AssocLeft]
+        ,[binary "||" Or AssocLeft]
+        ,[binary "->" Imp AssocRight]
+        ,[binary "*" Mod AssocLeft]
+        ,[binary "%" Mod AssocLeft]
+        ,[binary "+" Plus AssocLeft]
+        ,[binary "-" BinMinus AssocLeft]
+        ]
+
+postIndex = Postfix $ (\s end e@(AtPos _ (start,_)) -> AtPos (ESlice s e) (start,end)) <$> slice <*> getPosition
+
+prefix name fun = Prefix $ (\start e@(AtPos _ (_,end)) -> AtPos (EUnOp fun e) (start,end)) 
+                          <$> getPosition <* reservedOp name
+binary name fun = Infix $ (\le@(AtPos _ (start,_)) re@(AtPos _ (_,end)) -> AtPos (EBinOp fun le re) (start,end)) 
+                          <$ reservedOp name
+
 
 lexpr = LExpr <$> psym <*> optionMaybe slice
 plexpr = withPos lexpr
 
 
-main = putStrLn "TSL v2 parser"
+main = do
+    args <- getArgs
+    f <- case args of
+             [] -> fail $ "File name required"
+             _ -> return $ head args
+    tsl <- readFile f
+    print tsl
+    case parse grammar f tsl of
+         Left e -> fail $ show e
+         Right st -> do putStrLn "ok"
+                        writeFile (f ++ ".out") $ P.render $ pp st
