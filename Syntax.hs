@@ -30,6 +30,7 @@ instance (PP a) => PP (Maybe a) where
     pp (Just x) = pp x
 
 nest' = nest ppshift
+braces' x = lbrace $+$ nest' x $+$ rbrace
 
 -- Element of a syntax tree with source position
 data AtPos a = AtPos {getVal::a, getPos::(SourcePos,SourcePos)}
@@ -87,11 +88,11 @@ instance PP Spec where
 
 data SpecItem = TypeDecl TypeDef
               | ConstDecl ConstDef
-              | TemplateDecl PString PTemplate
+              | TemplateDecl Template
 instance PP SpecItem where
     pp (TypeDecl t) = pp t <> semi
     pp (ConstDecl c) = pp c <> semi
-    pp (TemplateDecl n t) = text "template" <+> pp n <+> pp t $+$ text "endtemplate"
+    pp (TemplateDecl t) = pp t 
 type PSpecItem = AtPos SpecItem
 
 data TypeDef = TypeDef PType PString
@@ -126,10 +127,13 @@ type PType = AtPos Type
 type TypeName = PString
 
 -- Template
-data Template = Template [TemplateImport] 
+data Template = Template PString
+                         [TemplateImport] 
                          [(Bool, PTemplateItem)] -- export?, item
 instance PP Template where
-    pp (Template imps items) = ppimports imps $+$ ppitems items
+    pp (Template n imps items) = text "template" <+> pp n <+> ppimports imps $+$ 
+                                 ppitems items $+$ 
+                                 text "endtemplate"
         where ppimports [] = text ""
               ppimports imps = parens $ hsep $ punctuate comma $ map pp imps
               ppitems items = vcat $ map ((<> semi) . ppitem) items
@@ -151,8 +155,8 @@ data TemplateItem = TDerive        TemplateName
                   | TTaskDecl      TaskCat                                                 -- category
                                    Signature
                                    (Either (Maybe PStatement,Maybe PStatement) PStatement) -- body: either before/after blocks or the actual implementation
-                  | TFunctionDecl  Signature PStatement
-                  | TProcedureDecl Signature PStatement
+                  | TFunctionDecl  Signature (Maybe PStatement)
+                  | TProcedureDecl Signature (Maybe PStatement)
                   | TGoalDecl      PString PGoal
                   | TAssign        PLExpr PExpr                                            -- Continuous assignment
 instance PP TemplateItem where
@@ -200,6 +204,7 @@ instance PP Visibility where
 
 -- Statements
 data Statement = SVarDecl VarDecl
+               | SReturn PExpr
                | SSeq [PStatement]
                | SPar [PStatement] 
                | SForever PStatement
@@ -218,13 +223,14 @@ data Statement = SVarDecl VarDecl
                | SMagic (Either GoalName PExpr)
 instance PP Statement where
     pp (SVarDecl d)               = pp d
-    pp (SSeq ss)                  = braces $ nest' $ vcat $ map ((<> semi) . pp) ss
-    pp (SPar ss)                  = text "fork" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) ss)
-    pp (SForever s)               = text "forever" <+> pp s
-    pp (SDo s cond)               = text "do" <+> pp s <+> text "while" <+> (parens $ pp cond)
-    pp (SWhile cond s)            = text "while" <+> (parens $ pp cond) <+> pp s
-    pp (SFor (init, cond, upd) s) = text "for" <+> (parens $ pp init <> semi <+> pp cond <> semi <+> pp upd) <+> pp s
-    pp (SChoice ss)               = text "choice" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) ss)
+    pp (SReturn e)                = text "return" <+> pp e
+    pp (SSeq ss)                  = braces' $ vcat $ map ((<> semi) . pp) ss
+    pp (SPar ss)                  = text "fork" <+> (braces' $ vcat $ map ((<> semi) . pp) ss)
+    pp (SForever s)               = text "forever" $+$ pp s
+    pp (SDo s cond)               = text "do" $+$ pp s <+> text "while" <+> (parens $ pp cond)
+    pp (SWhile cond s)            = (text "while" <+> (parens $ pp cond)) $+$ pp s
+    pp (SFor (init, cond, upd) s) = (text "for" <+> (parens $ pp init <> semi <+> pp cond <> semi <+> pp upd)) $+$ pp s
+    pp (SChoice ss)               = text "choice" $+$ (braces' $ vcat $ map ((<> semi) . pp) ss)
     pp SPause                     = text "pause"
     pp SStop                      = text "stop"
     pp (SInvoke m args)           = pp m <+> (parens $ hsep $ punctuate comma $ map pp args)
@@ -235,7 +241,7 @@ instance PP Statement where
                                     (case ms2 of
                                           Nothing -> empty
                                           Just s2 -> text "else" <+> pp s2)
-    pp (SCase e cases def)        = text "case" <+> (parens $ pp e) <+> (braces $ nest' $ ppcases $+$ ppdef)
+    pp (SCase e cases def)        = text "case" <+> (parens $ pp e) <+> (braces' $ ppcases $+$ ppdef)
                                          where ppcases = vcat $ map (\(c,s) -> pp c <> colon <+> pp s <> semi) cases
                                                ppdef = case def of 
                                                             Nothing -> empty
@@ -272,16 +278,16 @@ instance PP Expr where
     pp (EUnOp op e)          = parens $ pp op <> pp e
     pp (EBinOp op e1 e2)     = parens $ pp e1 <+> pp op <+> pp e2
     pp (ETernOp c e1 e2)     = parens $ pp c <+> char '?' <+> pp e2 <+> colon <+> pp e2
-    pp (ECase e cs def)      = text "case" <+> (parens $ pp e) <+> (braces $ nest' $ ppcs $+$ ppdef)
+    pp (ECase e cs def)      = text "case" <+> (parens $ pp e) <+> (braces' $ ppcs $+$ ppdef)
                                    where ppcs = vcat $ map (\(c,e') -> pp c <> colon <+> pp e' <> semi) cs
                                          ppdef = text "default" <> colon <+> pp def <> semi
-    pp (ECond cs def)        = text "cond" <+> (braces $ nest' $ ppcs $+$ ppdef)
+    pp (ECond cs def)        = text "cond" <+> (braces' $ ppcs $+$ ppdef)
                                    where ppcs = vcat $ map (\(c,e') -> pp c <> colon <+> pp e' <> semi) cs
                                          ppdef = text "default" <> colon <+> pp def <> semi
     pp (ESlice s e)          = pp e <> pp s
-    pp (EStruct t (Left fs)) = pp t <+> (braces $ nest' $ vcat $ punctuate comma $ 
+    pp (EStruct t (Left fs)) = pp t <+> (braces $ hcat $ punctuate comma $ 
                                          map (\(n,e) -> char '.' <> pp n <+> char '=' <+> pp e) fs)
-    pp (EStruct t (Right fs)) = pp t <+> (braces $ nest' $ vcat $ punctuate comma $ map pp fs)
+    pp (EStruct t (Right fs)) = pp t <+> (braces' $ vcat $ punctuate comma $ map pp fs)
 type PExpr = AtPos Expr
 
 type ConstExpr = Expr

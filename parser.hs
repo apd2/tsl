@@ -13,6 +13,7 @@ import Data.List
 import Data.Bits
 import System.Environment
 import qualified Text.PrettyPrint as P
+import Debug.Trace
 
 import Syntax
 
@@ -41,8 +42,10 @@ reservedNames = ["assert",
                  "post", 
                  "procedure", 
                  "process",
+                 "return",
                  "sint",
                  "stop", 
+                 "struct",
                  "switch",
                  "task", 
                  "template", 
@@ -100,7 +103,7 @@ pident = withPos ident
 
 fieldSelector = Field <$ dot <*> pident
 indexSelector = Index <$> brackets pexpr
-sym = Ident <$> pident <*> many (withPos $ fieldSelector <|> (try indexSelector))
+sym = Ident <$> pident <*> many (withPos $ fieldSelector <|> indexSelector)
 psym = withPos sym
 
 varDecl = VarDecl <$> ptypeSpec <*> pident
@@ -147,9 +150,9 @@ pdecl = withPos decl
 ------------------------------------------------------------------------
 -- Template scope
 ------------------------------------------------------------------------
-templateDecl = TemplateDecl <$ reserved "template" <*> pident <*> ptemplate
+templateDecl = TemplateDecl <$> template
 
-template = Template <$> option [] (parens $ commaSep $ templateImport) <*> ((many $ templateItem' <* reservedOp ";") <* reserved "endtemplate")
+template = Template <$ reserved "template" <*> pident <*> option [] (parens $ commaSep $ templateImport) <*> ((many $ templateItem' <* reservedOp ";") <* reserved "endtemplate")
 ptemplate = withPos template
 
 templateImport = (,) <$> pident <*> pident
@@ -177,8 +180,8 @@ tvarDecl     = TVarDecl <$> (option VarVis (VarInvis <$ reserved "invisible")) <
 tinitBlock   = TInitBlock <$ reserved "init" <*> pstatement
 tprocessDecl = TProcessDecl <$ reserved "process" <*> pident <*> pstatement
 ttaskDecl    = TTaskDecl <$ reserved "task" <*> taskCat <*> signature <*> taskBody
-tfuncDecl    = TFunctionDecl <$> signature <*> pstatement
-tprocDecl    = TProcedureDecl <$> signature <*> pstatement
+tfuncDecl    = TFunctionDecl <$ reserved "function" <*> signature <*> optionMaybe pstatement
+tprocDecl    = TProcedureDecl <$ reserved "procedure" <*> signature <*> optionMaybe pstatement
 tgoalDecl    = TGoalDecl <$ reserved "goal" <*> (pident <* reservedOp "=") <*> pexpr
 tassign      = TAssign <$ reserved "assign" <*> (plexpr <* reservedOp "=") <*> pexpr
 
@@ -196,7 +199,9 @@ taskCat = option Invis (Contr <$ reserved "controllable" <|> Uncontr <$ reserved
 -- Statement
 ----------------------------------------------------------------
 statement =  try svarDecl
-         <|> try sseq
+         <|> sreturn
+         <|> smagic 
+         <|> sseq
          <|> spar
          <|> sforever
          <|> sdo
@@ -209,14 +214,14 @@ statement =  try svarDecl
          <|> sassume
          <|> site
          <|> scase
-         <|> try smagic 
-         <|> try sinvoke
-         <|> try sassign
+         <|> sinvoke
+         <|> sassign
          <?> "statement"
 
 pstatement = withPos statement
 
 svarDecl = SVarDecl <$> varDecl
+sreturn  = SReturn <$ reserved "return" <*> pexpr
 sseq     = SSeq <$> (braces $ many $ pstatement <* semi)
 spar     = SPar <$ reserved "fork" <*> (braces $ many $ pstatement <* semi)
 sforever = SForever <$ reserved "forever" <*> pstatement
@@ -226,15 +231,19 @@ sfor     = SFor <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe pstatement
 schoice  = SChoice <$ reserved "choice" <*> (braces $ many $ pstatement <* semi)
 spause   = SPause <$ reserved "pause"
 sstop    = SStop <$ reserved "stop"
-sinvoke  = SInvoke <$> psym <*> (parens $ commaSep pexpr)
+sinvoke  = SInvoke <$ isinvoke <*> psym <*> (parens $ commaSep pexpr)
+    where isinvoke = try $ lookAhead $ psym *> symbol "("
 sassert  = SAssert <$ reserved "assert" <*> (parens pexpr)
 sassume  = SAssume <$ reserved "assume" <*> (parens pexpr)
-sassign  = SAssign <$> plexpr <* reservedOp "=" <*> pexpr
+sassign  = SAssign <$ isassign <*> plexpr <* reservedOp "=" <*> pexpr
+    where isassign = try $ lookAhead $ plexpr *> symbol "="
 site     = SITE <$ reserved "if" <*> (parens pexpr) <*> pstatement <*> optionMaybe (reserved "else" *> pstatement)
 scase    = (fmap uncurry (SCase <$ reserved "case" <*> (parens pexpr))) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pstatement <* semi) 
                                                                                           <*> optionMaybe (reserved "default" *> colon *> pstatement <* semi))
-smagic   = SMagic <$ (braces $ reservedOp "...") 
-                 <*> ((Left <$ reserved "using" <*> pident) <|> (Right <$ reserved "post" <*> (parens pexpr)))
+smagic   = SMagic <$ ismagic
+                  <*> ((braces $ reservedOp "...") 
+                       *> ((Left <$ reserved "using" <*> pident) <|> (Right <$ reserved "post" <*> (parens pexpr))))
+    where ismagic = try $ lookAhead $ symbol "{" *> reservedOp "..."
 
 ------------------------------------------------------------------
 -- Expression
@@ -242,8 +251,8 @@ smagic   = SMagic <$ (braces $ reservedOp "...")
 
 pterm = parens pexpr <|> pterm'
 
-term' =  try estruct
-     <|> try eapply
+term' =  estruct
+     <|> eapply
 --     <|> try etern
      <|> elit
      <|> ebool
@@ -252,19 +261,21 @@ term' =  try estruct
      <|> econd 
 pterm' = withPos term'
 
-estruct = EStruct <$> pident <*> (braces $ (Left <$> namedfields) <|> (Right <$> anonfields))
-anonfields = commaSep $ pexpr
-namedfields = commaSep $ ((,) <$ reservedOp "." <*> pident <*> pexpr)
+estruct = EStruct <$ isstruct <*> pident <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
+    where isstruct = try $ lookAhead $ pident *> symbol "{"
+          anonfields = commaSep1 $ pexpr
+          namedfields = commaSep1 $ ((,) <$ reservedOp "." <*> pident <* reservedOp "=" <*> pexpr)
+eapply  = EApply <$ isapply <*> psym <*> (parens $ commaSep pexpr)
+    where isapply = try $ lookAhead $ psym *> symbol "("
+eterm   = ETerm <$> psym
+ebool   = EBool <$> ((True <$ reserved "true") <|> (False <$ reserved "false"))
+elit    = lexeme elit'
+etern   = ETernOp <$> pexpr <* reservedOp "?" <*> pexpr <* colon <*> pexpr
+ecase   = (fmap uncurry (ECase <$ reserved "case" <*> (parens pexpr))) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pexpr <* semi) 
+                                                                                         <*> optionMaybe (reserved "default" *> colon *> pexpr <* semi))
+econd   = (fmap uncurry (ECond <$ reserved "cond")) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pexpr <* semi) 
+                                                                      <*> optionMaybe (reserved "default" *> colon *> pexpr <* semi))
 
-eapply = EApply <$> psym <*> (parens $ commaSep pexpr)
-eterm = ETerm <$> psym
-ebool = EBool <$> ((True <$ reserved "true") <|> (False <$ reserved "false"))
-elit = lexeme elit'
-etern = ETernOp <$> pexpr <* reservedOp "?" <*> pexpr <* colon <*> pexpr
-ecase = (fmap uncurry (ECase <$ reserved "case" <*> (parens pexpr))) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pexpr <* semi) 
-                                                                                       <*> optionMaybe (reserved "default" *> colon *> pexpr <* semi))
-econd = (fmap uncurry (ECond <$ reserved "cond")) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pexpr <* semi) 
-                                                                    <*> optionMaybe (reserved "default" *> colon *> pexpr <* semi))
 elit' = (lookAhead $ char '\'' <|> digit) *> (fmap uncurry $ ELit <$> width) <*> radval
 width = optionMaybe (try $ ((fmap fromIntegral parseDec) <* (lookAhead $ char '\'')))
 radval =  ((,) <$> (Rad2  <$ (try $ string "'b")) <*> parseBin)
@@ -327,7 +338,7 @@ main = do
              [] -> fail $ "File name required"
              _ -> return $ head args
     tsl <- readFile f
-    print tsl
+    --putStr tsl
     case parse grammar f tsl of
          Left e -> fail $ show e
          Right st -> do putStrLn "ok"
