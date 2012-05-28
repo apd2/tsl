@@ -32,7 +32,7 @@ syn match  tslDelimiter	        "[\[\]!?\~&|\^=<>%+-,;\:\.]"
 
 "Regular keywords
 syn keyword tslStatement	after assert assign assume before choice default derive 
-syn keyword tslStatement	endtemplate export fork function goal init out 
+syn keyword tslStatement	endtemplate fork function goal init out 
 syn keyword tslStatement	pause post procedure process return stop switch task template 
 syn keyword tslStatement	using 
 
@@ -46,10 +46,13 @@ syn keyword tslRepeat           do while for forever
 syn keyword tslConditional      if else cond case
 
 "Constants
-syn keyword tslConstant         true false
+syn keyword tslConstant         true false 
+
+"Storage class
+syn keyword tslStorageClass     const controllable uncontrollable invisible export
 
 "Operators from the Abstract Data Types in IS8807
-syn keyword tslOperator	        default controllable uncontrollable invisible true false
+syn keyword tslOperator	        default true false
 
 "Keywords for ADTs
 syn keyword tslType	        bool uint sint stuct enum void typedef
@@ -76,6 +79,7 @@ if !exists("did_tsl_syntax_inits")
   hi link tslConditional        Conditional
   hi link tslTodo               Todo
   hi link tslNumber             Number
+  hi link tslStorageClass       StorageClass
   hi link cInclude              String
 endif
 

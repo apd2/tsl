@@ -1,0 +1,45 @@
+/* UART device class */
+
+typedef enum{
+    CUART_DATA5,
+    CUART_DATA6,
+    CUART_DATA7,
+    CUART_DATA8
+} cuart_data_bits_t;
+
+typedef enum{
+    CUART_STOP1,
+    CUART_STOP15,
+    CUART_STOP2
+} cuart_stop_bits_t;
+
+typedef enum{
+    CUART_PARITY_NONE,
+    CUART_PARITY_EVEN,
+    CUART_PARITY_ODD,
+    CUART_PARITY_HIGH,
+    CUART_PARITY_LOW
+} cuart_par_t;
+
+typedef enum{
+    CUART_B115200,
+    CUART_B57600,
+    CUART_B38400,
+    CUART_B19200,
+    CUART_B9600,
+    CUART_B7200,
+    CUART_B4800,
+    CUART_B3600,
+    CUART_B2400,
+    CUART_B1200
+} cuart_baud_t;
+
+template uart_dev
+
+// effective configuration settings
+export cuart_data_bits_t data_bits;
+export cuart_stop_bits_t stop_bits;
+export cuart_par_t       parity;
+export cuart_baud_t      speed;
+
+endtemplate

@@ -27,6 +27,7 @@ reservedNames = ["after",
                  "case",
                  "choice", 
                  "cond",
+                 "const"
                  "controllable", 
                  "default",
                  "deriv",

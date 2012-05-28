@@ -1,0 +1,187 @@
+#include <uart_class.tsl>
+
+/* OS-specific UART driver template */
+
+typedef uint<4> uart_data_bits_t;
+
+typedef enum{
+    UART_STOP_BITS_1,
+    UART_STOP_BITS_15,
+    UART_STOP_BITS_2
+} uart_stop_bits_t;
+
+typedef enum {
+    UART_PAR_NONE,
+    UART_PAR_EVEN,
+    UART_PAR_ODD,
+    UART_PAR_HIGH,
+    UART_PAR_LOW
+} uart_par_t;
+
+typedef uint<32> uart_baud_t;
+
+const uint<16> UART_SENDQ_SIZE = 32;
+
+
+template uart_drv(uart_dev dev)
+
+// configuration requested by the OS
+cuart_data_bits_t data_bits;
+cuart_stop_bits_t stop_bits;
+cuart_par_t       parity;
+cuart_baud_t      speed;
+
+uint<8>[UART_SENDQ_SIZE] sendq;
+uint<16> sendq_head;
+uint<16> sendq_tail;
+//uint<16> sendq_length;
+invisible uint<16> sendq_dev_head;
+
+// true during configuration requests 
+bool              config_in_progress;
+
+init {
+    return (config_in_progress == true) &&
+           (sendq_head == 0) &&
+           (sendq_tail == 0) &&
+           (sendq_dev_head == 0)
+}
+
+process uart_os {
+    tty_probe();
+    fork {
+        config();
+        transmit();
+        receive();
+        monitor_config();
+    };
+};
+
+task void config() {
+    forever {
+        choice {
+            set_line_parameters(*,*,*);
+            set_baud_rate(*);
+            stop;
+        };
+    };
+};
+
+task void transmit() {
+    forever {
+        choice {
+            send(*);
+            stop;
+        };
+    };
+};
+
+// generate an error whenever device configuration changes unexpectedly
+process monitor_config {
+    forever {
+        choice {
+            {
+                wait(!configured());
+                assert(config_in_progress);
+            };
+            stop;
+        };
+    }
+};
+
+/******* Driver methods (could be in a separate template) *******/
+
+task uncontrollable void tty_probe()
+before{
+    data_bits = CUART_DATA8;
+    stop_bits = CUART_STOP1;
+    parity    = CUART_PARITY_NONE;
+    speed     = CUART_B115200;
+    config_in_progress = true;
+}
+after{
+    config_in_progress = false;
+    assert(configured());
+};
+
+task uncontrollable void set_line_parameters(uart_data_bits_t data, uart_stop_bits_t stopbits, uart_par_t par)
+before{
+    // conditions on valid argument values
+    assume(((stop == UART_STOP_BITS_15) && (data == 5)) || ((stopbits == UART_STOP_BITS_2) && (data != 5)));
+    case (data) {
+        5:       data_bits = CUART_DATA5;
+        6:       data_bits = CUART_DATA6;
+        7:       data_bits = CUART_DATA7;
+        8:       data_bits = CUART_DATA8;
+        default: assume(false); // only legal values can be given by the OS
+    };
+    case(stopbits) {
+        UART_STOP_BITS_1:   stop_bits = CUART_STOP1;
+        UART_STOP_BITS_15:  stop_bits = CUART_STOP15;
+        UART_STOP_BITS_2:   stop_bits = CUART_STOP2;
+        default:            assume(false);
+    };
+
+    case (par) {
+        UART_PAR_NONE: parity = CUART_PARITY_NONE;
+        UART_PAR_EVEN: parity = CUART_PARITY_EVEN;
+        UART_PAR_ODD:  parity = CUART_PARITY_ODD;
+        UART_PAR_HIGH: parity = CUART_PARITY_HIGH;
+        UART_PAR_LOW:  parity = CUART_PARITY_LOW;
+        default:       assume(false);
+    };
+    config_in_progress = true;
+}
+after {
+    config_in_progress = false;
+    assert(configured());
+};
+
+task uncontrollable set_baud_rate(uart_baud_t baud)
+before {
+    case (baud) {
+        115200:  speed = CUART_B115200;
+        57600:   speed = CUART_B57600;
+        38400:   speed = CUART_B38400;
+        19200:   speed = CUART_B19200;
+        9600:    speed = CUART_B9600;
+        7200:    speed = CUART_B7200;
+        4800:    speed = CUART_B4800;
+        3600:    speed = CUART_B3600;
+        2400:    speed = CUART_B2400;
+        1200:    speed = CUART_B1200;
+        default: assume(false);
+    };
+    config_in_progress = true;
+}
+after {
+    config_in_progress = false;
+    assert(configured());
+};
+
+task uncontrollable void send(uint<8> c)
+before {
+    // cannot enqueue more if the circular buffer is almost full
+    assume((sendq_tail + 1) % UART_SENDQ_SIZE != sendq_head);
+    sendq_push(c);
+};
+
+/****** OS callbacks ********************************************/
+
+task controllable void send_complete(uint<8> c)
+{
+    assert (sendq_head != sendq_tail);     // OS queue is not empty
+    assert (sendq_dev_head != sendq_head); // device must be ahead of what has been reported to the OS
+    sendq_head = (sendq_head + 1) % UART_SENDQ_SIZE;
+};
+
+/****************************************************************/
+
+function bool configured () {
+    return ((data_bits == dev.data_bits) && 
+            (stop_bits == dev.stop_bits) && 
+            (parity == dev.parity) &&
+            (speed == dev.speed));
+};
+
+endtemplate
