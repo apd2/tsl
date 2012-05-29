@@ -6,7 +6,7 @@
 template ns16450_drv(ns16450 dev) // Note: we override dev port declaration
                                   // from linux_uart_drv with a concrete
                                   // ns16450 template derived from uart_dev
-derive uart_os;
+derive linux_uart_drv;
 derive irq_handler;
 
 // interrupt enable register
