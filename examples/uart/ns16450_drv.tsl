@@ -1,5 +1,6 @@
 #include <uart_os.tsl>
 #include <ns16450.tsl> // device spec
+#include <irq.tsl>
 
 
 template ns16450_drv(ns16450 dev) // Note: we override dev port declaration
@@ -49,7 +50,7 @@ task uncontrollable void send(uint<8> c)
     {...} using send_goal;
 };
 
-task uncontrollable void irq()
+export task uncontrollable void irq()
 {
     // Partial information hint
     uint<8> status = dev.read8(UART_LST); //Read the line status register (tells us the cause of the interrupt)

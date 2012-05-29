@@ -1,0 +1,5 @@
+template irq_handler
+
+export task uncontrollable void irq();
+
+endtemplate
