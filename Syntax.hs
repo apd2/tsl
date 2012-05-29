@@ -44,7 +44,7 @@ atPos :: SourcePos -> a -> SourcePos -> AtPos a
 atPos start x end = AtPos x (start,end)
 
 -- Common types
-type Slice = (Int, Int)  -- low,high
+type Slice = (PConstExpr, PConstExpr)  -- low,high
 instance PP Slice where
     pp (l,h) = brackets $ pp l <> colon <> pp h 
 
@@ -164,16 +164,16 @@ instance PP TemplateItem where
     pp (TTypeDecl t) = pp t
     pp (TConstDecl c) = pp c
     pp (TVarDecl v decl) = pp v <+> pp decl
-    pp (TInitBlock s) = text "init" <+> pp s
+    pp (TInitBlock s) = text "init" $+$ pp s
     pp (TProcessDecl n s) = (text "process" <+> pp n) $+$ pp s
     pp (TTaskDecl c sig (Left (bef,aft))) = (text "task" <+> pp c <+> pp sig) $+$
                                             case bef of 
                                                  Nothing -> empty
-                                                 Just s -> text "before" <+> pp s
+                                                 Just s -> text "before" $+$ pp s
                                             $+$
                                             case aft of
                                                  Nothing -> empty
-                                                 Just s ->  text "after" <+> pp s
+                                                 Just s -> text "after" $+$ pp s
     pp (TTaskDecl c sig (Right s)) = (text "task" <+> pp c <+> pp sig) $+$ pp s
     pp (TFunctionDecl sig body) = (text "function" <+> pp sig) $+$ pp body
     pp (TProcedureDecl sig body) = (text "procedure" <+> pp sig) $+$ pp body
@@ -182,9 +182,10 @@ instance PP TemplateItem where
                                                  
 type PTemplateItem = AtPos TemplateItem
 
-data VarDecl = VarDecl PType PString
+data VarDecl = VarDecl PType PString (Maybe PExpr)
 instance PP VarDecl where
-    pp (VarDecl t n) = pp t <+> pp n
+    pp (VarDecl t n Nothing) = pp t <+> pp n
+    pp (VarDecl t n (Just e)) = pp t <+> pp n <+> char '=' <+> pp e
 
 data Signature = Signature (Maybe PType) PString [PArg]  -- ret type, args, body
 instance PP Signature where
@@ -225,7 +226,7 @@ instance PP Statement where
     pp (SVarDecl d)               = pp d
     pp (SReturn e)                = text "return" <+> pp e
     pp (SSeq ss)                  = braces' $ vcat $ map ((<> semi) . pp) ss
-    pp (SPar ss)                  = text "fork" <+> (braces' $ vcat $ map ((<> semi) . pp) ss)
+    pp (SPar ss)                  = text "fork" $+$ (braces' $ vcat $ map ((<> semi) . pp) ss)
     pp (SForever s)               = text "forever" $+$ pp s
     pp (SDo s cond)               = text "do" $+$ pp s <+> text "while" <+> (parens $ pp cond)
     pp (SWhile cond s)            = (text "while" <+> (parens $ pp cond)) $+$ pp s
@@ -237,10 +238,10 @@ instance PP Statement where
     pp (SAssert e)                = text "assert" <+> (parens $ pp e)
     pp (SAssume e)                = text "assume" <+> (parens $ pp e)
     pp (SAssign l r)              = pp l <+> char '=' <+> pp r
-    pp (SITE cond s1 ms2)         = text "if" <+> (parens $ pp cond) <+> pp s1 <+>
+    pp (SITE cond s1 ms2)         = text "if" <+> (parens $ pp cond) $+$ pp s1 $+$
                                     (case ms2 of
                                           Nothing -> empty
-                                          Just s2 -> text "else" <+> pp s2)
+                                          Just s2 -> text "else" $+$ pp s2)
     pp (SCase e cases def)        = text "case" <+> (parens $ pp e) <+> (braces' $ ppcases $+$ ppdef)
                                          where ppcases = vcat $ map (\(c,s) -> pp c <> colon <+> pp s <> semi) cases
                                                ppdef = case def of 
@@ -264,6 +265,7 @@ data Expr = ETerm PIdent
           | ECond [(PExpr, PExpr)] (Maybe PExpr)
           | ESlice Slice PExpr
           | EStruct TypeName (Either [(PString, PExpr)] [PExpr]) -- either named or anonymous list of fields
+          | ENonDet
 instance PP Expr where
     pp (ETerm i)            = pp i
     pp (ELit w r v)         = pp w <> pp r <> 
@@ -288,6 +290,7 @@ instance PP Expr where
     pp (EStruct t (Left fs)) = pp t <+> (braces $ hcat $ punctuate comma $ 
                                          map (\(n,e) -> char '.' <> pp n <+> char '=' <+> pp e) fs)
     pp (EStruct t (Right fs)) = pp t <+> (braces' $ vcat $ punctuate comma $ map pp fs)
+    pp ENonDet                = char '*'
 type PExpr = AtPos Expr
 
 type ConstExpr = Expr

@@ -34,12 +34,25 @@ typedef enum{
     CUART_B1200
 } cuart_baud_t;
 
-template uart_dev
+/* Any UART device implementation must inherit this template */ 
+template uart_dev(uart_os os)
 
 // effective configuration settings
 export cuart_data_bits_t data_bits;
 export cuart_stop_bits_t stop_bits;
 export cuart_par_t       parity;
 export cuart_baud_t      speed;
+
+// true when sending break signal
+export bool              break_send;
+
+endtemplate
+
+/* Any UART OS interface spec must inherit this template */
+template uart_os(uart_dev dev)
+
+// device-class events
+export function void evt_send(uint<8> c);
+export function void evt_receive(uint<8> c, bool error, bool brk);
 
 endtemplate

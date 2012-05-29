@@ -1,0 +1,72 @@
+#include <uart_os.tsl>
+#include <ns16450.tsl> // device spec
+
+
+template ns16450_drv(ns16450 dev) // Note: we override dev port declaration
+                                  // from linux_uart_drv with a concrete
+                                  // ns16450 template derived from uart_dev
+derive uart_os;
+derive irq_handler;
+
+// interrupt enable register
+uint<8> ier;
+
+task uncontrollable void tty_probe()
+{
+    // TODO: potentially force reset to put the device in a known state.
+
+    {...} post configured();
+    // manually write ier, because perfect information strategy
+    // knows nothing about it.
+    ier[UART_IER_DR:UART_IER_DR] = 1;
+    dev.write8(UART_IER, ier);
+};
+
+task uncontrollable void tty_shutdown() 
+{
+    {...} post (true/*some device-specific shutdown condition, e.g., interrupts disabled*/);
+};
+
+task uncontrollable void set_line_parameters(uart_data_bits_t data, uart_stop_bits_t stopbits, uart_par_t par)
+{
+    {...} post configured();
+};
+
+task uncontrollable void set_baud_rate(uart_baud_t baud)
+{
+    {...} post configured();
+};
+
+task uncontrollable void set_break(bool on)
+{
+    {...} post configured();
+};
+
+task uncontrollable void send(uint<8> c)
+{
+    ier[UART_IER_THRI:UART_IER_THRI] = 1;
+    dev.write8(UART_IER, ier);
+    {...} using send_goal;
+};
+
+task uncontrollable void irq()
+{
+    // Partial information hint
+    uint<8> status = dev.read8(UART_LST); //Read the line status register (tells us the cause of the interrupt)
+
+    if (status[UART_LSR_DR:UART_LSR_DR]) { //Data was received
+        // TODO: receive processing
+    };
+    if (status[UART_LSR_THRE:UART_LSR_THRE]) { //Transmit holding register was empty
+        {...} using send_goal;
+
+        // If the OS has not queued anything more to send then we disable the transmit 
+        // holding regsiter empty interrupt so that we dont get endlessly repeated interrupts
+        if (sendq_head == sendq_tail){
+            ier[UART_IER_THRI] = 0;
+            dev.write8(UART_IER, ier);
+        };
+    };
+};
+
+endtemplate

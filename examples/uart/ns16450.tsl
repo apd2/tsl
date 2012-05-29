@@ -1,0 +1,7 @@
+template ns16450
+
+derive uart_dev;
+
+// TODO
+
+endtemplate

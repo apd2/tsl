@@ -1,10 +1,9 @@
 #include <uart_class.tsl>
 
-/* OS-specific UART driver template */
-
+/* OS-specific UART-related types (for equivalent class-specific types, see uart_class.tsl) */
 typedef uint<4> uart_data_bits_t;
 
-typedef enum{
+typedef enum {
     UART_STOP_BITS_1,
     UART_STOP_BITS_15,
     UART_STOP_BITS_2
@@ -22,8 +21,12 @@ typedef uint<32> uart_baud_t;
 
 const uint<16> UART_SENDQ_SIZE = 32;
 
+/* OS-specific UART driver template */
+template linux_uart_drv
 
-template uart_drv(uart_dev dev)
+// Note: together with the uart_os template, we derive its
+// dev port (see uart_os definition in uart_class.tsl)
+derive uart_os; 
 
 // configuration requested by the OS
 cuart_data_bits_t data_bits;
@@ -31,22 +34,26 @@ cuart_stop_bits_t stop_bits;
 cuart_par_t       parity;
 cuart_baud_t      speed;
 
+// OS send queue
 uint<8>[UART_SENDQ_SIZE] sendq;
 uint<16> sendq_head;
 uint<16> sendq_tail;
-//uint<16> sendq_length;
+// device has sent up to this point, which can be between sendq_head and sendq_tail.
+// note the "invisible" attribute.
 invisible uint<16> sendq_dev_head;
 
 // true during configuration requests 
-bool              config_in_progress;
+bool config_in_progress;
 
+// Constraints on initial variable values
 init {
     return (config_in_progress == true) &&
            (sendq_head == 0) &&
            (sendq_tail == 0) &&
-           (sendq_dev_head == 0)
-}
+           (sendq_dev_head == 0);
+};
 
+// Process that models how the OS invokes driver entry points
 process uart_os {
     tty_probe();
     fork {
@@ -55,10 +62,15 @@ process uart_os {
         receive();
         monitor_config();
     };
+    tty_shutdown();
 };
 
+// Configuration requests
 task void config() {
     forever {
+        // Choose between sending one of two types of configuration requests
+        // and terminating the loop.  Note that the "stop" transition can 
+        // only be taken when it is available in all forked processes.
         choice {
             set_line_parameters(*,*,*);
             set_baud_rate(*);
@@ -71,13 +83,14 @@ task void transmit() {
     forever {
         choice {
             send(*);
+            {set_break(true); set_break(false);};             
             stop;
         };
     };
 };
 
 // generate an error whenever device configuration changes unexpectedly
-process monitor_config {
+task void monitor_config() {
     forever {
         choice {
             {
@@ -86,17 +99,18 @@ process monitor_config {
             };
             stop;
         };
-    }
+    };
 };
 
 /******* Driver methods (could be in a separate template) *******/
 
 task uncontrollable void tty_probe()
 before{
-    data_bits = CUART_DATA8;
-    stop_bits = CUART_STOP1;
-    parity    = CUART_PARITY_NONE;
-    speed     = CUART_B115200;
+    data_bits  = CUART_DATA8;
+    stop_bits  = CUART_STOP1;
+    parity     = CUART_PARITY_NONE;
+    speed      = CUART_B115200;
+    break_send = true;
     config_in_progress = true;
 }
 after{
@@ -104,10 +118,16 @@ after{
     assert(configured());
 };
 
+task uncontrollable void tty_shutdown()
+before{
+    // send queue must be empty
+    assume(sendq_head == sendq_tail);
+};
+
 task uncontrollable void set_line_parameters(uart_data_bits_t data, uart_stop_bits_t stopbits, uart_par_t par)
 before{
     // conditions on valid argument values
-    assume(((stop == UART_STOP_BITS_15) && (data == 5)) || ((stopbits == UART_STOP_BITS_2) && (data != 5)));
+    assume(((stopbits == UART_STOP_BITS_15) && (data == 5)) || ((stopbits == UART_STOP_BITS_2) && (data != 5)));
     case (data) {
         5:       data_bits = CUART_DATA5;
         6:       data_bits = CUART_DATA6;
@@ -137,7 +157,7 @@ after {
     assert(configured());
 };
 
-task uncontrollable set_baud_rate(uart_baud_t baud)
+task uncontrollable void set_baud_rate(uart_baud_t baud)
 before {
     case (baud) {
         115200:  speed = CUART_B115200;
@@ -159,6 +179,16 @@ after {
     assert(configured());
 };
 
+task uncontrollable void set_break(bool on)
+before {
+    break_send = on;
+    config_in_progress = true;
+}
+after {
+    config_in_progress = false;
+    assert (configured());
+};
+
 task uncontrollable void send(uint<8> c)
 before {
     // cannot enqueue more if the circular buffer is almost full
@@ -175,13 +205,43 @@ task controllable void send_complete(uint<8> c)
     sendq_head = (sendq_head + 1) % UART_SENDQ_SIZE;
 };
 
+// Receive functionality is modelled very loosely in the OS template.
+// Depending on controller organisation, the driver may drop received data.
+// The correct behaviour will be defined on per-driver basis.
+task controllable void receive(uint<8> c);
+
+/****** Device-class events inherited from uart_os **************/
+
+export function void evt_send(uint<8> c)
+{
+    assert (sendq_dev_head != sendq_tail);  // there is something to send
+    assert (c == sendq[sendq_dev_head]);    // we are sending a correct character
+
+    sendq_dev_head = (sendq_dev_head + 1) % UART_SENDQ_SIZE;
+};
+
+export function void evt_receive(uint<8> c, bool error, bool brk);
+
+
+/****** Goals ***************************************************/
+
+// Note that every uncontrollable task defines an implicit goal: the 
+// driver must reach the end of the task without violating assertions.
+// This is sufficient for configuration tasks above.  
+// Requests that span multiple tasks require additional separately 
+// defined goals.
+
+// Infinitely often either queue is empty or send_complete happens
+goal send_goal = (sendq_head == sendq_tail) || (tag == send_complete);
+
 /****************************************************************/
 
 function bool configured () {
     return ((data_bits == dev.data_bits) && 
             (stop_bits == dev.stop_bits) && 
             (parity == dev.parity) &&
-            (speed == dev.speed));
+            (speed == dev.speed) &&
+            (break_send == dev.break_send));
 };
 
 endtemplate

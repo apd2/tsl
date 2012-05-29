@@ -67,8 +67,10 @@ transitions (see below).  This attribute does not increase the
 expressive power of the language, but prevents accidental misuse 
 of variables.  
 
+Variables can be declared with initial values:
+
 //------------------------------
-baud_t baud;
+baud_t baud = 115200;
 invisible baud_t dev_baud;
 int<20> x;
 int<20> xs[20];

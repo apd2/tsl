@@ -27,7 +27,7 @@ reservedNames = ["after",
                  "case",
                  "choice", 
                  "cond",
-                 "const"
+                 "const",
                  "controllable", 
                  "default",
                  "deriv",
@@ -111,15 +111,14 @@ pident = withPos ident
 
 fieldSelector = Field <$ dot <*> pident
 indexSelector = Index <$> brackets pexpr
-sym = Ident <$> pident <*> many (withPos $ fieldSelector <|> indexSelector)
+sym = Ident <$> pident <*> many (withPos $ fieldSelector <|> try indexSelector)
 psym = withPos sym
 
-varDecl = VarDecl <$> ptypeSpec <*> pident
+varDecl = VarDecl <$> ptypeSpec <*> pident <*> optionMaybe (reservedOp "=" *> pexpr)
 
 typeDef = TypeDef <$ reserved "typedef" <*> ptypeSpec <*> pident
 
-slice = brackets $ f <$> natural <*> (colon *> natural)
-    where f l r = (fromIntegral r, fromIntegral l)
+slice = brackets $ (,) <$> pexpr <*> (colon *> pexpr)
 
 
 -- Constant declaration
@@ -250,7 +249,7 @@ scase    = (fmap uncurry (SCase <$ reserved "case" <*> (parens pexpr))) <*> (bra
                                                                                           <*> optionMaybe (reserved "default" *> colon *> pstatement <* semi))
 smagic   = SMagic <$ ismagic
                   <*> ((braces $ reservedOp "...") 
-                       *> ((Left <$ reserved "using" <*> pident) <|> (Right <$ reserved "post" <*> (parens pexpr))))
+                       *> ((Left <$ reserved "using" <*> pident) <|> (Right <$ reserved "post" <*> pexpr)))
     where ismagic = try $ lookAhead $ symbol "{" *> reservedOp "..."
 
 ------------------------------------------------------------------
@@ -305,7 +304,8 @@ readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
                                    '0' -> 0
                                    '1' -> 1) 0 s
 
-pexpr =  buildExpressionParser table pterm
+pexpr =  (withPos $ ENonDet <$ reservedOp "*")
+     <|> buildExpressionParser table pterm
      <?> "expression"
 
 table = [[postIndex]
