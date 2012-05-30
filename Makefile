@@ -23,7 +23,7 @@ TARGET=parser.hs
 CLIBS=${LIBS} stdc++
 GHC_FLAGS+=-o parser # -prof -auto-all -rtsopts # -fforce-recomp 
 
-example: parser
+example: default
 	make -C examples/uart
 
 

@@ -180,7 +180,7 @@ templateItem =  tderive
 
 ptemplateItem = withPos templateItem
 
-tderive      = TDerive <$ reserved "derive" <*> pident
+tderive      = TDerive <$ reserved "derive" <*> pident <*> option [] (parens $ commaSep pident)
 ttypeDecl    = TTypeDecl <$> typeDef
 tconstDecl   = TConstDecl <$> constant
 tvarDecl     = TVarDecl <$> (option VarVis (VarInvis <$ reserved "invisible")) <*> varDecl

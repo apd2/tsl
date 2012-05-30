@@ -141,12 +141,13 @@ instance PP Template where
               ppitem (False, i) = pp i
 type PTemplate = AtPos Template
 
-type TemplateImport = (TemplateName, PString)
+type TemplateImport = (TemplateName, PortName)
 instance PP TemplateImport where
     pp (t,n) = pp t <+> pp n
 type TemplateName = PString
+type PortName = PString
 
-data TemplateItem = TDerive        TemplateName
+data TemplateItem = TDerive        TemplateName [PortName]
                   | TTypeDecl      TypeDef
                   | TConstDecl     ConstDef
                   | TVarDecl       Visibility VarDecl
@@ -160,7 +161,8 @@ data TemplateItem = TDerive        TemplateName
                   | TGoalDecl      PString PGoal
                   | TAssign        PLExpr PExpr                                            -- Continuous assignment
 instance PP TemplateItem where
-    pp (TDerive n) = text "derive" <+> pp n
+    pp (TDerive n []) = text "derive" <+> pp n
+    pp (TDerive n ps) = text "derive" <+> pp n <+> (parens $ hsep $ punctuate comma $ map pp ps)
     pp (TTypeDecl t) = pp t
     pp (TConstDecl c) = pp c
     pp (TVarDecl v decl) = pp v <+> pp decl
