@@ -1,6 +1,6 @@
-#include <linux_uart.tsl>
-#include <ns16450.tsl> // device spec
-#include <irq.tsl>
+import <linux_uart.tsl>
+import <ns16450.tsl> // device spec
+import <irq.tsl>
 
 
 template ns16450_drv(ns16450 dev) // Note: we override dev port declaration

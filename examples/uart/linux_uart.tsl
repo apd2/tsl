@@ -1,4 +1,4 @@
-#include <uart_class.tsl>
+import <uart_class.tsl>
 
 /* OS-specific UART-related types (for equivalent class-specific types, see uart_class.tsl) */
 typedef uint<4> uart_data_bits_t;

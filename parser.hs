@@ -2,6 +2,10 @@
 
 module Main where
 
+import qualified Data.Map as M
+import Control.Monad
+import Data.Maybe
+
 import Control.Applicative hiding (many,optional)
 import Text.Parsec hiding ((<|>))
 import Text.Parsec.String
@@ -42,6 +46,7 @@ reservedNames = ["after",
                  "function", 
                  "goal",
                  "if", 
+                 "import",
                  "init",
                  "invisible", 
                  "out",
@@ -96,6 +101,7 @@ whiteSpace = T.whiteSpace lexer
 lexeme     = T.lexeme lexer
 dot        = T.dot lexer
 stringLit  = T.stringLiteral lexer
+charLit    = T.charLiteral lexer
 
 ----------------------------------------------------------------
 -- Common declarations that occur in different syntactic scopes
@@ -122,11 +128,11 @@ slice = brackets $ (,) <$> pexpr <*> (colon *> pexpr)
 
 
 -- Constant declaration
-constDecl = ConstDecl <$> constant
+constDecl = SpConst <$> constant
 constant = ConstDef <$ reserved "const" <*> ptypeSpec <*> pident <*> (reservedOp "=" *> pexpr)
 
 -- Type declaration
-typeDecl = TypeDecl <$> typeDef
+typeDecl = SpType <$> typeDef
 
 ptypeSpec =  mkType <$> (withPos $ intType <|> boolType <|> userType <|> enumType <|> structType) 
                    <*> (many $ withPos $ brackets pexpr)
@@ -147,17 +153,21 @@ structType = StructType <$ reserved "struct" <*> (braces $ many1 $ (,) <$> ptype
 
 -- A TSL spec is a list of template, type, and constant declarations.  
 grammar = (optional whiteSpace) *> (many pdecl) <* eof
-decl =  (constDecl <* semi)
+decl =  importDecl
+    <|> (constDecl <* semi)
     <|> (typeDecl <* semi)
     <|> templateDecl
     <?> "constant, type or template declaration"
 
 pdecl = withPos decl
 
+importDecl = SpImport <$> imp
+imp = Import <$ reserved "import" <*> (reservedOp "<" *> (withPos $ manyTill anyChar (reservedOp ">")))
+
 ------------------------------------------------------------------------
 -- Template scope
 ------------------------------------------------------------------------
-templateDecl = TemplateDecl <$> template
+templateDecl = SpTemplate <$> template
 
 template = Template <$ reserved "template" <*> pident <*> option [] (parens $ commaSep $ templateImport) <*> ((many $ templateItem' <* reservedOp ";") <* reserved "endtemplate")
 ptemplate = withPos template
@@ -345,9 +355,28 @@ main = do
     f <- case args of
              [] -> fail $ "File name required"
              _ -> return $ head args
+    parseTSL M.empty f
+    putStrLn "ok"
+
+-- Recursively parse TSL file and all of its imports
+-- Takes a map of already parsed files and the name of the file
+-- to parse
+parseTSL :: M.Map FilePath Spec -> FilePath -> IO (M.Map FilePath Spec)
+parseTSL modules f = do
     tsl <- readFile f
     --putStr tsl
-    case parse grammar f tsl of
-         Left e -> fail $ show e
-         Right st -> do putStrLn "ok"
-                        writeFile (f ++ ".out") $ P.render $ pp st
+    spec <- case parse grammar f tsl of
+                 Left e -> fail $ show e
+                 Right st -> return st
+    writeFile (f ++ ".out") $ P.render $ pp spec
+    -- Parse imports
+    foldM (\mods imp -> if M.member imp mods
+                           then return mods
+                           else parseTSL mods imp)
+          (M.insert f spec modules) (imports spec)
+
+-- Extract the list of imports from parsed TSL spec
+imports :: Spec -> [FilePath]
+imports s = mapMaybe (\item -> case getVal item of
+                                    SpImport (Import name) -> Just $ getVal name
+                                    _ -> Nothing) s

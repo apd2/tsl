@@ -635,6 +635,28 @@ Full TSL
 Full TSL syntax allows composing templates using inheritance and 
 connections.
 
+Multi-file specifications
+-------------------------
+
+A TSL specification can be split into multiple files.  Each file 
+is parsed separately and so must contain syntactically valid TSL 
+(e.g., a single template cannot span multiple files).
+
+A TSL file can refer to another TSL file using import construct:
+
+//------------------------------
+import <file1.tsl>
+
+template my_template
+....
+endtemplate
+//------------------------------
+
+The name in angular brackets is a file name or path that can be 
+used by the TSL compiler to find the file. 
+
+
+
 Inheritance
 -----------
 

@@ -86,14 +86,20 @@ type Spec = [PSpecItem]
 instance PP Spec where
     pp items = vcat $ intersperse (text "") (map pp items)
 
-data SpecItem = TypeDecl TypeDef
-              | ConstDecl ConstDef
-              | TemplateDecl Template
+data SpecItem = SpImport   Import
+              | SpType     TypeDef
+              | SpConst    ConstDef
+              | SpTemplate Template
 instance PP SpecItem where
-    pp (TypeDecl t) = pp t <> semi
-    pp (ConstDecl c) = pp c <> semi
-    pp (TemplateDecl t) = pp t 
+    pp (SpImport i) = pp i
+    pp (SpType t) = pp t <> semi
+    pp (SpConst c) = pp c <> semi
+    pp (SpTemplate t) = pp t 
 type PSpecItem = AtPos SpecItem
+
+data Import = Import PString
+instance PP Import where
+    pp (Import file) = text "import" <+> char '<' <+> pp file <+> char '>'
 
 data TypeDef = TypeDef PType PString
 instance PP TypeDef where

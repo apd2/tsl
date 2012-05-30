@@ -32,7 +32,7 @@ syn match  tslDelimiter	        "[\[\]!?\~&|\^=<>%+-,;\:\.]"
 
 "Regular keywords
 syn keyword tslStatement	after assert assign assume before choice default derive 
-syn keyword tslStatement	endtemplate fork function goal init out 
+syn keyword tslStatement	endtemplate fork function goal import init out 
 syn keyword tslStatement	pause post procedure process return stop switch task template 
 syn keyword tslStatement	using 
 
