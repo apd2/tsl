@@ -22,11 +22,11 @@ typedef uint<32> uart_baud_t;
 const uint<16> UART_SENDQ_SIZE = 32;
 
 /* OS-specific UART driver template */
-template linux_uart_drv
+template linux_uart_drv(uart_dev dev)
 
 // Note: together with the uart_os template, we derive its
 // dev port (see uart_os definition in uart_class.tsl)
-derive uart_os; 
+derive uart_os(dev); 
 
 // configuration requested by the OS
 cuart_data_bits_t data_bits;

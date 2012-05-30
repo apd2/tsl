@@ -1,4 +1,4 @@
-#include <uart_os.tsl>
+#include <linux_uart.tsl>
 #include <ns16450.tsl> // device spec
 #include <irq.tsl>
 
