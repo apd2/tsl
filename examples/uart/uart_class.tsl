@@ -43,6 +43,19 @@ export cuart_stop_bits_t stop_bits;
 export cuart_par_t       parity;
 export cuart_baud_t      speed;
 
+// modem control
+export bool rts;
+export bool dtr;
+export bool out1;
+export bool out2;
+export bool loop;
+
+// modem status
+export bool dcd;
+export bool cts;
+export bool dsr;
+export bool ri;
+
 // true when sending break signal
 export bool              break_send;
 
@@ -52,7 +65,7 @@ endtemplate
 template uart_os(uart_dev dev)
 
 // device-class events
-export function void evt_send(uint<8> c);
-export function void evt_receive(uint<8> c, bool error, bool brk);
+export procedure void evt_send(uint<8> c);
+export procedure void evt_receive(uint<8> c, bool error, bool brk);
 
 endtemplate

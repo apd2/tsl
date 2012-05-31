@@ -14,12 +14,14 @@ uint<8> ier;
 
 task uncontrollable void tty_probe()
 {
+    uint<8> "x";
+
     // TODO: potentially force reset to put the device in a known state.
 
     {...} post configured();
     // manually write ier, because perfect information strategy
     // knows nothing about it.
-    ier[UART_IER_DR:UART_IER_DR] = 1;
+    ier[UART_IER_DR:UART_IER_DR] = 0;
     dev.write8(UART_IER, ier);
 };
 
@@ -38,6 +40,33 @@ task uncontrollable void set_baud_rate(uart_baud_t baud)
     {...} post configured();
 };
 
+task uncontrollable void set_mctrl(uint<32> mctrl)
+{
+    {...} post configured();
+};
+
+task uncontrollable uint<32> get_mctrl()
+{
+    uint<32> mstat;
+
+    // I made up a new "know" keyword, which tells the code generator
+    // that the exact value of a variable must be known by the end of
+    // the magic block.
+    {...} post know (dev.dcd);
+    mstat[TIOCM_CAR:TIOCM_CAR] = dev.dcd;
+
+    {...} post know (dev.cts);
+    mstat[TIOCM_CTS:TIOCM_CTS] = dev.cts;
+
+    {...} post know (dev.dsr);
+    mstat[TIOCM_DSR:TIOCM_DSR] = dev.dsr;
+
+    {...} post know (dev.ri);
+    mstat[TIOCM_RI:TIOCM_RI] = dev.ri;
+
+    return mstat;
+};
+
 task uncontrollable void set_break(bool on)
 {
     {...} post configured();
@@ -48,6 +77,18 @@ task uncontrollable void send(uint<8> c)
     ier[UART_IER_THRI:UART_IER_THRI] = 1;
     dev.write8(UART_IER, ier);
     {...} using send_goal;
+};
+
+task uncontrollable void start_rx()
+{
+    ier[UART_IER_DR:UART_IER_DR] = 1;
+    dev.write8(UART_IER, ier);
+};
+
+task uncontrollable void stop_rx()
+{
+    ier[UART_IER_DR:UART_IER_DR] = 0;
+    dev.write8(UART_IER, ier);
 };
 
 export task uncontrollable void irq()

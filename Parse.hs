@@ -15,8 +15,6 @@ import Text.Parsec.Language
 import Numeric
 import Data.List
 import Data.Bits
-import System.Environment
-import qualified Text.PrettyPrint as P
 import Debug.Trace
 
 import Syntax

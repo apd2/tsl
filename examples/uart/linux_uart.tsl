@@ -33,6 +33,11 @@ cuart_data_bits_t data_bits;
 cuart_stop_bits_t stop_bits;
 cuart_par_t       parity;
 cuart_baud_t      speed;
+bool rts;
+bool dtr;
+bool out1;
+bool out2;
+bool loop;
 
 // OS send queue
 uint<8>[UART_SENDQ_SIZE] sendq;
@@ -41,6 +46,9 @@ uint<16> sendq_tail;
 // device has sent up to this point, which can be between sendq_head and sendq_tail.
 // note the "invisible" attribute.
 invisible uint<16> sendq_dev_head;
+
+// receiver enabled
+bool rx_enabled = false;
 
 // true during configuration requests 
 bool config_in_progress;
@@ -59,7 +67,7 @@ process uart_os {
     fork {
         config();
         transmit();
-        receive();
+        rx();
         monitor_config();
     };
     tty_shutdown();
@@ -74,6 +82,8 @@ task void config() {
         choice {
             set_line_parameters(*,*,*);
             set_baud_rate(*);
+            set_mctrl(*);
+            get_mctrl();
             stop;
         };
     };
@@ -84,6 +94,19 @@ task void transmit() {
         choice {
             send(*);
             {set_break(true); set_break(false);};             
+            stop;
+        };
+    };
+};
+
+task void rx() {
+    forever {
+        choice {
+            {rx_enabled = true; start_rx();};
+            stop;
+        };
+        choice {
+            {stop_rx(); rx_enabled = false;};
             stop;
         };
     };
@@ -179,6 +202,26 @@ after {
     assert(configured());
 };
 
+task uncontrollable void set_mctrl(uint<32> mctrl)
+before{
+    rts  = mctrl[TIOCM_RTS:TIOCM_RTS];
+    dtr  = mctrl[TIOCM_DTR:TIOCM_DTR];
+    out1 = mctrl[TIOCM_OUT1:TIOCM_OUT2];
+    out2 = mctrl[TIOCM_OUT2:TIOCM_OUT2];
+    loop = mctrl[TIOCM_LOOP:TIOCM_LOOP];
+    config_in_progress = true;
+}
+after {
+    config_in_progress = false;
+    assert(configured());
+};
+
+// Another function that is hard to specify.  get_mctrl is not 
+// guaranteed to return the latest value of modem status bits as
+// they may have changed since the last read.  See ns16450_drv.tsl 
+// for one possible implementation.
+task uncontrollable uint<32> get_mctrl();
+
 task uncontrollable void set_break(bool on)
 before {
     break_send = on;
@@ -196,6 +239,9 @@ before {
     sendq_push(c);
 };
 
+task uncontrollable void start_rx();
+task uncontrollable void stop_rx();
+
 /****** OS callbacks ********************************************/
 
 task controllable void send_complete(uint<8> c)
@@ -208,11 +254,14 @@ task controllable void send_complete(uint<8> c)
 // Receive functionality is modelled very loosely in the OS template.
 // Depending on controller organisation, the driver may drop received data.
 // The correct behaviour will be defined on per-driver basis.
-task controllable void receive(uint<8> c);
+task controllable void receive(uint<8> c)
+{
+    assert (rx_enabled == true);
+};
 
 /****** Device-class events inherited from uart_os **************/
 
-export function void evt_send(uint<8> c)
+export procedure void evt_send(uint<8> c)
 {
     assert (sendq_dev_head != sendq_tail);  // there is something to send
     assert (c == sendq[sendq_dev_head]);    // we are sending a correct character
@@ -220,7 +269,7 @@ export function void evt_send(uint<8> c)
     sendq_dev_head = (sendq_dev_head + 1) % UART_SENDQ_SIZE;
 };
 
-export function void evt_receive(uint<8> c, bool error, bool brk);
+export procedure void evt_receive(uint<8> c, bool error, bool brk);
 
 
 /****** Goals ***************************************************/
@@ -237,11 +286,16 @@ goal send_goal = (sendq_head == sendq_tail) || (tag == send_complete);
 /****************************************************************/
 
 function bool configured () {
-    return ((data_bits == dev.data_bits) && 
-            (stop_bits == dev.stop_bits) && 
-            (parity == dev.parity) &&
-            (speed == dev.speed) &&
-            (break_send == dev.break_send));
+    return ((data_bits  == dev.data_bits) && 
+            (stop_bits  == dev.stop_bits) && 
+            (parity     == dev.parity) &&
+            (speed      == dev.speed) &&
+            (break_send == dev.break_send) &&
+            (rts        == dev.rts) &&
+            (dtr        == dev.dtr) &&
+            (out1       == dev.out1) &&
+            (out2       == dev.out2) &&
+            (loop       == dev.loop));
 };
 
 endtemplate
