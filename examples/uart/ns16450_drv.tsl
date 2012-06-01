@@ -74,9 +74,11 @@ task uncontrollable void set_break(bool on)
 
 task uncontrollable void send(uint<8> c)
 {
-    ier[UART_IER_THRI:UART_IER_THRI] = 1;
-    dev.write8(UART_IER, ier);
-    {...} using send_goal;
+    if (tx_enabled) {
+        ier[UART_IER_THRI:UART_IER_THRI] = 1;
+        dev.write8(UART_IER, ier);
+        {...} using send_goal;
+    };
 };
 
 task uncontrollable void start_rx()
@@ -88,6 +90,18 @@ task uncontrollable void start_rx()
 task uncontrollable void stop_rx()
 {
     ier[UART_IER_DR:UART_IER_DR] = 0;
+    dev.write8(UART_IER, ier);
+};
+
+task uncontrollable void start_tx()
+{
+    ier[UART_IER_THRI:UART_IER_THRI] = 1;
+    dev.write8(UART_IER, ier);
+};
+
+task uncontrollable void stop_tx()
+{
+    ier[UART_IER_THRI:UART_IER_THRI] = 0;
     dev.write8(UART_IER, ier);
 };
 

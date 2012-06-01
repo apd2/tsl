@@ -50,6 +50,9 @@ invisible uint<16> sendq_dev_head;
 // receiver enabled
 bool rx_enabled = false;
 
+// transmit interrupt enabled
+bool tx_enabled = true;
+
 // true during configuration requests 
 bool config_in_progress;
 
@@ -67,7 +70,8 @@ process uart_os {
     fork {
         config();
         transmit();
-        rx();
+        tx_control();
+        rx_control();
         monitor_config();
     };
     tty_shutdown();
@@ -99,7 +103,20 @@ task void transmit() {
     };
 };
 
-task void rx() {
+task void tx_control {
+    forever {
+        choice {
+            {tx_enabled = true; start_tx();};
+            stop;
+        };
+        choice {
+            {stop_tx(); tx_enabled = false;};
+            stop;
+        };
+    };   
+};
+
+task void rx_control() {
     forever {
         choice {
             {rx_enabled = true; start_rx();};
@@ -242,12 +259,17 @@ before {
 task uncontrollable void start_rx();
 task uncontrollable void stop_rx();
 
+task uncontrollable void start_tx();
+task uncontrollable void stop_tx();
+
+
 /****** OS callbacks ********************************************/
 
 task controllable void send_complete(uint<8> c)
 {
     assert (sendq_head != sendq_tail);     // OS queue is not empty
     assert (sendq_dev_head != sendq_head); // device must be ahead of what has been reported to the OS
+    assert (tx_enabled);                   // transmission must be allowed
     sendq_head = (sendq_head + 1) % UART_SENDQ_SIZE;
 };
 
@@ -280,8 +302,9 @@ export procedure void evt_receive(uint<8> c, bool error, bool brk);
 // Requests that span multiple tasks require additional separately 
 // defined goals.
 
-// Infinitely often either queue is empty or send_complete happens
-goal send_goal = (sendq_head == sendq_tail) || (tag == send_complete);
+// Infinitely often either queue is empty or the transmitter is disabled or
+// send_complete happens
+goal send_goal = (sendq_head == sendq_tail) || (!tx_enabled) || (tag == send_complete);
 
 /****************************************************************/
 
