@@ -103,7 +103,7 @@ task void transmit() {
     };
 };
 
-task void tx_control {
+task void tx_control() {
     forever {
         choice {
             {tx_enabled = true; start_tx();};
