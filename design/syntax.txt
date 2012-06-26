@@ -119,7 +119,7 @@ process os_model {
             ret = drv_probe(); 
             if (ret != 0) {
                 // os_model process terminates
-                stop;
+                return;
             };
             // end of transition 2
         };
@@ -164,48 +164,6 @@ process my_process {
 }
 //------------------------------
 
-choice
-------
-
-The choice process performs non-determinictic choice between several 
-subprocesses.  Given three processes P1, P2, and P3:
-
-P1:
-->o--a-->o
-
-P2:
-->o--b-->o
-
-P3:
-->o--c-->o
-
-process {P1; choice{P2;P3}} behaves as follows:
-           --b--
-          /     \
-->o--a-->o       ->o
-          \     /
-           --c--
-
-i.e., the last action of process P1 is followed by the first 
-action of one of the processes P1 and P2.  
-
-Note that the choice operator implicitly terminates the precedding 
-transition.  For example:
-
-//------------------------------
-process my_process {
-    x = 0;
-    y = x;
-    choice {
-        {x = 2};
-        {y = 0};
-    };
-}
-//------------------------------
-
-The first two assignments are performed automically.  The 
-following assignment (x=2) or (y=0) is performed in a separate 
-transition.
 
 fork
 ----
@@ -236,109 +194,8 @@ Note that fork cannot be used to create an unbounded number of
 processes, e.g., it cannot be used inside a loop with variable 
 bounds.  
 
-Similar to choice, fork terminates the preceding transition.  
+The fork statement terminates the preceding transition.  
 
-
-stop
-----
-
-The stop statement terminates either the top-level process or the 
-innermost forked or forever process.  By default, a process 
-terminates after performing its (syntactically) last action.  stop 
-allows teminating the process at any time.
-
-stop does not represent a transition, but rather a state marker 
-that marks a final state of the process.  For example:
-
-//------------------------------
-process my_process {
-    ret = drv_probe();
-    if (ret != 0)
-        stop;
-    drv_send();
-}
-//------------------------------
-
-Assume that the drv_probe task consists of a single transition.  
-Then the above process has the following transition relation.
-
-    --drv_probe(ret!=0)-->(F)
-   /
-->o
-   \
-    --drv_probe(ret==0)-->o--drv_send-->o--...-->
-
-where (F) denotes a final state.  
-
-A fork process reaches a final state once each of the forked 
-processes is in a final state.  For example, the following process 
-forks two subprocesses.  The first performs a non-deterministic 
-choice between executing action "a" or terminating immediately.  
-The second subprocess performs action "b".  
-
-//------------------------------
-process my_process {
-    fork{
-        choice {
-            a;
-            stop;
-        };
-        b;
-    };
-    c;
-}
-//------------------------------
-
-Here, the transition relation of the choice{..} process is:
-
--->(F)--a-->(F)
-
-i.e., both the initial state and the state after action "a" are 
-final states.  
-
-This transiton relation of the whole my_process process is:
-
-     --a-->o--b-->o--c-->(F)
-    /
--->o--b-->o--a-->o--c-->(F)
-    \
-     --b-->o--c-->(F)
-
-
-
-forever
--------
-
-The forever construct executes a process forever (or until a stop 
-statement).  In the following process,
-
-//------------------------------
-process my_process {
-    forever {
-      choice {
-            a;
-            stop;
-      };
-    };
-    b;
-}
-//------------------------------
-
-the forever{..} subprocess has the following transition relation:
-
--->(F)--a--
-    ^      \
-    \      /
-     -----
-
-Hence the transition relation of my_process is:
-
-     --b-->(F)
-    /
- -->o--a---
-    ^      \
-    \      /
-     ------
 
 
 assume
@@ -351,7 +208,7 @@ anywhere inside of the transition.
 //------------------------------
 process my_process {
    x=0;
-   y=2;
+   pause;
    choice {
        {
            assume(x>0);
@@ -366,15 +223,15 @@ process my_process {
 
 Here, the initial transition initialises x to 0.  The process than 
 waits until x becomes non-zero (e.g., after being modified by 
-another process), which enables one of the two transitions inside 
-the choice construct.  Note that although choice represents 
-non-deterministic choice, it only chooses among enabled 
-transition.  In this example at most one of the two transitions 
-can be enabled at any time.
+another process), which enables one of the two branches inside the 
+choice construct.  Note that although choice represents 
+non-deterministic choice, it only chooses among enabled branches.  
+In this example at most one of the two branches are enabled at any 
+time.
 
 The assume construct can be used to implement process 
 synchronisation mechanisms such as events, semaphores, waiting on 
-a condition, etc.
+a condition, etc.  
 
 
 assert
@@ -391,13 +248,62 @@ process my_process{
 //------------------------------
 
 
-if, do, while, for
+if, do, while, for, break
 -------------------------
 
 These constructs have the normal C semantics.  They do not start a 
 new transition.  
 
-Do we want "break"?
+
+choice
+------
+
+The choice statement performs non-determinictic choice among
+several behaviours.  It is syntactic sugar on top of the if-else
+statement, e.g.,
+
+//------------------------------
+process my_process {
+    x = 0;
+    y = x;
+    choice {
+        {x = 2};
+        {y = 0};
+    };
+}
+//------------------------------
+
+is equivalent to:
+
+//------------------------------
+process my_process {
+    x = 0;
+    y = x;
+    if (*) {
+        x = 2;
+    } else {
+        y = 0;
+    };
+}
+//------------------------------
+
+forever
+-------
+
+The forever construct is a synonym of while(true):
+
+//------------------------------
+process my_process {
+    forever {
+      choice {
+            a;
+            break;
+      };
+    };
+    b;
+}
+//------------------------------
+
 
 case
 ----
@@ -447,25 +353,24 @@ procedure update_state{
 task
 ----
 
-A task represents a named process that can be instantiated from 
-multiple other processes.  Task invocation always starts a new 
-transition.  A task can have arguments and a return value.  A task 
-can have one of the following types: 
-controllable/uncontrollable/invisible.  If no type is provides, 
-the task is assumed to be invisible.  Only controllable tasks can 
-be invoked from synthesised code.  
+A task represents a computation that can involve several 
+transitions.  A task can have arguments and a return value.  A 
+task can have one of the following types: controllable, 
+uncontrollable, invisible.  If no type is provided, the task is 
+assumed to be invisible.  Only controllable tasks can be invoked 
+from synthesised code.  A controllable task invocation starts a 
+new transition.  Uncontrollable and invisible task invocations do 
+not start a new transition.
 
 //------------------------------
-task controllable int<8> probe() {
+task uncontrollable int<8> probe() {
     os_baud = 115200;
     write8(REG_BAUD,4);
     return 0;
 };
 //------------------------------
 
-A task is terminated by return statement rather that stop.  A stop 
-statement inside a task terminates the process containing the 
-task.  
+A task is terminated by return statement.  
 
 A return statement does not start a new transition.  Furthermore, 
 it does not terminate the current transition, so that statements 

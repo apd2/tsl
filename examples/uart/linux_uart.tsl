@@ -81,24 +81,24 @@ process uart_os {
 task void config() {
     forever {
         // Choose between sending one of two types of configuration requests
-        // and terminating the loop.  Note that the "stop" transition can 
-        // only be taken when it is available in all forked processes.
+        // and terminating the loop.  
         choice {
             set_line_parameters(*,*,*);
             set_baud_rate(*);
             set_mctrl(*);
             get_mctrl();
-            stop;
+            return;
         };
     };
 };
 
 task void transmit() {
     forever {
+        pause;
         choice {
             send(*);
             {set_break(true); set_break(false);};             
-            stop;
+            return;
         };
     };
 };
@@ -107,12 +107,14 @@ task void tx_control() {
     forever {
         choice {
             {tx_enabled = true; start_tx();};
-            stop;
+            return;
         };
+        pause;
         choice {
             {stop_tx(); tx_enabled = false;};
-            stop;
+            return;
         };
+        pause;
     };   
 };
 
@@ -120,11 +122,11 @@ task void rx_control() {
     forever {
         choice {
             {rx_enabled = true; start_rx();};
-            stop;
+            return;
         };
         choice {
             {stop_rx(); rx_enabled = false;};
-            stop;
+            return;
         };
     };
 };
@@ -137,7 +139,7 @@ task void monitor_config() {
                 wait(!configured());
                 assert(config_in_progress);
             };
-            stop;
+            return;
         };
     };
 };
