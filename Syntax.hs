@@ -157,7 +157,7 @@ data TemplateItem = TDerive        TemplateName [PortName]
                   | TTypeDecl      TypeDef
                   | TConstDecl     ConstDef
                   | TVarDecl       Visibility VarDecl
-                  | TInitBlock     PStatement
+                  | TInitBlock     PExpr
                   | TProcessDecl   PString PStatement
                   | TTaskDecl      TaskCat                                                 -- category
                                    Signature

@@ -80,13 +80,13 @@ Init blocks
 -----------
 
 An init block specifies a constraint on initial values of template 
-variables.  It is a function (see below) without arguments and 
-with implicit return type Bool.  A template can have multiple init 
-blocks.
+variables.  The body of init block is a Boolean expression over 
+template variables.  A template can have multiple init blocks.  
+All init conditions must be satisfiable simultaneously.
 
 //------------------------------
 init {
-    return (x == 0) && (xs[0] == 5);
+    (x == 0) && (xs[0] == 5);
 }
 //------------------------------
 
@@ -137,6 +137,10 @@ endtemplate
 
 //------------------------------
 
+A process can have one or more final states.  A final state is 
+entered when the process reaches its last instruction, executes a 
+return statement or a stop instruction (see below).
+
 
 Assignments
 -----------
@@ -165,37 +169,65 @@ process my_process {
 //------------------------------
 
 
+stop
+----
+
+Like pause, the stop statement terminates the current transition.  
+In addition, it marks the current state as final state of the 
+process.  This is useful for example inside a fork block, as 
+explained below.
+
+//------------------------------
+process my_process {
+    forever {
+        stop;
+        send();
+    }
+    
+}
+//------------------------------
+
+This process describes the following automaton, where F marks a 
+final state.
+
+->F--write8(REG,val)--
+  ^                  |
+  --------------------
+
+Note that stop can be followed by other instructions, i.e., it 
+does not force the process to terminate, but simply marks a state 
+in the process as final state.
+
+If stop occurs inside a task, it still marks the final state of 
+the process calling the task, and not the task itself.
+
 fork
 ----
 
 The fork process defines (interleaved) parallel composition of two 
 or more processes.  The fork process terminates when all forked 
-processes terminate.  For example, given processes P1, P2, and P3:
-
-P1:
-->o--a-->o
-
-P2:
-->o--b-->o
-
-P3:
-->o--c-->o
-
-process {P1; fork{P2;P3}} behaves as follows:
-
-           --b-->o--c--
-          /            \
-->o--a-->o              ->o
-          \            /
-           --c-->o--b--
-
-
-Note that fork cannot be used to create an unbounded number of 
-processes, e.g., it cannot be used inside a loop with variable 
-bounds.  
+processes reach their final states. 
 
 The fork statement terminates the preceding transition.  
 
+Transitions following a fork block become enabled when all spawned 
+subprocesses are in their respective final states.
+
+//------------------------------
+process my_process {
+    fork {
+        {forever {stop; send();}};
+        {forever {stop; receive();}};
+    }
+    shutdown();
+}
+//------------------------------
+
+This process can execute an arbitrary number of send() and 
+receive() operations followed by a single shutdown() operation.  
+Note that if the stop statement was missing in one of the forked 
+processes, then this process would never terminate and the 
+shutdown() transition would never become enabled.
 
 
 assume
@@ -290,7 +322,7 @@ process my_process {
 forever
 -------
 
-The forever construct is a synonym of while(true):
+The forever construct is a synonym of do {...} while(true):
 
 //------------------------------
 process my_process {
@@ -421,8 +453,8 @@ goal
 A template can contain a list of named goals.  The syntax for 
 goals is not defined yet.
 
-{...}
------
+Magic blocks {...}
+-------------------
 
 The {...} statement represents a block of code that must be 
 synthesised.  It can have two forms.  The first form specifies a 
@@ -453,7 +485,10 @@ send_goal goal can only be reached inside the interrupt handler,
 whereas the send() task only queues data to be sent in the future.
 
 Thus the {...} construct allows the user to manually schedule 
-goals, which seens necessary to produce sensible code.
+goals, which seems necessary to produce sensible code.
+
+The {...} construct can only occur inside an uncontrollable task.
+
 
 Continuous assignments
 ----------------------

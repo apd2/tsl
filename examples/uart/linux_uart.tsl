@@ -57,12 +57,10 @@ bool tx_enabled = true;
 bool config_in_progress;
 
 // Constraints on initial variable values
-init {
-    return (config_in_progress == true) &&
-           (sendq_head == 0) &&
-           (sendq_tail == 0) &&
-           (sendq_dev_head == 0);
-};
+init (config_in_progress == true) &&
+     (sendq_head == 0) &&
+     (sendq_tail == 0) &&
+     (sendq_dev_head == 0);
 
 // Process that models how the OS invokes driver entry points
 process uart_os {
@@ -82,65 +80,53 @@ task void config() {
     forever {
         // Choose between sending one of two types of configuration requests
         // and terminating the loop.  
+        stop;
         choice {
             set_line_parameters(*,*,*);
             set_baud_rate(*);
             set_mctrl(*);
             get_mctrl();
-            return;
         };
     };
 };
 
 task void transmit() {
     forever {
-        pause;
+        stop;
         choice {
             send(*);
             {set_break(true); set_break(false);};             
-            return;
         };
     };
 };
 
 task void tx_control() {
     forever {
-        choice {
-            {tx_enabled = true; start_tx();};
-            return;
-        };
-        pause;
-        choice {
-            {stop_tx(); tx_enabled = false;};
-            return;
-        };
-        pause;
+        stop;
+        tx_enabled = true; 
+        start_tx();
+        stop;
+        stop_tx(); 
+        tx_enabled = false;
     };   
 };
 
 task void rx_control() {
     forever {
-        choice {
-            {rx_enabled = true; start_rx();};
-            return;
-        };
-        choice {
-            {stop_rx(); rx_enabled = false;};
-            return;
-        };
+        stop;
+        rx_enabled = true; start_rx();
+        stop;
+        stop_rx(); 
+        rx_enabled = false;
     };
 };
 
 // generate an error whenever device configuration changes unexpectedly
 task void monitor_config() {
     forever {
-        choice {
-            {
-                wait(!configured());
-                assert(config_in_progress);
-            };
-            return;
-        };
+        stop;
+        wait(!configured());
+        assert(config_in_progress);
     };
 };
 
