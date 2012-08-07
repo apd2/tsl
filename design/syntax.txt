@@ -21,15 +21,15 @@ and the OS.
 
 //------------------------------
 template my_template
-/* type declarations */
-/* constant declaration */
-/* variable declarations */
-/* init blocks */
-/* process declarations */
-/* task declarations */
-/* function declarations */
-/* goal declarations */
-/* continuous assignments */
+/* type declarations       */
+/* constant declaration    */
+/* variable declarations   */
+/* init blocks             */
+/* process declarations    */
+/* task declarations       */
+/* function declarations   */
+/* goal declarations       */
+/* continuous assignments  */
 endtemplate
 //------------------------------
 
@@ -43,7 +43,13 @@ Type system similar to TSL1: fixed-size ints, bools, structs, arrays.
 typedef int<20> baud_t;
 //------------------------------
 
-Type declarations can appear in top-level and template scopes
+In addition, pointer types are supported:
+
+//------------------------------
+typedef baud_t * pbaud_t;
+//------------------------------
+
+Type declarations can appear in top-level and template scopes.
 
 Constant declarations
 ---------------------
@@ -72,8 +78,9 @@ Variables can be declared with initial values:
 //------------------------------
 baud_t baud = 115200;
 invisible baud_t dev_baud;
-int<20> x;
-int<20> xs[20];
+sint<20> x;
+sint<20> xs[20];
+baud_t * pbaud = &baud;
 //------------------------------
 
 Init blocks
@@ -150,6 +157,10 @@ instantaneously.  Multiple assignments can be performed in a
 single transition.  Multiple assignments to the same variable as 
 converted to SSA form by replacing intermediate assignments with 
 assignments to temporary variables.
+
+The LHS of an assignment must be an l-value, i.e., a variable 
+identifier, a member-selection expression (x.field), a subscript 
+expression ([]), or a pointer dereference (*).
 
 pause
 -----
@@ -517,6 +528,7 @@ inside the template.  A continuously assigned variable is declared
 as a normal state variable.  It can be read by any process, but 
 can only be assigned by a single continuous assignment expression.
 
+
 Expression syntax
 -----------------
 
@@ -530,12 +542,20 @@ Expression syntax includes:
     32'd123456, 16'h56ab
     
 * C-style Boolean, arithmetic and bit-wise operators are 
-supported.
+  supported.  Arithmetic operations can only be applied to integer 
+  types.  Pointer arithmetic is not supported.
 * Array indexing: xs[i], where i is a (potentially variable) 
-expression
+  expression
+* Pointer dereference (*). Note that there is no type cast   
+  operation in the language and pointer arithmetic is not allowed,
+  therefore only type-safe pointer operations are possible.
+  The x->y operator is also supported as a shortcut for (*x).y.
+* Address-of (&).  This operator can be applied to an l-value 
+  expression.
 * Bit slice: x[h:l], where h and l are integer constants.
 * Two versions of case expressions (in addition to the case 
-statement described above):
+  statement described above):
+
 
 //------------------------------
 x = case (y) {
@@ -565,6 +585,18 @@ foo_t f;
 f = foo_t{.x = true, .y = 2}
 //------------------------------
 
+
+Pointers
+--------
+
+TSL2 assumes a static memory model where the set of program 
+variables is known in advance and new variables cannot be 
+allocated dynamically.  All pointer operations are type and 
+memory-safe, since type casting and pointer arithmetic are not 
+supported.
+
+memory variables
+storage class
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
