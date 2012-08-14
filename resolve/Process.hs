@@ -13,7 +13,3 @@ instance WithPos Process where
 
 instance WithName Process where
     name = pname
-
-instance NS Process Obj where
-    lookup p (Field n) = fmap ObjVar $ find ((== n) . name) (var p)
-    lookup p _ = Nothing

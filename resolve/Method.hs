@@ -1,7 +1,11 @@
+{-# LANGUAGE ImplicitParams,UndecidableInstances #-}
+
 module Method(TaskCat(..), MethodCat(..), ArgDir(..), Arg, Method) where
 
 import Pos
 import Name
+import Type
+import qualified NS
 import qualified Var      as V
 import qualified TypeSpec as T
 
@@ -28,12 +32,8 @@ instance WithName Arg where
 instance WithPos Arg where
     pos = apos
 
-instance WithType Arg where 
+instance (T.TypeNS a, ?types::a) => WithType Arg where 
     typ = typ . atyp
-
-instance NS Arg Obj where
-    lookup a = lookup (atyp a)
-
 
 -- Method
 data Method = Method { mpos   :: Pos
@@ -49,13 +49,5 @@ instance WithName Method where
 instance WithPos Method where
     pos = mpos
 
-instance WithType Method where
+instance (T.TypeNS a, ?types::a) => WithType Method where
     typ = typ . rettyp
-
-instance NS Method Obj where
-    lookup m (Field n) = listToMaybe [v,a]
-        where -- search for the name in the local scope
-              v  = fmap ObjVar $ find ((== n) . name) (var m)
-              a  = fmap ObjArg $ find ((== n) . name) (arg m)
-
-    lookup m _ = Nothing

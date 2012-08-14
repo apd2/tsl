@@ -2,36 +2,24 @@
 
 {-# LANGUAGE TypeSynonymInstances,FlexibleInstances #-}
 
-module Name(Ident,Selector,Path,GlobalPath, WithName(..)) where
+module Name(Ident(..), StaticSym, GStaticSym, WithName(..)) where
 
 import Pos
 import qualified Expr as E
 
 data Ident = Ident Pos String
 
+instance Show Ident where
+    show (Ident _ n) = n
+
+instance Eq Ident where
+    (==) (Ident _ n1) (Ident _ n2) = (n1 == n2)
+
 instance WithPos Ident where
     pos (Ident p _) = p
 
-
-
-type ScopedIdent = [Ident]
-
-data Selector = Field Ident
-              | Index Pos E.Expr
-
-
-instance WithPos Selector where
-    pos (Field i)  = pos i
-    pos (Index p _)  = p
-
-data Path = Path ScopedIdent [Selector]
-
-instance WithPos Path where
-    pos path = (fst $ pos $ head path, 
-                snd $ pos $ last path)
-
-type GlobalPath = Path
-
+type StaticSym = [Ident]
+type GStaticSym = StaticSym
 
 class WithName a where
     name :: a -> Ident

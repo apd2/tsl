@@ -1,3 +1,5 @@
+{-# LANGUAGE ImplicitParams, UndecidableInstances #-}
+
 module Const(Const) where
 
 import Pos
@@ -17,5 +19,5 @@ instance WithPos Const where
 instance WithName Const where
     name = cname
 
-instance WithType Const where
+instance (T.TypeNS a, ?types::a) => WithType Const where
     typ = typ . ctyp

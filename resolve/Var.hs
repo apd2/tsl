@@ -1,7 +1,10 @@
-module Var() where
+{-# LANGUAGE ImplicitParams, UndecidableInstances #-}
+
+module Var(Var) where
 
 import Pos
 import Name
+import Type
 import qualified TypeSpec as T
 import qualified Expr as E
 
@@ -16,8 +19,5 @@ instance WithPos Var where
 instance WithName Var where
     name = vname
 
-instance WithType Var where
+instance (T.TypeNS a, ?types::a) => WithType Var where
     typ = typ . vtyp
-
-instance NS Var Obj where
-    lookup v = lookup (vtyp v)

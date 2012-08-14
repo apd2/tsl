@@ -1,4 +1,4 @@
-module Type(Type(..), WithType) where
+module Type(Type(..), WithType(..)) where
 
 data Type = Bool
           | SInt Int
