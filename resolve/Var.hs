@@ -1,16 +1,16 @@
 {-# LANGUAGE ImplicitParams, UndecidableInstances #-}
 
-module Var(Var) where
+module Var(Var(varInit)) where
 
 import Pos
 import Name
-import qualified TypeSpec as T
-import qualified Expr as E
+import TypeSpec
+import Expr
 
-data Var = Var { vpos  :: Pos
-               , vname :: Ident
-               , vtyp  :: T.TypeSpec
-               , init  :: Maybe E.Expr}
+data Var = Var { vpos    :: Pos
+               , vname   :: Ident
+               , vtyp    :: TypeSpec
+               , varInit :: Maybe Expr}
 
 instance WithPos Var where
     pos = vpos
@@ -18,5 +18,5 @@ instance WithPos Var where
 instance WithName Var where
     name = vname
 
-instance T.WithType Var where
+instance WithType Var where
     typ = vtyp

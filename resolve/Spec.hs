@@ -1,15 +1,24 @@
-module Spec(Spec, lookupTemplate) where
+{-# LANGUAGE ImplicitParams #-}
+
+module Spec(Spec, 
+            lookupTemplate, 
+            getTemplate) where
 
 import Data.List
 
+import Util hiding (name)
 import Name
-import qualified TypeSpec as T
-import qualified Template as Tm
-import qualified Const    as C
+import TypeSpec
+import Template
+import Const
 
-data Spec = Spec { template :: [Tm.Template]
-                 , typedecl :: [T.TypeDecl]
-                 , const    :: [C.Const]}
+data Spec = Spec { template :: [Template]
+                 , typedecl :: [TypeDecl]
+                 , const    :: [Const]}
 
-lookupTemplate :: Spec -> Ident -> Maybe Tm.Template
-lookupTemplate s n = find ((==n) . name) (template s)
+lookupTemplate :: (?spec::Spec) => Ident -> Maybe Template
+lookupTemplate n = find ((==n) . name) (template ?spec)
+
+getTemplate :: (?spec::Spec) => Ident -> Template
+getTemplate n = fromJustMsg ("getTemplate failed: " ++ show n) $ lookupTemplate n
+

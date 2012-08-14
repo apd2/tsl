@@ -2,10 +2,12 @@
 
 {-# LANGUAGE TypeSynonymInstances,FlexibleInstances #-}
 
-module Name(Ident(..), StaticSym, GStaticSym, WithName(..)) where
+module Name(Ident(..), 
+            StaticSym, 
+            GStaticSym, 
+            WithName(..)) where
 
 import Pos
-import qualified Expr as E
 
 data Ident = Ident Pos String
 

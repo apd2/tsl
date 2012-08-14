@@ -1,16 +1,16 @@
 {-# LANGUAGE ImplicitParams, UndecidableInstances #-}
 
-module Const(Const) where
+module Const(Const(constVal)) where
 
 import Pos
 import Name
-import qualified Expr     as E
-import qualified TypeSpec as T
+import Expr
+import TypeSpec
 
-data Const = Const { cpos   :: Pos
-                   , ctyp   :: T.TypeSpec
-                   , cname  :: Ident
-                   , val    :: E.ConstExpr}
+data Const = Const { cpos     :: Pos
+                   , ctyp     :: TypeSpec
+                   , cname    :: Ident
+                   , constVal :: ConstExpr}
 
 instance WithPos Const where
     pos = cpos
@@ -18,8 +18,5 @@ instance WithPos Const where
 instance WithName Const where
     name = cname
 
-instance T.WithType Const where
+instance WithType Const where
     typ = ctyp
-
---instance (T.TypeNS a, ?types::a) => WithType Const where
---    typ = typ . ctyp

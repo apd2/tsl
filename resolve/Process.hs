@@ -1,12 +1,12 @@
-module Process(Process(var)) where
+module Process(Process(procVar)) where
 
 import Pos
 import Name
-import qualified Var as V
+import Var
 
-data Process = Process { ppos  :: Pos
-                       , pname :: Ident
-                       , var   :: [V.Var]}
+data Process = Process { ppos    :: Pos
+                       , pname   :: Ident
+                       , procVar :: [Var]}
 
 instance WithPos Process where
     pos = ppos

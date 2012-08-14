@@ -1,21 +1,18 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances #-}
 
-module TypeSpec(TypeSpec(..), 
+module TypeSpec(TypeSpec(StructSpec), 
                 WithType(..),
                 TypeDecl, 
-                Enumerator, 
-                TypeNS) where
+                Enumerator(enumVal)) where
 
-import Prelude hiding ((!!))
 import Pos
 import Name
-import qualified NS
-import qualified Expr as E
+import Expr
 
 -- Type spec
-data Enumerator = Enumerator { epos  :: Pos
-                             , ename :: Ident
-                             , eval  :: E.ConstExpr}
+data Enumerator = Enumerator { epos    :: Pos
+                             , ename   :: Ident
+                             , enumVal :: ConstExpr}
 
 instance WithPos Enumerator where
     pos = epos
@@ -31,12 +28,6 @@ data TypeSpec = BoolSpec      {tpos :: Pos}
               | PtrSpec       {tpos :: Pos, ptype :: TypeSpec}
               | ArraySpec     {tpos :: Pos, eltype :: TypeSpec, len :: Integer}
               | UserTypeSpec  {tpos :: Pos, tname :: GStaticSym}
-
-class (NS.NS a TypeSpec) => TypeNS a where
-    (!) :: a -> Ident -> TypeSpec
-    (!) = (NS.!)
-    (!!) :: a -> [Ident] -> TypeSpec
-    (!!) = (NS.!!)
 
 instance WithPos TypeSpec where
     pos = tpos

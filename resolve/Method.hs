@@ -3,14 +3,13 @@
 module Method(TaskCat(..), 
               MethodCat(..), 
               ArgDir(..), 
-              Arg, 
-              Method(var, arg)) where
+              Arg(argDir), 
+              Method(methCat, methVar, methArg)) where
 
 import Pos
 import Name
-import qualified NS
-import qualified Var      as V
-import qualified TypeSpec as T
+import Var
+import TypeSpec
 
 data TaskCat = Controllable
              | Uncontrollable
@@ -24,10 +23,10 @@ data ArgDir = In
             | Out
 
 -- Method argument
-data Arg = Arg { apos  :: Pos
-               , aname :: Ident
-               , atyp  :: T.TypeSpec
-               , dir   :: ArgDir}
+data Arg = Arg { apos   :: Pos
+               , aname  :: Ident
+               , atyp   :: TypeSpec
+               , argDir :: ArgDir}
 
 instance WithName Arg where
     name = aname
@@ -35,16 +34,16 @@ instance WithName Arg where
 instance WithPos Arg where
     pos = apos
 
-instance T.WithType Arg where 
+instance WithType Arg where 
     typ = atyp
 
 -- Method
-data Method = Method { mpos   :: Pos
-                     , mname  :: Ident
-                     , cat    :: MethodCat
-                     , rettyp :: T.TypeSpec
-                     , arg    :: [Arg]
-                     , var    :: [V.Var]}
+data Method = Method { mpos    :: Pos
+                     , mname   :: Ident
+                     , methCat :: MethodCat
+                     , rettyp  :: TypeSpec
+                     , methArg :: [Arg]
+                     , methVar :: [Var]}
 
 instance WithName Method where
     name = mname
@@ -52,5 +51,5 @@ instance WithName Method where
 instance WithPos Method where
     pos = mpos
 
-instance T.WithType Method where
+instance WithType Method where
     typ = rettyp

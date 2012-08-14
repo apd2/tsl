@@ -1,23 +1,65 @@
--- Namespace type class
+{-# LANGUAGE ImplicitParams, FlexibleContexts, MultiParamTypeClasses, UndecidableInstances #-}
 
-{-# LANGUAGE MultiParamTypeClasses #-}
+module NS(Obj(..), objLookup, objGet) where
 
-module NS(NS(..)) where
+import Data.List
+import Data.Maybe
 
-import Prelude hiding (lookup)
-import Data.List hiding (lookup)
-
+import Util hiding(name)
 import Name
-import Pos
+import Template
+import Process
+import Method
+import Var
+import Const
+import TypeSpec
+import Spec
 
-class NS a b where
-    lookup :: a -> Ident -> Maybe b
-    rlookup :: a -> [Ident] -> Maybe b
-    (!) :: a -> Ident -> b
-    (!) x i = case lookup x i of
-                   Nothing -> error $ "NS.lookup failed: " ++ show i
-                   Just y -> y
-    (!!) :: a -> [Ident] -> b
-    (!!) x is = case rlookup x is of
-                     Nothing -> error $ "NS.rlookup failed " ++ (intercalate "." $ map show is)
-                     Just y -> y
+-- Runtime objects
+
+data Obj = ObjTemplate Template
+         | ObjPort     Port
+         | ObjInstance Instance
+         | ObjProcess  Process
+         | ObjMethod   Method
+         | ObjVar      Var
+         | ObjArg      Arg
+         | ObjType     TypeSpec
+         
+objLookup :: (?spec::Spec) => Obj -> Ident -> Maybe Obj
+objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,i,pr,m,par]
+    where -- search for the name in the local scope
+          p  = fmap ObjPort     $ find ((== n) . name) (tmPort t)
+          v  = fmap ObjVar      $ find ((== n) . name) (tmVar t)
+          i  = fmap ObjInstance $ find ((== n) . name) (tmInst t)
+          pr = fmap ObjProcess  $ find ((== n) . name) (tmProcess t)
+          m  = fmap ObjMethod   $ find ((== n) . name) (tmMethod t) 
+          -- search parent templates
+          par = listToMaybe $ catMaybes $ map (\d -> objLookup (ObjTemplate $ getTemplate $ drvTemplate d) n) (tmDerive t)
+
+objLookup (ObjPort p)     n = case lookupTemplate (portTemplate p) of
+                                   Nothing -> Nothing
+                                   Just t  -> objLookup (ObjTemplate t) n
+objLookup (ObjInstance i) n = case lookupTemplate (instTemplate i) of
+                                   Nothing -> Nothing
+                                   Just t  -> objLookup (ObjTemplate t) n
+objLookup (ObjProcess p)  n = fmap ObjVar $ find ((== n) . name) (procVar p)
+
+objLookup (ObjMethod m)   n = listToMaybe $ catMaybes $ [v,a]
+    where v  = fmap ObjVar $ find ((== n) . name) (methVar m)
+          a  = fmap ObjArg $ find ((== n) . name) (methArg m)
+
+objLookup (ObjVar v)      n = objLookup (ObjType $ typ v) n
+objLookup (ObjArg a)      n = objLookup (ObjType $ typ a) n
+objLookup (ObjType (StructSpec _ fs)) n = fmap (ObjType . snd) $ find ((==n) . fst) fs
+
+objGet :: (?spec::Spec) => Obj -> Ident -> Obj
+objGet o n = fromJustMsg ("objLookup failed: " ++ show n) $ objLookup o n
+
+--typeLookup ::
+--
+--typeGet
+--
+--constLookup
+--
+--constGet

@@ -1,57 +1,61 @@
-module Template(Template(port, derive, var, inst, process, method), 
+module Template(Template(tmPort, tmDerive, tmVar, tmInst, tmProcess, tmMethod), 
                 Port(portTemplate), 
-                Derive(drvTemplate), 
-                Instance(instTemplate)) where
+                Derive(drvTemplate, drvPort), 
+                Instance(instTemplate, instPort)) where
 
 import Pos
 import Name
 
-import qualified Const    as C
-import qualified Var      as V
-import qualified Process  as P
-import qualified Method   as M
-import qualified TypeSpec as T
+import Const
+import Var
+import Process
+import Method
+import TypeSpec
 
 -- Template port
-data Port = Port { portPos      :: Pos
+data Port = Port { ppos         :: Pos
+                 , pname        :: Ident                 
                  , portTemplate :: Ident
-                 , portName     :: Ident}
+                 }
 
 instance WithName Port where
-    name = portName
+    name = pname
 
 instance WithPos Port where
-    pos = portPos
+    pos = ppos
 
 -- Derive clause
-data Derive = Derive { drvPos      :: Pos
+data Derive = Derive { dpos        :: Pos
                      , drvTemplate :: Ident
                      , drvPort     :: [Ident]}
 
 instance WithPos Derive where
-    pos = drvPos
+    pos = dpos
 
 -- Template instantiation inside another template
-data Instance = Instance { instPos      :: Pos
+data Instance = Instance { ipos         :: Pos
                          , instTemplate :: Ident
-                         , instName     :: Ident
+                         , iname        :: Ident
                          , instPort     :: [Ident]}
 
+instance WithPos Instance where
+    pos = ipos
+
 instance WithName Instance where
-    name = instName
+    name = iname
 
 
 -- Template
-data Template = Template { tpos     :: Pos
-                         , tname    :: Ident
-                         , port     :: [Port]
-                         , derive   :: [Derive]
-                         , const    :: [C.Const]
-                         , typedecl :: [T.TypeDecl]
-                         , var      :: [V.Var]
-                         , inst     :: [Instance]
-                         , process  :: [P.Process]
-                         , method   :: [M.Method]}
+data Template = Template { tpos       :: Pos
+                         , tname      :: Ident
+                         , tmPort     :: [Port]
+                         , tmDerive   :: [Derive]
+                         , tmConst    :: [Const]
+                         , tmTypeDecl :: [TypeDecl]
+                         , tmVar      :: [Var]
+                         , tmInst     :: [Instance]
+                         , tmProcess  :: [Process]
+                         , tmMethod   :: [Method]}
 
 instance WithPos Template where
     pos = tpos
