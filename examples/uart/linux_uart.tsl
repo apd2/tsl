@@ -40,6 +40,7 @@ bool out2;
 bool loop;
 
 // OS send queue
+uint<8>*[10] testp;
 uint<8>[UART_SENDQ_SIZE] sendq;
 uint<16> sendq_head;
 uint<16> sendq_tail;

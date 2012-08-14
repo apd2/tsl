@@ -1,6 +1,6 @@
 -- Parsed TSL spec
 
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 
 module Syntax where
 
@@ -68,17 +68,24 @@ instance PP TaskCat where
 
 -- TSL identifier
 type PString = AtPos String
-data Selector = Field PString
-              | Index PExpr
-instance PP Selector where
-    pp (Field s) = char '.' <> pp s
-    pp (Index i) = brackets $ pp i
-type PSelector = AtPos Selector
 
-data Ident = Ident {root :: PString, path :: [PSelector]}
-instance PP Ident where
-    pp (Ident r p) = pp r <> (hcat $ map pp p)
-type PIdent = AtPos Ident
+--data Selector = Field PString
+--              | Index PExpr
+--instance PP Selector where
+--    pp (Field s) = char '.' <> pp s
+--    pp (Index i) = brackets $ pp i
+--type PSelector = AtPos Selector
+
+-- ::-separated list of identifiers
+data StaticSym = StaticSym [PString]
+type PStaticSym = AtPos StaticSym
+instance PP StaticSym where
+    pp (StaticSym s) = hcat $ punctuate (text "::") (map pp s)
+
+--data Ident = Ident {root :: PString, path :: [PSelector]}
+--instance PP Ident where
+--    pp (Ident r p) = pp r <> (hcat $ map pp p)
+--type PIdent = AtPos Ident
 
 
 -- A TSL spec is a list of type, constant, and template declarations
@@ -112,10 +119,11 @@ instance PP ConstDef where
 -- Type declaration
 data Type = IntType Bool Int                     -- signed/unsigned, width
           | BoolType
-          | UserType PString                     -- name of a user-defined type
+          | UserType PStaticSym                  -- name of a user-defined type
           | EnumType [(String, Maybe PConstExpr)]
           | StructType [(PType, PString)]
           | ArrayType PType PConstExpr           -- element type, length
+          | PtrType PType
 instance PP Type where
     pp (IntType True i)  = text "sint" <> char '<' <> pp i <> char '>'
     pp (IntType False i) = text "uint" <> char '<' <> pp i <> char '>'
@@ -127,7 +135,7 @@ instance PP Type where
     pp (StructType fs)   = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . ppfield) fs)
                                where ppfield (t,n) = pp t <+> pp n
     pp (ArrayType t e)   = pp t <> (brackets $ pp e)
-
+    pp (PtrType t)       = pp t <> char '*'
 
 type PType = AtPos Type
 type TypeName = PString
@@ -165,7 +173,7 @@ data TemplateItem = TDerive        TemplateName [PortName]
                   | TFunctionDecl  Signature (Maybe PStatement)
                   | TProcedureDecl Signature (Maybe PStatement)
                   | TGoalDecl      PString PGoal
-                  | TAssign        PLExpr PExpr                                            -- Continuous assignment
+                  | TAssign        PExpr PExpr                                            -- Continuous assignment
 instance PP TemplateItem where
     pp (TDerive n []) = text "derive" <+> pp n
     pp (TDerive n ps) = text "derive" <+> pp n <+> (parens $ hsep $ punctuate comma $ map pp ps)
@@ -204,7 +212,10 @@ instance PP Arg where
     pp (Arg dir t n) = pp dir <+> pp t <+> pp n
 type PArg = AtPos Arg
 
-type MethodName = PIdent
+data MethodName = MethodName [PString]
+type PMethodName = AtPos MethodName
+instance PP MethodName where
+    pp (MethodName m) = hcat $ punctuate (char '.') (map pp m)
 
 data Visibility = VarVis | VarInvis
 instance PP Visibility where
@@ -223,10 +234,10 @@ data Statement = SVarDecl VarDecl
                | SChoice [PStatement]
                | SPause
                | SStop
-               | SInvoke MethodName [PExpr]
+               | SInvoke PMethodName [PExpr]
                | SAssert PExpr
                | SAssume PExpr
-               | SAssign PLExpr PExpr
+               | SAssign PExpr PExpr
                | SITE PExpr PStatement (Maybe PStatement)     -- if () then {..} [else {..}]
                | SCase PExpr [(PExpr, PStatement)] (Maybe PStatement)
                | SMagic (Either GoalName PExpr)
@@ -262,20 +273,23 @@ type PStatement = AtPos Statement
 type GoalName = PString
 
 -- Expressions 
-data Expr = ETerm PIdent
+data Expr = ETerm PStaticSym
           | ELit (Maybe Int) Radix Integer  -- width, radix, value
           | EBool Bool
-          | EApply MethodName [PExpr]
+          | EApply PMethodName [PExpr]
+          | EField PExpr PString
+          | EPField PExpr PString
+          | EIndex PExpr PExpr
           | EUnOp UOp PExpr
           | EBinOp BOp PExpr PExpr
           | ETernOp PExpr PExpr PExpr
           | ECase PExpr [(PExpr, PExpr)] (Maybe PExpr)
           | ECond [(PExpr, PExpr)] (Maybe PExpr)
-          | ESlice Slice PExpr
+          | ESlice PExpr Slice
           | EStruct TypeName (Either [(PString, PExpr)] [PExpr]) -- either named or anonymous list of fields
           | ENonDet
 instance PP Expr where
-    pp (ETerm i)            = pp i
+    pp (ETerm s)            = pp s
     pp (ELit w r v)         = pp w <> pp r <> 
                               case r of
                                    Rad2  -> text $ showIntAtBase 2 intToDigit v ""
@@ -285,6 +299,9 @@ instance PP Expr where
     pp (EBool True)          = text "true"
     pp (EBool False)         = text "false"
     pp (EApply m args)       = pp m <+> (parens $ hsep $ punctuate comma $ map pp args)
+    pp (EIndex e i)          = pp e <> char '[' <> pp i <> char ']'
+    pp (EField e f)          = pp e <> char '.' <> pp f
+    pp (EPField e f)         = pp e <> text "->" <> pp f
     pp (EUnOp op e)          = parens $ pp op <> pp e
     pp (EBinOp op e1 e2)     = parens $ pp e1 <+> pp op <+> pp e2
     pp (ETernOp c e1 e2)     = parens $ pp c <+> char '?' <+> pp e2 <+> colon <+> pp e2
@@ -294,7 +311,7 @@ instance PP Expr where
     pp (ECond cs def)        = text "cond" <+> (braces' $ ppcs $+$ ppdef)
                                    where ppcs = vcat $ map (\(c,e') -> pp c <> colon <+> pp e' <> semi) cs
                                          ppdef = text "default" <> colon <+> pp def <> semi
-    pp (ESlice s e)          = pp e <> pp s
+    pp (ESlice e s)          = pp e <> pp s
     pp (EStruct t (Left fs)) = pp t <+> (braces $ hcat $ punctuate comma $ 
                                          map (\(n,e) -> char '.' <> pp n <+> char '=' <+> pp e) fs)
     pp (EStruct t (Right fs)) = pp t <+> (braces' $ vcat $ punctuate comma $ map pp fs)
@@ -304,19 +321,23 @@ type PExpr = AtPos Expr
 type ConstExpr = Expr
 type PConstExpr = PExpr
 
-data LExpr = LExpr PIdent (Maybe Slice)  -- lhs expression
-instance PP LExpr where
-    pp (LExpr i Nothing)  = pp i
-    pp (LExpr i (Just s)) = pp i <> pp s
-type PLExpr = AtPos LExpr
+--data LExpr = LExpr PIdent (Maybe Slice)  -- lhs expression
+--instance PP LExpr where
+--    pp (LExpr i Nothing)  = pp i
+--    pp (LExpr i (Just s)) = pp i <> pp s
+--type PLExpr = AtPos LExpr
 
 data UOp = UMinus 
          | Not 
          | BNeg
+         | Deref
+         | AddrOf
 instance PP UOp where
     pp UMinus = char '-'
     pp Not    = char '!'
     pp BNeg   = char '~'
+    pp Deref  = char '*'
+    pp AddrOf = char '&'
 
 data BOp = Eq 
          | Neq 

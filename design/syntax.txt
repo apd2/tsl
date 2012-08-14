@@ -1,12 +1,12 @@
 We define TSL v2 syntax in two steps.  First, we define basic TSL 
 syntax that does not support modules.  Next we define full TSL 
-that add support for module composition and inheritance to basic 
+that adds support for module composition and inheritance to basic 
 TSL.
 
-The following description only describes features necessary for 
+The following description only covers features necessary for 
 modelling software components of the system (the OS and the 
-driver), and hardware components written C-based HDLs (e.g., DML).  
-Support for Verilog-style HDLs is coming soon.
+driver), and hardware components written in C-based HDLs (e.g., 
+DML).  Support for Verilog-style HDLs is coming soon.
 
 
 Basic TSL

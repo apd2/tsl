@@ -19,7 +19,7 @@ import Debug.Trace
 
 import Syntax
 
-reservedOpNames = ["!", "?", "~", "&", "|", "^", "->", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "..."]
+reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "...", "::", "->"]
 reservedNames = ["after",
                  "assert",
                  "assign",
@@ -113,16 +113,32 @@ ident = identifier <|>
         quote <$> stringLit
 pident = withPos ident
 
-fieldSelector = Field <$ dot <*> pident
-indexSelector = Index <$> brackets pexpr
-sym = Ident <$> pident <*> many (withPos $ fieldSelector <|> try indexSelector)
-psym = withPos sym
+--fieldSelector = Field <$ dot <*> pident
+--indexSelector = Index <$> brackets pexpr
+
+staticsym = StaticSym <$> sepBy1 pident (reservedOp "::")
+pstaticsym = withPos staticsym
+
+methname = MethodName <$> sepBy1 pident dot
+pmethname = withPos methname
+
+
+-- TODO: psym = ::-separated list of ident
+--       methname = .-separated list of ident
+--sym = Ident <$> pident <*> many (withPos $ fieldSelector <|> try indexSelector)
+--psym = withPos sym
+
+
 
 varDecl = VarDecl <$> ptypeSpec <*> pident <*> optionMaybe (reservedOp "=" *> pexpr)
 
 typeDef = TypeDef <$ reserved "typedef" <*> ptypeSpec <*> pident
 
 slice = brackets $ (,) <$> pexpr <*> (colon *> pexpr)
+index = brackets pexpr
+field = dot *> pident
+ptrfield = reservedOp "->" *> pident
+
 
 
 -- Constant declaration
@@ -132,16 +148,20 @@ constant = ConstDef <$ reserved "const" <*> ptypeSpec <*> pident <*> (reservedOp
 -- Type declaration
 typeDecl = SpType <$> typeDef
 
-ptypeSpec =  mkType <$> (withPos $ intType <|> boolType <|> userType <|> enumType <|> structType) 
-                   <*> (many $ withPos $ brackets pexpr)
+data TypeMod = ModPtr | ModDim PExpr
+type PTypeMod = AtPos TypeMod
 
-mkType :: PType -> [AtPos PExpr] -> PType
+ptypeSpec = mkType <$> (withPos $ intType <|> boolType <|> userType <|> enumType <|> structType) 
+                   <*> (many $ withPos $ (ModDim <$> brackets pexpr) <|> (ModPtr <$ reservedOp "*"))
+
+mkType :: PType -> [PTypeMod] -> PType
 mkType t [] = t
-mkType t@(AtPos _ (start,_)) ((AtPos e (_,end)):es) = mkType (AtPos (ArrayType t e) (start,end)) es
+mkType t@(AtPos _ (start,_)) ((AtPos (ModDim e) (_,end)):es) = mkType (AtPos (ArrayType t e) (start,end)) es
+mkType t@(AtPos _ (start,_)) ((AtPos ModPtr (_,end)):es) = mkType (AtPos (PtrType t) (start,end)) es
 
 intType    = IntType <$> ((True <$ reserved "sint") <|> (False <$ reserved "uint")) <*> (fromIntegral <$> angles decimal)
 boolType   = BoolType <$ reserved "bool"
-userType   = UserType <$> pident
+userType   = UserType <$> pstaticsym
 enumType   = EnumType <$ reserved "enum" <*> (braces $ commaSep1 $ (,) <$> ident <*> optionMaybe (reservedOp "=" *> pexpr))
 structType = StructType <$ reserved "struct" <*> (braces $ many1 $ (,) <$> ptypeSpec <*> (pident <* semi))
 
@@ -198,7 +218,7 @@ ttaskDecl    = TTaskDecl <$ reserved "task" <*> taskCat <*> signature <*> taskBo
 tfuncDecl    = TFunctionDecl <$ reserved "function" <*> signature <*> optionMaybe pstatement
 tprocDecl    = TProcedureDecl <$ reserved "procedure" <*> signature <*> optionMaybe pstatement
 tgoalDecl    = TGoalDecl <$ reserved "goal" <*> (pident <* reservedOp "=") <*> pexpr
-tassign      = TAssign <$ reserved "assign" <*> (plexpr <* reservedOp "=") <*> pexpr
+tassign      = TAssign <$ reserved "assign" <*> (pexpr <* reservedOp "=") <*> pexpr
 
 taskBody = option (Left (Nothing, Nothing)) $
             Left <$ reserved "before" <*> ((,) <$> (Just <$> pstatement) <*> optionMaybe (reserved "after" *> pstatement))
@@ -246,12 +266,12 @@ sfor     = SFor <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe pstatement
 schoice  = SChoice <$ reserved "choice" <*> (braces $ many $ pstatement <* semi)
 spause   = SPause <$ reserved "pause"
 sstop    = SStop <$ reserved "stop"
-sinvoke  = SInvoke <$ isinvoke <*> psym <*> (parens $ commaSep pexpr)
-    where isinvoke = try $ lookAhead $ psym *> symbol "("
+sinvoke  = SInvoke <$ isinvoke <*> pmethname <*> (parens $ commaSep pexpr)
+    where isinvoke = try $ lookAhead $ pmethname *> symbol "("
 sassert  = SAssert <$ reserved "assert" <*> (parens pexpr)
 sassume  = SAssume <$ reserved "assume" <*> (parens pexpr)
-sassign  = SAssign <$ isassign <*> plexpr <* reservedOp "=" <*> pexpr
-    where isassign = try $ lookAhead $ plexpr *> symbol "="
+sassign  = SAssign <$ isassign <*> pexpr <* reservedOp "=" <*> pexpr
+    where isassign = try $ lookAhead $ pexpr *> symbol "="
 site     = SITE <$ reserved "if" <*> (parens pexpr) <*> pstatement <*> optionMaybe (reserved "else" *> pstatement)
 scase    = (fmap uncurry (SCase <$ reserved "case" <*> (parens pexpr))) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pstatement <* semi) 
                                                                                           <*> optionMaybe (reserved "default" *> colon *> pstatement <* semi))
@@ -280,9 +300,9 @@ estruct = EStruct <$ isstruct <*> pident <*> (braces $ option (Left []) ((Left <
     where isstruct = try $ lookAhead $ pident *> symbol "{"
           anonfields = commaSep1 $ pexpr
           namedfields = commaSep1 $ ((,) <$ reservedOp "." <*> pident <* reservedOp "=" <*> pexpr)
-eapply  = EApply <$ isapply <*> psym <*> (parens $ commaSep pexpr)
-    where isapply = try $ lookAhead $ psym *> symbol "("
-eterm   = ETerm <$> psym
+eapply  = EApply <$ isapply <*> pmethname <*> (parens $ commaSep pexpr)
+    where isapply = try $ lookAhead $ pmethname *> symbol "("
+eterm   = ETerm <$> pstaticsym
 ebool   = EBool <$> ((True <$ reserved "true") <|> (False <$ reserved "false"))
 elit    = lexeme elit'
 etern   = ETernOp <$> pexpr <* reservedOp "?" <*> pexpr <* colon <*> pexpr
@@ -316,8 +336,8 @@ pexpr =  (withPos $ ENonDet <$ reservedOp "*")
      <|> buildExpressionParser table pterm
      <?> "expression"
 
-table = [[postIndex]
-        ,[prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus]
+table = [[postSlice, postIndex, postField, postPField]
+        ,[prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus, prefix "*" Deref, prefix "&" AddrOf]
         ,[binary "==" Eq AssocLeft, 
           binary "!=" Neq AssocLeft,
           binary "<"  Lt AssocNone, 
@@ -329,14 +349,17 @@ table = [[postIndex]
         ,[binary "|" BOr AssocLeft]
         ,[binary "&&" And AssocLeft]
         ,[binary "||" Or AssocLeft]
-        ,[binary "->" Imp AssocRight]
+        ,[binary "=>" Imp AssocRight]
         ,[binary "*" Mod AssocLeft]
         ,[binary "%" Mod AssocLeft]
         ,[binary "+" Plus AssocLeft]
         ,[binary "-" BinMinus AssocLeft]
         ]
 
-postIndex = Postfix $ (\s end e@(AtPos _ (start,_)) -> AtPos (ESlice s e) (start,end)) <$> slice <*> getPosition
+postSlice  = Postfix $ try $ (\s end e@(AtPos _ (start,_)) -> AtPos (ESlice e s) (start,end)) <$> slice <*> getPosition
+postIndex  = Postfix $ (\i end e@(AtPos _ (start,_)) -> AtPos (EIndex e i) (start,end)) <$> index <*> getPosition
+postField  = Postfix $ (\f end e@(AtPos _ (start,_)) -> AtPos (EField e f) (start,end)) <$> field <*> getPosition
+postPField = Postfix $ (\f end e@(AtPos _ (start,_)) -> AtPos (EPField e f) (start,end)) <$> ptrfield <*> getPosition
 
 prefix name fun = Prefix $ (\start e@(AtPos _ (_,end)) -> AtPos (EUnOp fun e) (start,end)) 
                           <$> getPosition <* reservedOp name
@@ -344,5 +367,5 @@ binary name fun = Infix $ (\le@(AtPos _ (start,_)) re@(AtPos _ (_,end)) -> AtPos
                           <$ reservedOp name
 
 
-lexpr = LExpr <$> psym <*> optionMaybe slice
-plexpr = withPos lexpr
+--lexpr = LExpr <$> psym <*> optionMaybe slice
+--plexpr = withPos lexpr
