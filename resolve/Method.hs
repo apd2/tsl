@@ -1,10 +1,13 @@
 {-# LANGUAGE ImplicitParams,UndecidableInstances #-}
 
-module Method(TaskCat(..), MethodCat(..), ArgDir(..), Arg, Method) where
+module Method(TaskCat(..), 
+              MethodCat(..), 
+              ArgDir(..), 
+              Arg, 
+              Method(var, arg)) where
 
 import Pos
 import Name
-import Type
 import qualified NS
 import qualified Var      as V
 import qualified TypeSpec as T
@@ -32,8 +35,8 @@ instance WithName Arg where
 instance WithPos Arg where
     pos = apos
 
-instance (T.TypeNS a, ?types::a) => WithType Arg where 
-    typ = typ . atyp
+instance T.WithType Arg where 
+    typ = atyp
 
 -- Method
 data Method = Method { mpos   :: Pos
@@ -49,5 +52,5 @@ instance WithName Method where
 instance WithPos Method where
     pos = mpos
 
-instance (T.TypeNS a, ?types::a) => WithType Method where
-    typ = typ . rettyp
+instance T.WithType Method where
+    typ = rettyp

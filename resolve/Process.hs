@@ -1,4 +1,4 @@
-module Process(Process) where
+module Process(Process(var)) where
 
 import Pos
 import Name

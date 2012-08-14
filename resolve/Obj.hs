@@ -43,39 +43,41 @@ instance (?spec::S.Spec) => NS.NS Obj Obj where
     lookup (ObjArg a)      = NS.lookup a
     lookup (ObjType t)     = NS.lookup t
     rlookup o []           = Just o
-    rlookup o (i:is)       = fmap (\o -> NS.rlookup o is) $ NS.lookup o i
+    rlookup o (i:is)       = case (NS.lookup o i)::(Maybe Obj) of
+                                  Nothing -> Nothing
+                                  Just o' -> NS.rlookup o' is
 
-instance ObjNS Obj
+instance (?spec::S.Spec) => ObjNS Obj
 
 
---instance NS.NS T.TypeSpec Obj where
---    lookup (StructSpec _ fs) n = fmap (ObjType . snd) $ find ((==n) . fst) fs 
---    lookup _ _                 = Nothing
---
---instance ObjNS T.TypeSpec
---
---instance NS.NS P.Process Obj where
---    lookup p n = fmap ObjVar $ find ((== n) . name) (var p)
---
---instance ObjNS P.Process
---
---instance NS.NS Var Obj where
---    lookup v = lookup (vtyp v)
---
---instance ObjNS V.Var
---
---instance NS.NS Arg Obj where
---    lookup a = lookup (atyp a)
---
---
---instance NS Method Obj where
---    lookup m (Field n) = listToMaybe [v,a]
---        where -- search for the name in the local scope
---              v  = fmap ObjVar $ find ((== n) . name) (var m)
---              a  = fmap ObjArg $ find ((== n) . name) (arg m)
---
---    lookup m _ = Nothing
---
+instance NS.NS T.TypeSpec Obj where
+    lookup (T.StructSpec _ fs) n = fmap (ObjType . snd) $ find ((==n) . fst) fs
+    lookup _ _                 = Nothing
+
+instance ObjNS T.TypeSpec
+
+instance NS.NS P.Process Obj where
+    lookup p n = fmap ObjVar $ find ((== n) . name) (P.var p)
+
+instance ObjNS P.Process
+
+instance NS.NS V.Var Obj where
+    lookup v = NS.lookup (T.typ v)
+
+instance ObjNS V.Var
+
+instance NS.NS M.Arg Obj where
+    lookup a = NS.lookup (T.typ a)
+
+instance ObjNS M.Arg
+
+instance NS.NS M.Method Obj where
+    lookup m n = listToMaybe [v,a]
+        where -- search for the name in the local scope
+              v  = fmap ObjVar $ find ((== n) . name) (M.var m)
+              a  = fmap ObjArg $ find ((== n) . name) (M.arg m)
+
+instance ObjNS M.Method
 
 instance (?spec::S.Spec) => NS.NS Tm.Template Obj where
     lookup t n = listToMaybe [p,v,i,pr,m,par]

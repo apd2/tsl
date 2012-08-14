@@ -4,7 +4,6 @@ module Var(Var) where
 
 import Pos
 import Name
-import Type
 import qualified TypeSpec as T
 import qualified Expr as E
 
@@ -19,5 +18,5 @@ instance WithPos Var where
 instance WithName Var where
     name = vname
 
-instance (T.TypeNS a, ?types::a) => WithType Var where
-    typ = typ . vtyp
+instance T.WithType Var where
+    typ = vtyp

@@ -1,10 +1,13 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances #-}
 
-module TypeSpec(TypeSpec, TypeDecl, Enumerator, TypeNS) where
+module TypeSpec(TypeSpec(..), 
+                WithType(..),
+                TypeDecl, 
+                Enumerator, 
+                TypeNS) where
 
 import Prelude hiding ((!!))
 import Pos
-import Type
 import Name
 import qualified NS
 import qualified Expr as E
@@ -38,16 +41,8 @@ class (NS.NS a TypeSpec) => TypeNS a where
 instance WithPos TypeSpec where
     pos = tpos
 
-instance (TypeNS a, ?types::a) => WithType TypeSpec where
-    typ (BoolSpec _)        = Bool
-    typ (SIntSpec _ w)      = SInt w
-    typ (UIntSpec _ w)      = UInt w
-    typ (StructSpec _ fs)   = Struct $ map (\(Ident _ n,s) -> (n, typ s)) fs 
-    typ (EnumSpec _ es)     = Enum $ map (\(Enumerator _ (Ident _ n) v) -> (n, E.evalInt v)) es
-    typ (PtrSpec _ t)       = Ptr $ typ t
-    typ (ArraySpec _ t l)   = Array (typ t) l
-    typ (UserTypeSpec _ t)  = typ (?types !! t)
-
+class WithType a where
+    typ :: a -> TypeSpec
 
 -- Type declaration
 data TypeDecl = TypeDecl { dname :: Ident
@@ -60,5 +55,5 @@ instance WithPos TypeDecl where
 instance WithName TypeDecl where
     name = dname
 
-instance (TypeNS a, ?types::a) => WithType TypeDecl where
-    typ = typ . dspec
+instance WithType TypeDecl where
+    typ = dspec

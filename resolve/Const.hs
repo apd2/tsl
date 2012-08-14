@@ -4,7 +4,6 @@ module Const(Const) where
 
 import Pos
 import Name
-import Type
 import qualified Expr     as E
 import qualified TypeSpec as T
 
@@ -19,5 +18,8 @@ instance WithPos Const where
 instance WithName Const where
     name = cname
 
-instance (T.TypeNS a, ?types::a) => WithType Const where
-    typ = typ . ctyp
+instance T.WithType Const where
+    typ = ctyp
+
+--instance (T.TypeNS a, ?types::a) => WithType Const where
+--    typ = typ . ctyp
