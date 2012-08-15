@@ -17,8 +17,6 @@ import Data.List
 import Data.Bits
 import Debug.Trace
 
-import Syntax
-
 reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "...", "::", "->"]
 reservedNames = ["after",
                  "assert",
@@ -104,136 +102,187 @@ charLit    = T.charLiteral lexer
 ----------------------------------------------------------------
 -- Common declarations that occur in different syntactic scopes
 ----------------------------------------------------------------
-withPos x = atPos <$> getPosition <*> x <*> getPosition
+nopos = SourcePos "" 0 0
+
+withPos x = (\s x e -> atPos x (s,e)) <$> getPosition <*> x <*> getPosition
 
 quote :: String -> String
 quote s = "\"" ++ s ++ "\""
 
-ident = identifier <|> 
-        quote <$> stringLit
-pident = withPos ident
+ident = withPos $ identifier <|> (quote <$> stringLit)
 
---fieldSelector = Field <$ dot <*> pident
---indexSelector = Index <$> brackets pexpr
+staticsym = StaticSym <$> sepBy1 ident (reservedOp "::")
+methname = withPos $ MethodRef nopos <$> sepBy1 ident dot
 
-staticsym = StaticSym <$> sepBy1 pident (reservedOp "::")
-pstaticsym = withPos staticsym
+varDecl = withPos $ Var nopos <$> typeSpec 
+                                  <*> ident 
+                                  <*> optionMaybe (reservedOp "=" *> pexp)
 
-methname = MethodName <$> sepBy1 pident dot
-pmethname = withPos methname
+typeDef = withPos $ TypeDecl nopos <$ reserved "typedef" <*> typeSpec <*> ident
 
-
--- TODO: psym = ::-separated list of ident
---       methname = .-separated list of ident
---sym = Ident <$> pident <*> many (withPos $ fieldSelector <|> try indexSelector)
---psym = withPos sym
-
-
-
-varDecl = VarDecl <$> ptypeSpec <*> pident <*> optionMaybe (reservedOp "=" *> pexpr)
-
-typeDef = TypeDef <$ reserved "typedef" <*> ptypeSpec <*> pident
-
-slice = brackets $ (,) <$> pexpr <*> (colon *> pexpr)
-index = brackets pexpr
-field = dot *> pident
-ptrfield = reservedOp "->" *> pident
-
-
+slice = brackets $ (,) <$> expr <*> (colon *> expr)
+index = brackets expr
+field = dot *> ident
+ptrfield = reservedOp "->" *> ident
 
 -- Constant declaration
-constDecl = SpConst <$> constant
-constant = ConstDef <$ reserved "const" <*> ptypeSpec <*> pident <*> (reservedOp "=" *> pexpr)
-
--- Type declaration
-typeDecl = SpType <$> typeDef
+constant = withPos $ Const nopos <$  reserved "const" 
+                                     <*> typeSpec 
+                                     <*> ident 
+                                     <*> (reservedOp "=" *> expr)
 
 data TypeMod = ModPtr | ModDim PExpr
-type PTypeMod = AtPos TypeMod
 
-ptypeSpec = mkType <$> (withPos $ intType <|> boolType <|> userType <|> enumType <|> structType) 
-                   <*> (many $ withPos $ (ModDim <$> brackets pexpr) <|> (ModPtr <$ reservedOp "*"))
+typeSpec = mkType <$> (withPos $ voidType <|> sintType <|> uintType <|> boolType <|> userType <|> enumType <|> structType) 
+                  <*> (many $ (,) <$> ((ModDim <$> brackets expr) <|> (ModPtr <$ reservedOp "*")) <*> getPosition)
 
-mkType :: PType -> [PTypeMod] -> PType
+mkType :: TypeSpec -> [(TypeMod, Pos)] -> TypeSpec
 mkType t [] = t
-mkType t@(AtPos _ (start,_)) ((AtPos (ModDim e) (_,end)):es) = mkType (AtPos (ArrayType t e) (start,end)) es
-mkType t@(AtPos _ (start,_)) ((AtPos ModPtr (_,end)):es) = mkType (AtPos (PtrType t) (start,end)) es
+mkType t ((ModDim e, p):es) = mkType (ArrayType (fst $ pos t, snd p) t e)) es
+mkType t ((ModPtr, p):es)   = mkType (PtrType (fst $ pos t, snd p) t) es
 
-intType    = IntType <$> ((True <$ reserved "sint") <|> (False <$ reserved "uint")) <*> (fromIntegral <$> angles decimal)
-boolType   = BoolType <$ reserved "bool"
-userType   = UserType <$> pstaticsym
-enumType   = EnumType <$ reserved "enum" <*> (braces $ commaSep1 $ (,) <$> ident <*> optionMaybe (reservedOp "=" *> pexpr))
-structType = StructType <$ reserved "struct" <*> (braces $ many1 $ (,) <$> ptypeSpec <*> (pident <* semi))
+voidType   = VoidSpec     nopos <$  reserved "void"
+sintType   = SIntSpec     nopos <$> (fromIntegral <$> angles decimal)
+uintType   = UIntSpec     nopos <$> (fromIntegral <$> angles decimal)
+boolType   = BoolSpec     nopos <$  reserved "bool"
+userType   = UserTypeSpec nopos <$> staticsym
+enumType   = EnumSpec     nopos <$  reserved "enum" <*> (braces $ commaSep1 enum)
+structType = StructSpec   nopos <$  reserved "struct" <*> (braces $ many1 $ (,) <$> typeSpec <*> (ident <* semi))
+
+enum = withPos $ Enumerator _ <$> ident <*> optionMaybe (reservedOp "=" *> expr)
 
 -------------------------------------------------------------------------
 -- Top-level scope
 -------------------------------------------------------------------------
 
+-- A TSL spec is a list of type, constant, and template declarations
+data SpecItem = SpImport   Import
+              | SpType     TypeDecl
+              | SpConst    Const
+              | SpTemplate Template
+
+data Import = Import Pos Ident
+instance PP Import where
+    pp (Import _ file) = text "import" <+> char '<' <+> pp file <+> char '>'
+
 -- A TSL spec is a list of template, type, and constant declarations.  
-grammar = (optional whiteSpace) *> (many pdecl) <* eof
+grammar = (optional whiteSpace) *> (many decl) <* eof
 decl =  importDecl
     <|> (constDecl <* semi)
     <|> (typeDecl <* semi)
     <|> templateDecl
     <?> "constant, type or template declaration"
 
-pdecl = withPos decl
-
 importDecl = SpImport <$> imp
-imp = Import <$ reserved "import" <*> (reservedOp "<" *> (withPos $ manyTill anyChar (reservedOp ">")))
+imp = withPos $ Import nopos <$ reserved "import" <*> (reservedOp "<" *> (withPos $ manyTill anyChar (reservedOp ">")))
 
 ------------------------------------------------------------------------
 -- Template scope
 ------------------------------------------------------------------------
 templateDecl = SpTemplate <$> template
 
-template = Template <$ reserved "template" <*> pident <*> option [] (parens $ commaSep $ templateImport) <*> ((many $ templateItem' <* reservedOp ";") <* reserved "endtemplate")
-ptemplate = withPos template
+template = withPos $ mkTemplate  <$  reserved "template" 
+                                <*> ident 
+                                <*> option [] (parens $ commaSep $ templateImport) 
+                                <*> ((many $ templateItem <* reservedOp ";") <*  reserved "endtemplate")
 
-templateImport = (,) <$> pident <*> pident
+data TemplateItem = TDerive        Derive
+                  | TTypeDecl      TypeDecl
+                  | TConstDecl     Const
+                  | TVarDecl       Var
+                  | TInitBlock     Init
+                  | TProcessDecl   Process
+                  | TMethod        Method
+                  | TGoalDecl      Goal
+                  | TAssign        ContAssign
 
-templateItem' = (,) <$> option False (True <$ reserved "export") <*> ptemplateItem
-templateItem =  tderive
-            <|> ttypeDecl
-            <|> tconstDecl
-            <|> tvarDecl
-            <|> tinitBlock
-            <|> tprocessDecl
-            <|> ttaskDecl
-            <|> tfuncDecl
-            <|> tprocDecl
-            <|> tgoalDecl
-            <|> tassign
+mkTemplate :: Ident -> [Port] -> [TemplateItem] -> Template
+mkTemplate n ps is = Template nopos n ps drvs consts types vars inits procs meths
+    where drvs = mapMaybe (\i -> case i of 
+                                      TDerive d -> Just d
+                                      _ -> Nothing) is
+          consts = mapMaybe (\i -> case i of 
+                                      TConstDecl c -> Just c
+                                      _ -> Nothing) is
+          types = mapMaybe (\i -> case i of 
+                                      TTypeDecl t -> Just t
+                                      _ -> Nothing) is
+          vars = mapMaybe (\i -> case i of 
+                                      TVarDecl v -> Just v
+                                      _ -> Nothing) is
+--          insts = mapMaybe (\i -> case i of 
+--                                      TInstDecl inst -> Just inst
+--                                      _ -> Nothing) is
+          inits = mapMaybe (\i -> case i of 
+                                      TInitBlock init -> Just init
+                                      _ -> Nothing) is
+          procs = mapMaybe (\i -> case i of 
+                                      TProcessDecl p -> Just p
+                                      _ -> Nothing) is
+          meths = mapMaybe (\i -> case i of 
+                                      TMethod m -> Just m
+                                      _ -> Nothing) is
+
+
+templateImport = withPos $ Port nopos <$> ident <*> ident
+
+templateItem =  TDerive      <$> tderive
+            <|> TTypeDecl    <$> typeDef
+            <|> TConstDecl   <$> tconstDecl
+            <|> TVarDecl     <$> try tvarDecl
+            <|> TInitBlock   <$> tinitBlock
+            <|> TProcessDecl <$> tprocessDecl
+            <|> TTaskDecl    <$> ttaskDecl
+            <|> TMethod      <$> tmethodDecl
+            <|> TGoalDecl    <$> tgoalDecl
+            <|> TAssign      <$> tassign
             <?> "declaration"
 
-ptemplateItem = withPos templateItem
+tderive      = withPos $ Derive nopos <$  reserved "derive" 
+                                          <*> ident 
+                                          <*> option [] (parens $ commaSep ident)
+tconstDecl   = constant
+tvarDecl     = withPos $ GVar nopos <$> (option False (True <$ reserved "export")) 
+                                        <*> (option True (False <$ reserved "invisible")) 
+                                        <*> varDecl
+tinitBlock   = withPos $ Init nopos <$ reserved "init" <*> expr
+tprocessDecl = withPos $ Process nopos <$  reserved "process" 
+                                           <*> ident 
+                                           <*> statement
+tmethodDecl  = withPos $ Method nopos <$> (option False (True <$ reserved "export")) 
+                                          <*> methCat
+                                          <*> typeSpec
+                                          <*> ident
+                                          <*> (parens $ commaSep arg)
+                                          <*> option (Left (Nothing, Nothing)) $
+                                                  Left <$ reserved "before" <*> ((,) <$> (Just <$> statement) <*> optionMaybe (reserved "after" *> statement))
+                                              <|> Left <$ reserved "after" <*> ((Nothing,) <$> (Just <$> statement))
+                                              <|> Right <$> statement
+tgoalDecl    = withPos $ Goal nopos <$  reserved "goal" 
+                                        <*> (ident <* reservedOp "=") 
+                                        <*> expr
+tassign      = withPos $ ContAssign nopos <$  reserved "assign" 
+                                              <*> (expr <* reservedOp "=") 
+                                              <*> expr
 
-tderive      = TDerive <$ reserved "derive" <*> pident <*> option [] (parens $ commaSep pident)
-ttypeDecl    = TTypeDecl <$> typeDef
-tconstDecl   = TConstDecl <$> constant
-tvarDecl     = TVarDecl <$> (option VarVis (VarInvis <$ reserved "invisible")) <*> varDecl
-tinitBlock   = TInitBlock <$ reserved "init" <*> pexpr
-tprocessDecl = TProcessDecl <$ reserved "process" <*> pident <*> pstatement
-ttaskDecl    = TTaskDecl <$ reserved "task" <*> taskCat <*> signature <*> taskBody
-tfuncDecl    = TFunctionDecl <$ reserved "function" <*> signature <*> optionMaybe pstatement
-tprocDecl    = TProcedureDecl <$ reserved "procedure" <*> signature <*> optionMaybe pstatement
-tgoalDecl    = TGoalDecl <$ reserved "goal" <*> (pident <* reservedOp "=") <*> pexpr
-tassign      = TAssign <$ reserved "assign" <*> (pexpr <* reservedOp "=") <*> pexpr
+methCat = Function <$> reserved "function"
+          Procedure <$> reserved "procedure"
+          Task <$ reserved "task" <*> option Invisible (  Controllable <$ reserved "controllable" 
+                                                      <|> Uncontrollable <$ reserved "uncontrollable" 
+                                                      <|> Invisible <$ reserved "invisible")
 
-taskBody = option (Left (Nothing, Nothing)) $
-            Left <$ reserved "before" <*> ((,) <$> (Just <$> pstatement) <*> optionMaybe (reserved "after" *> pstatement))
-        <|> Left <$ reserved "after" <*> ((Nothing,) <$> (Just <$> pstatement))
-        <|> Right <$> pstatement
+   
+arg = withPos $ Arg nopos <$> (option ArgIn (ArgOut <$ reserved "out")) 
+                              <*> typeSpec 
+                              <*> ident
 
-signature = Signature <$> (Nothing <$ reserved "void" <|> Just <$> ptypeSpec) <*> pident <*> (parens $ commaSep parg)
-arg = Arg <$> (option ArgIn (ArgOut <$ reserved "out")) <*> ptypeSpec <*> pident
-parg = withPos arg
-taskCat = option Invis (Contr <$ reserved "controllable" <|> Uncontr <$ reserved "uncontrollable" <|> Invis <$ reserved "invisible")
+
 
 ----------------------------------------------------------------
 -- Statement
 ----------------------------------------------------------------
-statement =  try svarDecl
+statement =  withPos <$>
+           ( try svarDecl
          <|> sreturn
          <|> smagic 
          <|> sseq
@@ -251,67 +300,65 @@ statement =  try svarDecl
          <|> scase
          <|> sinvoke
          <|> sassign
-         <?> "statement"
+         <?> "statement")
 
-pstatement = withPos statement
-
-svarDecl = SVarDecl <$> varDecl
-sreturn  = SReturn <$ reserved "return" <*> pexpr
-sseq     = SSeq <$> (braces $ many $ pstatement <* semi)
-spar     = SPar <$ reserved "fork" <*> (braces $ many $ pstatement <* semi)
-sforever = SForever <$ reserved "forever" <*> pstatement
-sdo      = SDo <$ reserved "do" <*> pstatement <* reserved "while" <*> (parens pexpr)
-swhile   = SWhile <$ reserved "while" <*> (parens pexpr) <*> pstatement
-sfor     = SFor <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe pstatement <* semi) <*> (pexpr <* semi) <*> pstatement) <*> pstatement
-schoice  = SChoice <$ reserved "choice" <*> (braces $ many $ pstatement <* semi)
-spause   = SPause <$ reserved "pause"
-sstop    = SStop <$ reserved "stop"
-sinvoke  = SInvoke <$ isinvoke <*> pmethname <*> (parens $ commaSep pexpr)
-    where isinvoke = try $ lookAhead $ pmethname *> symbol "("
-sassert  = SAssert <$ reserved "assert" <*> (parens pexpr)
-sassume  = SAssume <$ reserved "assume" <*> (parens pexpr)
-sassign  = SAssign <$ isassign <*> pexpr <* reservedOp "=" <*> pexpr
-    where isassign = try $ lookAhead $ pexpr *> symbol "="
-site     = SITE <$ reserved "if" <*> (parens pexpr) <*> pstatement <*> optionMaybe (reserved "else" *> pstatement)
-scase    = (fmap uncurry (SCase <$ reserved "case" <*> (parens pexpr))) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pstatement <* semi) 
-                                                                                          <*> optionMaybe (reserved "default" *> colon *> pstatement <* semi))
-smagic   = SMagic <$ ismagic
-                  <*> ((braces $ reservedOp "...") 
-                       *> ((Left <$ reserved "using" <*> pident) <|> (Right <$ reserved "post" <*> pexpr)))
+svarDecl = SVarDecl nopos <$> varDecl
+sreturn  = SReturn nopos <$ reserved "return" <*> expr
+sseq     = SSeq nopos <$> (braces $ many $ statement <* semi)
+spar     = SPar nopos <$ reserved "fork" <*> (braces $ many $ statement <* semi)
+sforever = SForever nopos <$ reserved "forever" <*> statement
+sdo      = SDo nopos <$ reserved "do" <*> statement <* reserved "while" <*> (parens expr)
+swhile   = SWhile nopos <$ reserved "while" <*> (parens expr) <*> statement
+sfor     = SFor nopos <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe statement <* semi) <*> (expr <* semi) <*> statement) <*> statement
+schoice  = SChoice nopos <$ reserved "choice" <*> (braces $ many $ statement <* semi)
+spause   = SPause nopos <$ reserved "pause"
+sstop    = SStop nopos <$ reserved "stop"
+sinvoke  = SInvoke nopos <$ isinvoke <*> methname <*> (parens $ commaSep expr)
+    where isinvoke = try $ lookAhead $ methname *> symbol "("
+sassert  = SAssert nopos <$ reserved "assert" <*> (parens expr)
+sassume  = SAssume nopos <$ reserved "assume" <*> (parens expr)
+sassign  = SAssign nopos <$ isassign <*> expr <* reservedOp "=" <*> expr
+    where isassign = try $ lookAhead $ expr *> symbol "="
+site     = SITE nopos <$ reserved "if" <*> (parens expr) <*> statement <*> optionMaybe (reserved "else" *> statement)
+scase    = (fmap uncurry (SCase nopos <$ reserved "case" <*> (parens expr))) <*> (braces $ (,) <$> (many $ (,) <$> expr <* colon <*> statement <* semi) 
+                                                                                 <*> optionMaybe (reserved "default" *> colon *> statement <* semi))
+smagic   = SMagic nopos <$ ismagic
+                        <*> ((braces $ reservedOp "...") 
+                         *> ((Left <$ reserved "using" <*> ident) <|> (Right <$ reserved "post" <*> expr)))
     where ismagic = try $ lookAhead $ symbol "{" *> reservedOp "..."
 
 ------------------------------------------------------------------
 -- Expression
 ------------------------------------------------------------------
 
-pterm = parens pexpr <|> pterm'
+term = parens expr <|> term'
 
-term' =  estruct
+term' = withPos <$>
+       ( estruct
      <|> eapply
 --     <|> try etern
      <|> elit
      <|> ebool
      <|> eterm
      <|> ecase
-     <|> econd 
-pterm' = withPos term'
+     <|> econd)
 
-estruct = EStruct <$ isstruct <*> pident <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
-    where isstruct = try $ lookAhead $ pident *> symbol "{"
+estruct = EStruct nopos <$ isstruct <*> ident <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
+    where isstruct = try $ lookAhead $ ident *> symbol "{"
           anonfields = commaSep1 $ pexpr
-          namedfields = commaSep1 $ ((,) <$ reservedOp "." <*> pident <* reservedOp "=" <*> pexpr)
-eapply  = EApply <$ isapply <*> pmethname <*> (parens $ commaSep pexpr)
-    where isapply = try $ lookAhead $ pmethname *> symbol "("
-eterm   = ETerm <$> pstaticsym
-ebool   = EBool <$> ((True <$ reserved "true") <|> (False <$ reserved "false"))
+          namedfields = commaSep1 $ ((,) <$ reservedOp "." <*> ident <* reservedOp "=" <*> expr)
+eapply  = EApply nopos <$ isapply <*> methname <*> (parens $ commaSep expr)
+    where isapply = try $ lookAhead $ methname *> symbol "("
+eterm   = ETerm nopos <$> staticsym
+ebool   = EBool nopos <$> ((True <$ reserved "true") <|> (False <$ reserved "false"))
 elit    = lexeme elit'
-etern   = ETernOp <$> pexpr <* reservedOp "?" <*> pexpr <* colon <*> pexpr
-ecase   = (fmap uncurry (ECase <$ reserved "case" <*> (parens pexpr))) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pexpr <* semi) 
-                                                                                         <*> optionMaybe (reserved "default" *> colon *> pexpr <* semi))
-econd   = (fmap uncurry (ECond <$ reserved "cond")) <*> (braces $ (,) <$> (many $ (,) <$> pexpr <* colon <*> pexpr <* semi) 
-                                                                      <*> optionMaybe (reserved "default" *> colon *> pexpr <* semi))
+etern   = ETernOp nopos <$> expr <* reservedOp "?" <*> expr <* colon <*> expr
+ecase   = (fmap uncurry (ECase nopos <$ reserved "case" <*> (parens expr))) <*> (braces $ (,) <$> (many $ (,) <$> expr <* colon <*> expr <* semi) 
+                                                                                              <*> optionMaybe (reserved "default" *> colon *> expr <* semi))
+econd   = (fmap uncurry (ECond nopos <$ reserved "cond")) <*> (braces $ (,) <$> (many $ (,) <$> expr <* colon <*> expr <* semi) 
+                                                                            <*> optionMaybe (reserved "default" *> colon *> expr <* semi))
 
-elit' = (lookAhead $ char '\'' <|> digit) *> (fmap uncurry $ ELit <$> width) <*> radval
+elit' = (lookAhead $ char '\'' <|> digit) *> (fmap uncurry $ ELit nopos <$> width) <*> radval
 width = optionMaybe (try $ ((fmap fromIntegral parseDec) <* (lookAhead $ char '\'')))
 radval =  ((,) <$> (Rad2  <$ (try $ string "'b")) <*> parseBin)
       <|> ((,) <$> (Rad8  <$ (try $ string "'o")) <*> parseOct)
@@ -332,9 +379,9 @@ readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
                                    '0' -> 0
                                    '1' -> 1) 0 s
 
-pexpr =  (withPos $ ENonDet <$ reservedOp "*")
-     <|> buildExpressionParser table pterm
-     <?> "expression"
+expr =  (withPos $ ENonDet nopos <$ reservedOp "*")
+    <|> buildExpressionParser table term
+    <?> "expression"
 
 table = [[postSlice, postIndex, postField, postPField]
         ,[prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus, prefix "*" Deref, prefix "&" AddrOf]
@@ -356,16 +403,10 @@ table = [[postSlice, postIndex, postField, postPField]
         ,[binary "-" BinMinus AssocLeft]
         ]
 
-postSlice  = Postfix $ try $ (\s end e@(AtPos _ (start,_)) -> AtPos (ESlice e s) (start,end)) <$> slice <*> getPosition
-postIndex  = Postfix $ (\i end e@(AtPos _ (start,_)) -> AtPos (EIndex e i) (start,end)) <$> index <*> getPosition
-postField  = Postfix $ (\f end e@(AtPos _ (start,_)) -> AtPos (EField e f) (start,end)) <$> field <*> getPosition
-postPField = Postfix $ (\f end e@(AtPos _ (start,_)) -> AtPos (EPField e f) (start,end)) <$> ptrfield <*> getPosition
+postSlice  = Postfix $ try $ (\s end e -> ESlice (fst $ pos e, end) e s) <$> slice <*> getPosition
+postIndex  = Postfix $ (\i end e -> EIndex (fst $ pos e, end) e i) <$> index <*> getPosition
+postField  = Postfix $ (\f end e -> EField (fst $ pos e, end) e f) <$> field <*> getPosition
+postPField = Postfix $ (\f end e -> EPField (fst $ pos e, end) e f) <$> ptrfield <*> getPosition
 
-prefix name fun = Prefix $ (\start e@(AtPos _ (_,end)) -> AtPos (EUnOp fun e) (start,end)) 
-                          <$> getPosition <* reservedOp name
-binary name fun = Infix $ (\le@(AtPos _ (start,_)) re@(AtPos _ (_,end)) -> AtPos (EBinOp fun le re) (start,end)) 
-                          <$ reservedOp name
-
-
---lexpr = LExpr <$> psym <*> optionMaybe slice
---plexpr = withPos lexpr
+prefix name fun = Prefix $ (\start e -> EUnOp (start, snd $ pos e) fun e) <$> getPosition <* reservedOp name
+binary name fun = Infix $ (\le re -> EBinOp (fst $ pos le, snd $ pos re) fun le re) <$ reservedOp name
