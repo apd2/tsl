@@ -3,11 +3,12 @@
 module Method(TaskCat(..), 
               MethodCat(..), 
               ArgDir(..), 
-              Arg(argDir), 
-              Method(methCat, methArg),
+              Arg(Arg,argDir), 
+              Method(Method,methCat, methArg),
               methVar) where
 
 import Text.PrettyPrint
+import Data.Maybe
 
 import Pos
 import Name
@@ -67,10 +68,12 @@ data Method = Method { mpos       :: Pos
                      , rettyp     :: TypeSpec
                      , mname      :: Ident
                      , methArg    :: [Arg]
-                     , methBody   :: Either (Maybe Statement, Maybe Statement) Statement
-                     }
+                     , methBody   :: Either (Maybe Statement, Maybe Statement) Statement}
 
-methVar  :: [Var]-}
+methVar :: Method -> [Var]
+methVar m = case methBody m of
+                 Left (b,a) -> concat $ map stmtVar $ (maybeToList b) ++ (maybeToList a)
+                 Right s    -> stmtVar s
 
 instance PP Method where
     pp m = (if (methExport m) then text "export" else empty) <+> (pp $ methCat m) <+> (pp $ typ m) <+> (pp $ name m) <+> 

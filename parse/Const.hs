@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, UndecidableInstances #-}
 
-module Const(Const(constVal)) where
+module Const(Const(Const,constVal)) where
 
 import Text.PrettyPrint
 

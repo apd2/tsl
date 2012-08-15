@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, UndecidableInstances #-}
 
-module Var(Var(varInit)) where
+module Var(Var(Var,varInit)) where
 
 import Text.PrettyPrint
 

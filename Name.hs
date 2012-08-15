@@ -24,7 +24,8 @@ instance Eq Ident where
     (==) (Ident _ n1) (Ident _ n2) = (n1 == n2)
 
 instance WithPos Ident where
-    pos (Ident p _) = p
+    pos (Ident p _)     = p
+    atPos (Ident _ n) p = Ident p n
 
 type StaticSym = [Ident]
 

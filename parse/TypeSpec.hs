@@ -1,9 +1,9 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances #-}
 
-module TypeSpec(TypeSpec(StructSpec), 
+module TypeSpec(TypeSpec(VoidSpec,BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec), 
                 WithType(..),
-                TypeDecl, 
-                Enumerator(enumVal)) where
+                TypeDecl(TypeDecl), 
+                Enumerator(Enumerator,enumVal)) where
 
 import Text.PrettyPrint
 
@@ -36,7 +36,7 @@ data TypeSpec = VoidSpec      {tpos :: Pos}
               | StructSpec    {tpos :: Pos, fields :: [(TypeSpec,Ident)]}
               | EnumSpec      {tpos :: Pos, enums :: [Enumerator]}
               | PtrSpec       {tpos :: Pos, ptype :: TypeSpec}
-              | ArraySpec     {tpos :: Pos, eltype :: TypeSpec, len :: Integer}
+              | ArraySpec     {tpos :: Pos, eltype :: TypeSpec, len :: Expr}
               | UserTypeSpec  {tpos :: Pos, tname :: StaticSym}
 
 instance PP TypeSpec where

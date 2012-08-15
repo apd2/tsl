@@ -1,8 +1,11 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 
-module Expr(Expr, 
+module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,ENonDet),
             ConstExpr, 
-            MethodRef,
+            MethodRef(MethodRef),
+            Radix(..),
+            UOp(..),
+            BOp(..),
             evalInt) where
 
 import Text.PrettyPrint
@@ -24,11 +27,6 @@ instance PP Radix where
     pp Rad8  = text "'o"
     pp Rad10 = text "'d"
     pp Rad16 = text "'h"
-
-data ArgDir = ArgIn | ArgOut
-instance PP ArgDir where
-    pp ArgIn  = empty
-    pp ArgOut = text "out"
 
 data MethodRef = MethodRef Pos [Ident]
 
@@ -133,6 +131,10 @@ instance PP Expr where
                                              map (\(n,e) -> char '.' <> pp n <+> char '=' <+> pp e) fs)
     pp (EStruct _ t (Right fs))  = pp t <+> (braces' $ vcat $ punctuate comma $ map pp fs)
     pp (ENonDet _)               = char '*'
+
+instance WithPos Expr where
+    pos       = epos
+    atPos e p = e{epos = p}
 
 type ConstExpr = Expr
 

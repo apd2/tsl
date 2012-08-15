@@ -19,30 +19,31 @@ import Spec
 
 data Obj = ObjTemplate Template
          | ObjPort     Port
-         | ObjInstance Instance
+        -- | ObjInstance Instance
          | ObjProcess  Process
          | ObjMethod   Method
          | ObjVar      Var
+         | ObjGVar     GVar
          | ObjArg      Arg
          | ObjType     TypeSpec
          
 objLookup :: (?spec::Spec) => Obj -> Ident -> Maybe Obj
-objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,i,pr,m,par]
+objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,pr,m,par]
     where -- search for the name in the local scope
           p  = fmap ObjPort     $ find ((== n) . name) (tmPort t)
-          v  = fmap ObjVar      $ find ((== n) . name) (tmVar t)
-          i  = fmap ObjInstance $ find ((== n) . name) (tmInst t)
+          v  = fmap ObjGVar     $ find ((== n) . name) (tmVar t)
+          --i  = fmap ObjInstance $ find ((== n) . name) (tmInst t)
           pr = fmap ObjProcess  $ find ((== n) . name) (tmProcess t)
           m  = fmap ObjMethod   $ find ((== n) . name) (tmMethod t) 
           -- search parent templates
-          par = listToMaybe $ catMaybes $ map (\d -> objLookup (ObjTemplate $ getTemplate $ drvTemplate d) n) (tmDerive t)
+          par = listToMaybe $ catMaybes $ map (\d -> objLookup (ObjTemplate $ specGetTemplate $ drvTemplate d) n) (tmDerive t)
 
-objLookup (ObjPort p)     n = case lookupTemplate (portTemplate p) of
+objLookup (ObjPort p)     n = case specLookupTemplate (portTemplate p) of
                                    Nothing -> Nothing
                                    Just t  -> objLookup (ObjTemplate t) n
-objLookup (ObjInstance i) n = case lookupTemplate (instTemplate i) of
-                                   Nothing -> Nothing
-                                   Just t  -> objLookup (ObjTemplate t) n
+--objLookup (ObjInstance i) n = case specLookupTemplate (instTemplate i) of
+--                                   Nothing -> Nothing
+--                                   Just t  -> objLookup (ObjTemplate t) n
 objLookup (ObjProcess p)  n = fmap ObjVar $ find ((== n) . name) (procVar p)
 
 objLookup (ObjMethod m)   n = listToMaybe $ catMaybes $ [v,a]
@@ -50,8 +51,9 @@ objLookup (ObjMethod m)   n = listToMaybe $ catMaybes $ [v,a]
           a  = fmap ObjArg $ find ((== n) . name) (methArg m)
 
 objLookup (ObjVar v)      n = objLookup (ObjType $ typ v) n
+objLookup (ObjGVar v)     n = objLookup (ObjType $ typ v) n
 objLookup (ObjArg a)      n = objLookup (ObjType $ typ a) n
-objLookup (ObjType (StructSpec _ fs)) n = fmap (ObjType . snd) $ find ((==n) . fst) fs
+objLookup (ObjType (StructSpec _ fs)) n = fmap (ObjType . fst) $ find ((==n) . snd) fs
 
 objGet :: (?spec::Spec) => Obj -> Ident -> Obj
 objGet o n = fromJustMsg ("objLookup failed: " ++ show n) $ objLookup o n

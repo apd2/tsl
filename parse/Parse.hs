@@ -1,21 +1,35 @@
-{-# LANGUAGE TupleSections, FlexibleContexts #-}
+{-# LANGUAGE TupleSections, FlexibleContexts, ScopedTypeVariables #-}
 
 module Parse where
 
 import qualified Data.Map as M
 import Control.Monad
 import Data.Maybe
+import qualified Text.PrettyPrint as P
 
-import Control.Applicative hiding (many,optional)
+import Control.Applicative hiding (many,optional,Const)
 import Text.Parsec hiding ((<|>))
 import Text.Parsec.String
 import Text.Parsec.Expr
+import Text.Parsec.Pos
 import qualified Text.Parsec.Token as T
 import Text.Parsec.Language
 import Numeric
 import Data.List
 import Data.Bits
 import Debug.Trace
+
+import PP
+import Pos
+import Name
+import Expr
+import Statement
+import Process
+import Template
+import Var
+import TypeSpec
+import Method
+import Const
 
 reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "...", "::", "->"]
 reservedNames = ["after",
@@ -102,21 +116,21 @@ charLit    = T.charLiteral lexer
 ----------------------------------------------------------------
 -- Common declarations that occur in different syntactic scopes
 ----------------------------------------------------------------
-nopos = SourcePos "" 0 0
+nopos::Pos = (initialPos "",initialPos "")
 
 withPos x = (\s x e -> atPos x (s,e)) <$> getPosition <*> x <*> getPosition
 
 quote :: String -> String
 quote s = "\"" ++ s ++ "\""
 
-ident = withPos $ identifier <|> (quote <$> stringLit)
+ident = withPos $ Ident nopos <$> (identifier <|> (quote <$> stringLit))
 
-staticsym = StaticSym <$> sepBy1 ident (reservedOp "::")
+staticsym = sepBy1 ident (reservedOp "::")
 methname = withPos $ MethodRef nopos <$> sepBy1 ident dot
 
 varDecl = withPos $ Var nopos <$> typeSpec 
                                   <*> ident 
-                                  <*> optionMaybe (reservedOp "=" *> pexp)
+                                  <*> optionMaybe (reservedOp "=" *> expr)
 
 typeDef = withPos $ TypeDecl nopos <$ reserved "typedef" <*> typeSpec <*> ident
 
@@ -131,25 +145,25 @@ constant = withPos $ Const nopos <$  reserved "const"
                                      <*> ident 
                                      <*> (reservedOp "=" *> expr)
 
-data TypeMod = ModPtr | ModDim PExpr
+data TypeMod = ModPtr | ModDim Expr
 
 typeSpec = mkType <$> (withPos $ voidType <|> sintType <|> uintType <|> boolType <|> userType <|> enumType <|> structType) 
                   <*> (many $ (,) <$> ((ModDim <$> brackets expr) <|> (ModPtr <$ reservedOp "*")) <*> getPosition)
 
-mkType :: TypeSpec -> [(TypeMod, Pos)] -> TypeSpec
+mkType :: TypeSpec -> [(TypeMod, SourcePos)] -> TypeSpec
 mkType t [] = t
-mkType t ((ModDim e, p):es) = mkType (ArrayType (fst $ pos t, snd p) t e)) es
-mkType t ((ModPtr, p):es)   = mkType (PtrType (fst $ pos t, snd p) t) es
+mkType t ((ModDim e, p):es) = mkType (ArraySpec (fst $ pos t, p) t e) es
+mkType t ((ModPtr, p):es)   = mkType (PtrSpec (fst $ pos t, p) t) es
 
 voidType   = VoidSpec     nopos <$  reserved "void"
-sintType   = SIntSpec     nopos <$> (fromIntegral <$> angles decimal)
-uintType   = UIntSpec     nopos <$> (fromIntegral <$> angles decimal)
+sintType   = SIntSpec     nopos <$  reserved "sint" <*> (fromIntegral <$> angles decimal)
+uintType   = UIntSpec     nopos <$  reserved "uint" <*> (fromIntegral <$> angles decimal)
 boolType   = BoolSpec     nopos <$  reserved "bool"
 userType   = UserTypeSpec nopos <$> staticsym
 enumType   = EnumSpec     nopos <$  reserved "enum" <*> (braces $ commaSep1 enum)
 structType = StructSpec   nopos <$  reserved "struct" <*> (braces $ many1 $ (,) <$> typeSpec <*> (ident <* semi))
 
-enum = withPos $ Enumerator _ <$> ident <*> optionMaybe (reservedOp "=" *> expr)
+enum = withPos $ Enumerator nopos <$> ident <*> optionMaybe (reservedOp "=" *> expr)
 
 -------------------------------------------------------------------------
 -- Top-level scope
@@ -161,25 +175,32 @@ data SpecItem = SpImport   Import
               | SpConst    Const
               | SpTemplate Template
 
+instance PP SpecItem where
+    pp (SpImport i)   = pp i
+    pp (SpType t)     = pp t
+    pp (SpConst c)    = pp c
+    pp (SpTemplate t) = pp t
+
 data Import = Import Pos Ident
 instance PP Import where
-    pp (Import _ file) = text "import" <+> char '<' <+> pp file <+> char '>'
+    pp (Import _ file) = P.text "import" P.<+> P.char '<' P.<> pp file P.<> P.char '>'
+instance WithPos Import where
+    pos (Import p _)     = p
+    atPos (Import _ i) p = Import p i
 
 -- A TSL spec is a list of template, type, and constant declarations.  
 grammar = (optional whiteSpace) *> (many decl) <* eof
-decl =  importDecl
-    <|> (constDecl <* semi)
-    <|> (typeDecl <* semi)
-    <|> templateDecl
+decl =  (SpImport <$> imp)
+    <|> (SpConst <$> constant <* semi)
+    <|> (SpType <$> typeDef <* semi)
+    <|> (SpTemplate <$> template)
     <?> "constant, type or template declaration"
 
-importDecl = SpImport <$> imp
-imp = withPos $ Import nopos <$ reserved "import" <*> (reservedOp "<" *> (withPos $ manyTill anyChar (reservedOp ">")))
+imp = withPos $ Import nopos <$ reserved "import" <*> (reservedOp "<" *> (withPos $ Ident nopos <$> manyTill anyChar (reservedOp ">")))
 
 ------------------------------------------------------------------------
 -- Template scope
 ------------------------------------------------------------------------
-templateDecl = SpTemplate <$> template
 
 template = withPos $ mkTemplate  <$  reserved "template" 
                                 <*> ident 
@@ -189,7 +210,7 @@ template = withPos $ mkTemplate  <$  reserved "template"
 data TemplateItem = TDerive        Derive
                   | TTypeDecl      TypeDecl
                   | TConstDecl     Const
-                  | TVarDecl       Var
+                  | TVarDecl       GVar
                   | TInitBlock     Init
                   | TProcessDecl   Process
                   | TMethod        Method
@@ -232,7 +253,6 @@ templateItem =  TDerive      <$> tderive
             <|> TVarDecl     <$> try tvarDecl
             <|> TInitBlock   <$> tinitBlock
             <|> TProcessDecl <$> tprocessDecl
-            <|> TTaskDecl    <$> ttaskDecl
             <|> TMethod      <$> tmethodDecl
             <|> TGoalDecl    <$> tgoalDecl
             <|> TAssign      <$> tassign
@@ -250,14 +270,14 @@ tprocessDecl = withPos $ Process nopos <$  reserved "process"
                                            <*> ident 
                                            <*> statement
 tmethodDecl  = withPos $ Method nopos <$> (option False (True <$ reserved "export")) 
-                                          <*> methCat
+                                          <*> methCateg
                                           <*> typeSpec
                                           <*> ident
                                           <*> (parens $ commaSep arg)
-                                          <*> option (Left (Nothing, Nothing)) $
-                                                  Left <$ reserved "before" <*> ((,) <$> (Just <$> statement) <*> optionMaybe (reserved "after" *> statement))
-                                              <|> Left <$ reserved "after" <*> ((Nothing,) <$> (Just <$> statement))
-                                              <|> Right <$> statement
+                                          <*> (option (Left (Nothing, Nothing)) $
+                                                   Left <$ reserved "before" <*> ((,) <$> (Just <$> statement) <*> optionMaybe (reserved "after" *> statement))
+                                               <|> Left <$ reserved "after" <*> ((Nothing,) <$> (Just <$> statement))
+                                               <|> Right <$> statement)
 tgoalDecl    = withPos $ Goal nopos <$  reserved "goal" 
                                         <*> (ident <* reservedOp "=") 
                                         <*> expr
@@ -265,12 +285,11 @@ tassign      = withPos $ ContAssign nopos <$  reserved "assign"
                                               <*> (expr <* reservedOp "=") 
                                               <*> expr
 
-methCat = Function <$> reserved "function"
-          Procedure <$> reserved "procedure"
-          Task <$ reserved "task" <*> option Invisible (  Controllable <$ reserved "controllable" 
-                                                      <|> Uncontrollable <$ reserved "uncontrollable" 
-                                                      <|> Invisible <$ reserved "invisible")
-
+methCateg =  (Function <$ reserved "function")
+         <|> (Procedure <$ reserved "procedure")
+         <|> (Task <$ reserved "task" <*> option Invisible (  Controllable <$ reserved "controllable" 
+                                                          <|> Uncontrollable <$ reserved "uncontrollable" 
+                                                          <|> Invisible <$ reserved "invisible"))
    
 arg = withPos $ Arg nopos <$> (option ArgIn (ArgOut <$ reserved "out")) 
                               <*> typeSpec 
@@ -281,8 +300,8 @@ arg = withPos $ Arg nopos <$> (option ArgIn (ArgOut <$ reserved "out"))
 ----------------------------------------------------------------
 -- Statement
 ----------------------------------------------------------------
-statement =  withPos <$>
-           ( try svarDecl
+statement =  withPos $
+           ( (try svarDecl)
          <|> sreturn
          <|> smagic 
          <|> sseq
@@ -333,7 +352,7 @@ smagic   = SMagic nopos <$ ismagic
 
 term = parens expr <|> term'
 
-term' = withPos <$>
+term' = withPos $
        ( estruct
      <|> eapply
 --     <|> try etern
@@ -343,9 +362,9 @@ term' = withPos <$>
      <|> ecase
      <|> econd)
 
-estruct = EStruct nopos <$ isstruct <*> ident <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
-    where isstruct = try $ lookAhead $ ident *> symbol "{"
-          anonfields = commaSep1 $ pexpr
+estruct = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
+    where isstruct = try $ lookAhead $ staticsym *> symbol "{"
+          anonfields = commaSep1 expr
           namedfields = commaSep1 $ ((,) <$ reservedOp "." <*> ident <* reservedOp "=" <*> expr)
 eapply  = EApply nopos <$ isapply <*> methname <*> (parens $ commaSep expr)
     where isapply = try $ lookAhead $ methname *> symbol "("

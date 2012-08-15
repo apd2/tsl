@@ -1,4 +1,6 @@
-module Statement(Statement,
+module Statement(Statement(SVarDecl,SReturn,SSeq,SPar,SForever,SDo,
+                           SWhile,SFor,SChoice,SPause,SStop,SInvoke,
+                           SAssert,SAssume,SAssign,SITE,SCase,SMagic),
                  stmtVar) where
 
 import Data.Maybe
