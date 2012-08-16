@@ -65,7 +65,7 @@ instance WithType Arg where
 data Method = Method { mpos       :: Pos
                      , methExport :: Bool
                      , methCat    :: MethodCat
-                     , rettyp     :: TypeSpec
+                     , rettyp     :: Maybe TypeSpec
                      , mname      :: Ident
                      , methArg    :: [Arg]
                      , methBody   :: Either (Maybe Statement, Maybe Statement) Statement}
@@ -76,7 +76,11 @@ methVar m = case methBody m of
                  Right s    -> stmtVar s
 
 instance PP Method where
-    pp m = (if (methExport m) then text "export" else empty) <+> (pp $ methCat m) <+> (pp $ typ m) <+> (pp $ name m) <+> 
+    pp m = (if (methExport m) then text "export" else empty) <+> (pp $ methCat m) <+> 
+           (case rettyp m of 
+                 Nothing -> text "void"
+                 Just t  -> pp t) <+> 
+           (pp $ name m) <+> 
            (parens $ hsep $ punctuate comma $ map pp (methArg m)) $+$
            case methBody m of
                 Left (bef,aft) -> case bef of 
@@ -94,6 +98,3 @@ instance WithName Method where
 instance WithPos Method where
     pos       = mpos
     atPos m p = m{mpos = p}
-
-instance WithType Method where
-    typ = rettyp

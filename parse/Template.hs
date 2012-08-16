@@ -1,6 +1,6 @@
-module Template(Template(Template, tmPort, tmDerive, tmVar, tmProcess, tmMethod), 
+module Template(Template(Template, tmPort, tmDerive, tmVar, tmProcess, tmMethod, tmTypeDecl), 
                 Port(Port,portTemplate), 
-                GVar(GVar,gvarExport, gvarVis),
+                GVar(GVar,gvarExport),
                 Goal(Goal, goalCond),
                 Init(Init,initBody),
                 ContAssign(ContAssign,cassLHS,cassRHS),
@@ -100,12 +100,11 @@ instance WithPos ContAssign where
 -- Template-global variable
 data GVar = GVar { gvpos      :: Pos
                  , gvarExport :: Bool
-                 , gvarVis    :: Bool
                  , gvvar      :: Var}
 
 instance PP GVar where
     pp v =  (if (gvarExport v) then text "export" else empty) 
-        <+> (if (gvarVis v) then empty else text "invisible") 
+        -- <+> (if (gvarVis v) then empty else text "invisible") 
         <+> pp (gvvar v)
 
 instance WithPos GVar where

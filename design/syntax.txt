@@ -67,17 +67,19 @@ Variables
 Variables can be declared anywhere inside the template, process, 
 function or task.  
 
-A variable can have an "invisible" attribute.  Variables that 
-don't have this attribute can only be modified by visible 
-transitions (see below).  This attribute does not increase the 
-expressive power of the language, but prevents accidental misuse 
-of variables.  
+// XXX: not sure this feature makes a lot of sense
+//
+// A template variable can have an "invisible" attribute.  
+// Variables with this attribute can not be read inside visible 
+// (controllable or uncontrollable) transitions.  This attribute 
+// does not increase the expressive power of the language, but 
+// prevents accidental misuse of variables.  
 
 Variables can be declared with initial values:
 
 //------------------------------
 baud_t baud = 115200;
-invisible baud_t dev_baud;
+/*invisible*/ baud_t dev_baud;
 sint<20> x;
 sint<20> xs[20];
 baud_t * pbaud = &baud;

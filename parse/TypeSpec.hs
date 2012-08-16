@@ -1,11 +1,12 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances #-}
 
-module TypeSpec(TypeSpec(VoidSpec,BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec), 
+module TypeSpec(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec), 
                 WithType(..),
                 TypeDecl(TypeDecl), 
                 Enumerator(Enumerator,enumVal)) where
 
 import Text.PrettyPrint
+import Control.Monad.Error
 
 import PP
 import Pos
@@ -29,8 +30,7 @@ instance WithPos Enumerator where
 instance WithName Enumerator where
     name = ename
 
-data TypeSpec = VoidSpec      {tpos :: Pos}
-              | BoolSpec      {tpos :: Pos}
+data TypeSpec = BoolSpec      {tpos :: Pos}
               | SIntSpec      {tpos :: Pos, width :: Int}
               | UIntSpec      {tpos :: Pos, width :: Int}
               | StructSpec    {tpos :: Pos, fields :: [(TypeSpec,Ident)]}
@@ -40,7 +40,6 @@ data TypeSpec = VoidSpec      {tpos :: Pos}
               | UserTypeSpec  {tpos :: Pos, tname :: StaticSym}
 
 instance PP TypeSpec where
-    pp (VoidSpec _)       = text "void"
     pp (BoolSpec _)       = text "bool"
     pp (SIntSpec _ i)     = text "sint" <> char '<' <> pp i <> char '>'
     pp (UIntSpec _ i)     = text "uint" <> char '<' <> pp i <> char '>'

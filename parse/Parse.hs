@@ -61,6 +61,7 @@ reservedNames = ["after",
                  "invisible", 
                  "out",
                  "pause",
+                 "break",
                  "post", 
                  "procedure", 
                  "process",
@@ -147,7 +148,7 @@ constant = withPos $ Const nopos <$  reserved "const"
 
 data TypeMod = ModPtr | ModDim Expr
 
-typeSpec = mkType <$> (withPos $ voidType <|> sintType <|> uintType <|> boolType <|> userType <|> enumType <|> structType) 
+typeSpec = mkType <$> (withPos $ sintType <|> uintType <|> boolType <|> userType <|> enumType <|> structType) 
                   <*> (many $ (,) <$> ((ModDim <$> brackets expr) <|> (ModPtr <$ reservedOp "*")) <*> getPosition)
 
 mkType :: TypeSpec -> [(TypeMod, SourcePos)] -> TypeSpec
@@ -155,7 +156,6 @@ mkType t [] = t
 mkType t ((ModDim e, p):es) = mkType (ArraySpec (fst $ pos t, p) t e) es
 mkType t ((ModPtr, p):es)   = mkType (PtrSpec (fst $ pos t, p) t) es
 
-voidType   = VoidSpec     nopos <$  reserved "void"
 sintType   = SIntSpec     nopos <$  reserved "sint" <*> (fromIntegral <$> angles decimal)
 uintType   = UIntSpec     nopos <$  reserved "uint" <*> (fromIntegral <$> angles decimal)
 boolType   = BoolSpec     nopos <$  reserved "bool"
@@ -263,7 +263,7 @@ tderive      = withPos $ Derive nopos <$  reserved "derive"
                                           <*> option [] (parens $ commaSep ident)
 tconstDecl   = constant
 tvarDecl     = withPos $ GVar nopos <$> (option False (True <$ reserved "export")) 
-                                        <*> (option True (False <$ reserved "invisible")) 
+--                                        <*> (option True (False <$ reserved "invisible")) 
                                         <*> varDecl
 tinitBlock   = withPos $ Init nopos <$ reserved "init" <*> expr
 tprocessDecl = withPos $ Process nopos <$  reserved "process" 
@@ -271,7 +271,7 @@ tprocessDecl = withPos $ Process nopos <$  reserved "process"
                                            <*> statement
 tmethodDecl  = withPos $ Method nopos <$> (option False (True <$ reserved "export")) 
                                           <*> methCateg
-                                          <*> typeSpec
+                                          <*> ((Nothing <$ reserved "void") <|> (Just <$> typeSpec))
                                           <*> ident
                                           <*> (parens $ commaSep arg)
                                           <*> (option (Left (Nothing, Nothing)) $
@@ -313,6 +313,7 @@ statement =  withPos $
          <|> schoice
          <|> spause
          <|> sstop
+         <|> sbreak
          <|> sassert
          <|> sassume
          <|> site
@@ -332,6 +333,7 @@ sfor     = SFor nopos <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe stat
 schoice  = SChoice nopos <$ reserved "choice" <*> (braces $ many $ statement <* semi)
 spause   = SPause nopos <$ reserved "pause"
 sstop    = SStop nopos <$ reserved "stop"
+sbreak   = SBreak nopos <$ reserved "break"
 sinvoke  = SInvoke nopos <$ isinvoke <*> methname <*> (parens $ commaSep expr)
     where isinvoke = try $ lookAhead $ methname *> symbol "("
 sassert  = SAssert nopos <$ reserved "assert" <*> (parens expr)
