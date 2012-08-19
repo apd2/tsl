@@ -26,6 +26,7 @@ import Method
 -- Validation order
 -- * Validate instances (required by derive statements)
 -- * Validate derive statements (required to build template namespaces)
+-- * Validate template namespaces
 -- * Validate types
 -- * Validate constants
 

@@ -1,4 +1,4 @@
-module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl), 
+module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst), 
                 Port(Port,portTemplate), 
                 Instance(Instance, instPort, instTemplate),
                 GVar(GVar,gvarExport),

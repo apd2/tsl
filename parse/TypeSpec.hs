@@ -93,3 +93,5 @@ instance WithName TypeDecl where
 
 instance WithType TypeDecl where
     typ = dspec
+
+ 
