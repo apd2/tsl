@@ -161,7 +161,7 @@ uintType   = UIntSpec     nopos <$  reserved "uint" <*> (fromIntegral <$> angles
 boolType   = BoolSpec     nopos <$  reserved "bool"
 userType   = UserTypeSpec nopos <$> staticsym
 enumType   = EnumSpec     nopos <$  reserved "enum" <*> (braces $ commaSep1 enum)
-structType = StructSpec   nopos <$  reserved "struct" <*> (braces $ many1 $ (,) <$> typeSpec <*> (ident <* semi))
+structType = StructSpec   nopos <$  reserved "struct" <*> (braces $ many1 $ withPos $ Field nopos <$> typeSpec <*> (ident <* semi))
 
 enum = withPos $ Enumerator nopos <$> ident <*> optionMaybe (reservedOp "=" *> expr)
 
@@ -209,6 +209,7 @@ template = withPos $ mkTemplate  <$  reserved "template"
 
 data TemplateItem = TDerive        Derive
                   | TTypeDecl      TypeDecl
+                  | TInstDecl      Instance
                   | TConstDecl     Const
                   | TVarDecl       GVar
                   | TInitBlock     Init
@@ -218,7 +219,7 @@ data TemplateItem = TDerive        Derive
                   | TAssign        ContAssign
 
 mkTemplate :: Ident -> [Port] -> [TemplateItem] -> Template
-mkTemplate n ps is = Template nopos n ps drvs consts types vars inits procs meths
+mkTemplate n ps is = Template nopos n ps drvs consts types vars insts inits procs meths
     where drvs = mapMaybe (\i -> case i of 
                                       TDerive d -> Just d
                                       _ -> Nothing) is
@@ -231,9 +232,9 @@ mkTemplate n ps is = Template nopos n ps drvs consts types vars inits procs meth
           vars = mapMaybe (\i -> case i of 
                                       TVarDecl v -> Just v
                                       _ -> Nothing) is
---          insts = mapMaybe (\i -> case i of 
---                                      TInstDecl inst -> Just inst
---                                      _ -> Nothing) is
+          insts = mapMaybe (\i -> case i of 
+                                      TInstDecl inst -> Just inst
+                                      _ -> Nothing) is
           inits = mapMaybe (\i -> case i of 
                                       TInitBlock init -> Just init
                                       _ -> Nothing) is
@@ -248,8 +249,9 @@ mkTemplate n ps is = Template nopos n ps drvs consts types vars inits procs meth
 templateImport = withPos $ Port nopos <$> ident <*> ident
 
 templateItem =  TDerive      <$> tderive
+            <|> TInstDecl    <$> instDecl
             <|> TTypeDecl    <$> typeDef
-            <|> TConstDecl   <$> tconstDecl
+            <|> TConstDecl   <$> constant
             <|> TVarDecl     <$> try tvarDecl
             <|> TInitBlock   <$> tinitBlock
             <|> TProcessDecl <$> tprocessDecl
@@ -259,16 +261,19 @@ templateItem =  TDerive      <$> tderive
             <?> "declaration"
 
 tderive      = withPos $ Derive nopos <$  reserved "derive" 
-                                          <*> ident 
-                                          <*> option [] (parens $ commaSep ident)
-tconstDecl   = constant
+                                      <*> ident 
+                                      <*> option [] (parens $ commaSep ident)
+instDecl     = withPos $ Instance nopos <$  reserved "instance"
+                                        <*> ident
+                                        <*> ident
+                                        <*> (parens $ commaSep ident)
 tvarDecl     = withPos $ GVar nopos <$> (option False (True <$ reserved "export")) 
 --                                        <*> (option True (False <$ reserved "invisible")) 
                                         <*> varDecl
 tinitBlock   = withPos $ Init nopos <$ reserved "init" <*> expr
 tprocessDecl = withPos $ Process nopos <$  reserved "process" 
-                                           <*> ident 
-                                           <*> statement
+                                       <*> ident 
+                                       <*> statement
 tmethodDecl  = withPos $ Method nopos <$> (option False (True <$ reserved "export")) 
                                           <*> methCateg
                                           <*> ((Nothing <$ reserved "void") <|> (Just <$> typeSpec))
@@ -279,11 +284,11 @@ tmethodDecl  = withPos $ Method nopos <$> (option False (True <$ reserved "expor
                                                <|> Left <$ reserved "after" <*> ((Nothing,) <$> (Just <$> statement))
                                                <|> Right <$> statement)
 tgoalDecl    = withPos $ Goal nopos <$  reserved "goal" 
-                                        <*> (ident <* reservedOp "=") 
-                                        <*> expr
+                                    <*> (ident <* reservedOp "=") 
+                                    <*> expr
 tassign      = withPos $ ContAssign nopos <$  reserved "assign" 
-                                              <*> (expr <* reservedOp "=") 
-                                              <*> expr
+                                          <*> (expr <* reservedOp "=") 
+                                          <*> expr 
 
 methCateg =  (Function <$ reserved "function")
          <|> (Procedure <$ reserved "procedure")

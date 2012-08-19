@@ -1,16 +1,14 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module Spec(Spec(), 
+module Spec(Spec(specTemplate), 
             emptySpec,
             specAddTemplate,
             specAddConst,
             specAddType,
-            specLookupTemplate, 
-            specGetTemplate,
+            specLookupTemplate, specGetTemplate, specCheckTemplate,
             Ctx(), 
-            ctxCheckType,
-            ctxGetType,
-            ctxLookupType) where
+            ctxCheckType, ctxGetType, ctxLookupType,
+            ctxUniqName) where
 
 import Data.List
 import Data.Maybe
@@ -25,21 +23,25 @@ import Template
 import Const
 import Method
 
+-- Validation order
+-- * Validate instances (required by derive statements)
+-- * Validate derive statements (required to build template namespaces)
+-- * Validate types
+-- * Validate constants
+
 -- Validating type declaration:
 -- * no cyclic dependencies among types
+--
+-- Validating instance:
+-- * only concrete templates can be instantiated
 --
 -- Additionally for enum declarations
 -- * enum values must be valid static expressions
 --
 -- Validating template declarations:
 -- * ports refer to valid template names
--- * derives refer to valid template names
--- * derives get correct number and types of parameters
--- * the same template can only be derived once (directly or indirectly through its child templates)
--- * no circular derivations
 -- * variables, goals, continuous assignments do not override existing parent declarations
 -- * method declarations match prototypes in parent templates
--- * no cyclic derive relations
 -- * ports, variables, goals, processes, methods, types have unique names
 -- 
 -- Validating constant declarations
@@ -123,23 +125,29 @@ import Method
 --     (process or invisible task) cannot be read inside uncontrollable visible transitions (which
 --     correspond to executable driver code)
 
-data Spec = Spec { sTemplate :: [Template]
-                 , sType     :: [TypeDecl]
-                 , sConst    :: [Const]}
+data Spec = Spec { specTemplate :: [Template]
+                 , specType     :: [TypeDecl]
+                 , specConst    :: [Const]}
 
 emptySpec = Spec [] [] []
 
 specLookupTemplate :: (?spec::Spec) => Ident -> Maybe Template
-specLookupTemplate n = find ((==n) . name) (sTemplate ?spec)
+specLookupTemplate n = find ((==n) . name) (specTemplate ?spec)
 
 specGetTemplate :: (?spec::Spec) => Ident -> Template
 specGetTemplate n = fromJustMsg ("getTemplate failed: " ++ show n) $ specLookupTemplate n
 
+specCheckTemplate :: (?spec::Spec, MonadError String me) => Ident -> me ()
+specCheckTemplate n = do
+    case specLookupTemplate n of
+       Nothing -> err (pos n) $ "Invalid template name: " ++ (show $ pos n)
+       Just t -> return ()
+
 specLookup :: Spec -> Ident -> Maybe Pos
 specLookup s n = listToMaybe $ catMaybes [tm, t, c]
-    where tm = fmap pos $ find ((== n) . name) (sTemplate s)
-          t  = fmap pos $ find ((== n) . name) (sType s)
-          c  = fmap pos $ find ((== n) . name) (sConst s)
+    where tm = fmap pos $ find ((== n) . name) (specTemplate s)
+          t  = fmap pos $ find ((== n) . name) (specType s)
+          c  = fmap pos $ find ((== n) . name) (specConst s)
 
 specCheckName :: (MonadError String me) => Spec -> Ident -> me ()
 specCheckName s n = do
@@ -150,17 +158,17 @@ specCheckName s n = do
 specAddTemplate :: (MonadError String me) => Spec -> Template -> me Spec
 specAddTemplate s t = do
     specCheckName s (name t)
-    return $ s{sTemplate = t:(sTemplate s)}
+    return $ s{specTemplate = t:(specTemplate s)}
 
 specAddType :: (MonadError String me) => Spec -> TypeDecl -> me Spec
 specAddType s t = do
     specCheckName s (name t)
-    return $ s{sType = t:(sType s)}
+    return $ s{specType = t:(specType s)}
 
 specAddConst :: (MonadError String me) => Spec -> Const -> me Spec
 specAddConst s c = do
     specCheckName s (name c)
-    return $ s{sConst = c:(sConst s)}
+    return $ s{specConst = c:(specConst s)}
 
 
 data Ctx = CtxTop
@@ -168,14 +176,14 @@ data Ctx = CtxTop
          | CtxMethod   {ctxTm::Template, ctxMeth::Method}
 
 ctxLookupTypeLocal :: (?spec::Spec) => Ctx -> Ident -> Maybe TypeDecl
-ctxLookupTypeLocal CtxTop          n = find ((==n) . name) (sType ?spec)
+ctxLookupTypeLocal CtxTop          n = find ((==n) . name) (specType ?spec)
 ctxLookupTypeLocal (CtxTemplate t) n = find ((==n) . name) (tmTypeDecl t)
 
 ctxLookupType :: (?spec::Spec) => Ctx -> StaticSym -> Maybe TypeDecl
 ctxLookupType CtxTop [n]            = ctxLookupTypeLocal CtxTop n
-ctxLookupType CtxTop (n:ns)         = case specLookupTemplate n of
+ctxLookupType CtxTop (n:[n'])         = case specLookupTemplate n of
                                            Nothing -> Nothing
-                                           Just t  -> ctxLookupTypeLocal (CtxTemplate t) ns
+                                           Just t  -> ctxLookupTypeLocal (CtxTemplate t) n'
 ctxLookupType c@(CtxTemplate t) [n] = case ctxLookupTypeLocal c n of
                                            Nothing -> ctxLookupTypeLocal CtxTop n
                                            Just t  -> Just t
@@ -189,6 +197,7 @@ ctxGetType :: (?spec::Spec) => Ctx -> StaticSym -> TypeDecl
 ctxGetType c = fromJustMsg "ctxGetType: type not found" . ctxLookupType c
 
 ctxUniqName :: (?spec::Spec, MonadError String me) => Ctx -> Ident -> me ()
+ctxUniqName = undefined
 
 
 ----------------------------------------------------

@@ -3,7 +3,8 @@
 module TypeSpec(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec), 
                 WithType(..),
                 TypeDecl(TypeDecl), 
-                Enumerator(Enumerator,enumVal)) where
+                Enumerator(Enumerator,enumVal),
+                Field(Field)) where
 
 import Text.PrettyPrint
 import Control.Monad.Error
@@ -30,10 +31,29 @@ instance WithPos Enumerator where
 instance WithName Enumerator where
     name = ename
 
+
+-- Struct field
+data Field = Field { fpos  :: Pos
+                   , ftyp  :: TypeSpec
+                   , fname :: Ident}
+
+instance PP Field where
+    pp (Field _ t n) = pp t <+> pp n
+
+instance WithPos Field where
+    pos       = fpos
+    atPos f p = f{fpos = p}
+
+instance WithName Field where
+    name = fname
+
+instance WithType Field where
+    typ = ftyp
+
 data TypeSpec = BoolSpec      {tpos :: Pos}
               | SIntSpec      {tpos :: Pos, width :: Int}
               | UIntSpec      {tpos :: Pos, width :: Int}
-              | StructSpec    {tpos :: Pos, fields :: [(TypeSpec,Ident)]}
+              | StructSpec    {tpos :: Pos, fields :: [Field]}
               | EnumSpec      {tpos :: Pos, enums :: [Enumerator]}
               | PtrSpec       {tpos :: Pos, ptype :: TypeSpec}
               | ArraySpec     {tpos :: Pos, eltype :: TypeSpec, len :: Expr}
@@ -43,8 +63,7 @@ instance PP TypeSpec where
     pp (BoolSpec _)       = text "bool"
     pp (SIntSpec _ i)     = text "sint" <> char '<' <> pp i <> char '>'
     pp (UIntSpec _ i)     = text "uint" <> char '<' <> pp i <> char '>'
-    pp (StructSpec _ fs)  = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . ppfield) fs)
-                                where ppfield (t,n) = pp t <+> pp n
+    pp (StructSpec _ fs)  = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
     pp (EnumSpec _ es)    = text "enum" <+> (braces $ nest' $ vcat $ punctuate comma $ map pp es)
     pp (PtrSpec _ t)      = pp t <> char '*'
     pp (ArraySpec _ t l)  = pp t <> (brackets $ pp l)

@@ -23,6 +23,9 @@ instance PP Ident where
 instance Eq Ident where
     (==) (Ident _ n1) (Ident _ n2) = (n1 == n2)
 
+instance Ord Ident where
+    compare (Ident _ i1) (Ident _ i2) = compare i1 i2
+
 instance WithPos Ident where
     pos (Ident p _)     = p
     atPos (Ident _ n) p = Ident p n

@@ -6,6 +6,7 @@ import Control.Monad.Error
 import Data.List
 
 import TSLUtil
+import Name
 import Pos
 import TypeSpec
 import Spec
@@ -14,13 +15,13 @@ validateTypeSpec :: (?spec::Spec, MonadError String me) => Ctx -> TypeSpec -> me
 
 -- * Struct fields must have unique names and valid types
 validateTypeSpec ctx (StructSpec _ fs) = do
-    uniqNames fs
-    mapM (\(t,_) -> validateTypeSpec ctx t) fs
+    uniqNames "field names" fs
+    mapM (validateTypeSpec ctx . typ) fs
     return ()
 
 -- * enumerator names must be unique in the current scope
 validateTypeSpec ctx (EnumSpec _ es) = do
-    mapM (ctxUniqName ctx) es
+    mapM (ctxUniqName ctx . name) es
     return ()
 
 -- * user-defined type names refer to valid types

@@ -1,5 +1,6 @@
-module Template(Template(Template, tmPort, tmDerive, tmVar, tmProcess, tmMethod, tmTypeDecl), 
+module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl), 
                 Port(Port,portTemplate), 
+                Instance(Instance, instPort, instTemplate),
                 GVar(GVar,gvarExport),
                 Goal(Goal, goalCond),
                 Init(Init,initBody),
@@ -46,17 +47,24 @@ instance WithPos Derive where
     pos       = dpos
     atPos d p = d{dpos = p}
 
----- Template instantiation inside another template
---data Instance = Instance { ipos         :: Pos
---                         , instTemplate :: Ident
---                         , iname        :: Ident
---                         , instPort     :: [Ident]}
---
---instance WithPos Instance where
---    pos = ipos
---
---instance WithName Instance where
---    name = iname
+-- Template instantiation inside another template
+data Instance = Instance { ipos         :: Pos
+                         , instTemplate :: Ident
+                         , iname        :: Ident
+                         , instPort     :: [Ident]}
+
+instance PP Instance where
+    pp (Instance _ t n p) = text "instance" <+> pp t <+> pp n <+> 
+                            case p of
+                                 [] -> empty
+                                 _  -> parens $ hsep $ punctuate comma $ map pp p
+
+instance WithPos Instance where
+    pos       = ipos
+    atPos i p = i{ipos = p}
+
+instance WithName Instance where
+    name = iname
 
 
 -- Init block
@@ -125,7 +133,7 @@ data Template = Template { tpos       :: Pos
                          , tmConst    :: [Const]
                          , tmTypeDecl :: [TypeDecl]
                          , tmVar      :: [GVar]
-                         --, tmInst     :: [Instance]
+                         , tmInst     :: [Instance]
                          , tmInit     :: [Init]
                          , tmProcess  :: [Process]
                          , tmMethod   :: [Method]}
@@ -133,7 +141,7 @@ data Template = Template { tpos       :: Pos
 instance PP Template where
     pp t = text "template" <+> (pp $ name t) <+> (ppports $ tmPort t) $+$ 
                                ppitems (tmDerive t)   $+$
-                               --ppitems (tmInst t)     $+$
+                               ppitems (tmInst t)     $+$
                                ppitems (tmTypeDecl t) $+$
                                ppitems (tmConst t)    $+$
                                ppitems (tmVar t)      $+$
