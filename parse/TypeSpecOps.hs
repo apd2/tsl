@@ -1,6 +1,8 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module TypeSpecOps() where
+module TypeSpecOps(eqType,
+                   eqMType,
+                   validateTypeSpec) where
 
 import Control.Monad.Error
 import Data.List
@@ -14,29 +16,50 @@ import Pos
 import TypeSpec
 import Template
 import Spec
-import Ctx
+import Scope
+import ExprOps
+
+
+eqType :: (?spec::Spec) => (TypeSpec, Scope) -> (TypeSpec,Scope) -> Bool
+eqType (BoolSpec _       , _)   (BoolSpec _       , _)  = True
+eqType (SIntSpec _ i1    , _)   (SIntSpec _ i2    , _)  = i1 == i2
+eqType (UIntSpec _ i1    , _)   (UIntSpec _ i2    , _)  = i1 == i2
+eqType (StructSpec _ fs1 , c1)  (StructSpec _ fs2 , c2) = (length fs1 == length fs2) &&
+                                                          (and $ map (\(f1,f2) -> name f2 == name f2 && eqType (typ f1,c1) (typ f2,c2)) (zip fs1 fs2))
+eqType (EnumSpec _ es1   , _)   (EnumSpec _ es2   , _)  = False
+eqType (PtrSpec _ t1     , c1)  (PtrSpec _ t2     , c2) = eqType (t1,c1) (t2,c2)
+eqType (ArraySpec _ t1 l1, c1)  (ArraySpec _ t2 l2, c2) = eqType (t1,c1) (t2,c2) && evalInt c1 l1 == evalInt c2 l2
+eqType (UserTypeSpec _ n1, c1)  (UserTypeSpec _ n2, c2) = let (d1,c1') = scopeGetType c1 n1
+                                                              (d2,c2') = scopeGetType c2 n2
+                                                          in eqType (typ d1, c1') (typ d2, c2')
+
+
+eqMType :: (?spec::Spec) => (Maybe TypeSpec, Scope) -> (Maybe TypeSpec,Scope) -> Bool
+eqMType (Nothing, _)  (Nothing, _)  = True
+eqMType (Just t1, c1) (Just t2, c2) = eqType (t1, c1)(t2, c2)
+eqMType _             _             = False
 
 ---------------------------------------------------------------------
 -- Validate individual TypeSpec
 ---------------------------------------------------------------------
 
-validateTypeSpec :: (?spec::Spec, MonadError String me) => Ctx -> TypeSpec -> me ()
+validateTypeSpec :: (?spec::Spec, MonadError String me) => Scope -> TypeSpec -> me ()
 
 -- * Struct fields must have unique names and valid types
-validateTypeSpec ctx (StructSpec _ fs) = do
+validateTypeSpec scope (StructSpec _ fs) = do
     uniqNames (\n -> "Field " ++ n ++ " declared multiple times ") fs
-    mapM (validateTypeSpec ctx . typ) fs
+    mapM (validateTypeSpec scope . typ) fs
     return ()
 
 -- * enumerator names must be unique in the current scope
-validateTypeSpec ctx (EnumSpec _ es) = do
-    mapM (ctxUniqName ctx . name) es
+validateTypeSpec scope (EnumSpec _ es) = do
+    mapM (scopeUniqName scope . name) es
     return ()
 
 -- * user-defined type names refer to valid types
-validateTypeSpec ctx (UserTypeSpec _ n) = ctxCheckType ctx n
+validateTypeSpec scope (UserTypeSpec _ n) = scopeCheckType scope n
 
-validateTypeSpec ctx _ = return ()
+validateTypeSpec scope _ = return ()
 
 ---------------------------------------------------------------------
 -- Check that the graph of dependencies among TypeDecl's is acyclic
@@ -45,15 +68,15 @@ validateTypeSpec ctx _ = return ()
 type TDeclGraph = G.Gr StaticSym ()
 
 tdeclDeps :: (?spec::Spec) => GStaticSym -> [GStaticSym]
-tdeclDeps n = (\(t,c) -> typeDeps c (typ t)) $ ctxGetType CtxTop n
+tdeclDeps n = (\(t,c) -> typeDeps c (typ t)) $ scopeGetType ScopeTop n
 
-typeDeps :: (?spec::Spec) => Ctx -> TypeSpec -> [GStaticSym]
+typeDeps :: (?spec::Spec) => Scope -> TypeSpec -> [GStaticSym]
 typeDeps c (StructSpec _ fs) = concat $ 
     map ((\t -> case t of
-                     UserTypeSpec _ n -> [ctxGTypeName $ ctxGetType c n]
+                     UserTypeSpec _ n -> [scopeGTypeName $ scopeGetType c n]
                      _                -> typeDeps c t) . typ)
         fs
-typeDeps c (UserTypeSpec _ n) = [ctxGTypeName $ ctxGetType c n]
+typeDeps c (UserTypeSpec _ n) = [scopeGTypeName $ scopeGetType c n]
 typeDeps _ _ = []
 
 
@@ -72,4 +95,4 @@ validateTypeDecls :: (?spec::Spec, MonadError String me) => me ()
 validateTypeDecls = 
     case grCycle tdeclGraph of
          Nothing -> return ()
-         Just c  -> err (pos $ snd $ head c) $ "Cyclic type aggregation: " ++ (intercalate "->" $ map (show . snd) c) 
+         Just c  -> err (pos $ snd $ head c) $ "Cyclic type aggregation: " ++ (intercalate "->" $ map (show . snd) c)

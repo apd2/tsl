@@ -4,7 +4,7 @@ module Method(TaskCat(..),
               MethodCat(..), 
               ArgDir(..), 
               Arg(Arg,argDir), 
-              Method(Method,methCat, methArg),
+              Method(Method,methCat, methArg, methRettyp),
               methVar) where
 
 import Text.PrettyPrint
@@ -20,6 +20,7 @@ import Statement
 data TaskCat = Controllable
              | Uncontrollable
              | Invisible
+             deriving (Eq)
 
 instance PP TaskCat where
     pp Controllable   = text "controllable"
@@ -29,18 +30,26 @@ instance PP TaskCat where
 data MethodCat = Function
                | Procedure
                | Task TaskCat
+               deriving (Eq)
 
 instance PP MethodCat where
     pp Function  = text "function"
     pp Procedure = text "procedure"
     pp (Task c)  = text "task" <+> pp c
 
+instance Show MethodCat where
+    show = render . pp
+
 data ArgDir = ArgIn
             | ArgOut
+            deriving (Eq)
 
 instance PP ArgDir where
     pp ArgIn  = empty
     pp ArgOut = text "out"
+
+instance Show ArgDir where
+    show = render . pp
 
 -- Method argument
 data Arg = Arg { apos   :: Pos
@@ -65,7 +74,7 @@ instance WithType Arg where
 data Method = Method { mpos       :: Pos
                      , methExport :: Bool
                      , methCat    :: MethodCat
-                     , rettyp     :: Maybe TypeSpec
+                     , methRettyp :: Maybe TypeSpec
                      , mname      :: Ident
                      , methArg    :: [Arg]
                      , methBody   :: Either (Maybe Statement, Maybe Statement) Statement}
@@ -77,7 +86,7 @@ methVar m = case methBody m of
 
 instance PP Method where
     pp m = (if (methExport m) then text "export" else empty) <+> (pp $ methCat m) <+> 
-           (case rettyp m of 
+           (case methRettyp m of 
                  Nothing -> text "void"
                  Just t  -> pp t) <+> 
            (pp $ name m) <+> 

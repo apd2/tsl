@@ -5,8 +5,7 @@ module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,EUnOp,EBinOp,ETer
             MethodRef(MethodRef),
             Radix(..),
             UOp(..),
-            BOp(..),
-            evalInt) where
+            BOp(..)) where
 
 import Text.PrettyPrint
 import Numeric
@@ -138,5 +137,4 @@ instance WithPos Expr where
 
 type ConstExpr = Expr
 
-evalInt :: ConstExpr -> Integer
-evalInt = error "evalInt not implemented"
+

@@ -69,6 +69,9 @@ instance PP TypeSpec where
     pp (ArraySpec _ t l)  = pp t <> (brackets $ pp l)
     pp (UserTypeSpec _ n) = pp n
 
+instance Show TypeSpec where
+    show = render . pp
+
 instance WithPos TypeSpec where
     pos       = tpos
     atPos t p = t{tpos = p}

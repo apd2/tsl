@@ -20,7 +20,7 @@ import Template
 import Spec
 import SpecOps
 import NS
-import Ctx
+import Scope
 
 tmParents :: (?spec::Spec) => Template -> [Template]
 tmParents t = map (specGetTemplate . drvTemplate) (tmDerive t)
@@ -149,7 +149,7 @@ validateTmNS t = do
 
 
 -- * derived template-level namespaces do not overlap
-validateTmDeriveNS :: (?spec::Spec, MonadError String me) => Ctx -> Template -> me ()
+validateTmDeriveNS :: (?spec::Spec, MonadError String me) => Scope -> Template -> me ()
 validateTmDeriveNS c t = do
     let nss = map (\d -> map (d,) $ tmLocalAndParentDecls $ specGetTemplate $ drvTemplate d) (tmDerive t)
     foldM (\names ns -> case intersectBy (\o1 o2 -> (name $ snd o1) == (name $ snd o2)) names ns of

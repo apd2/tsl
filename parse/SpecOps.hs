@@ -12,17 +12,25 @@ import Name
 import Spec
 import NS
 
--- Validation order
+-- Validation order:
+--
 -- * Validate top-level namespace
 -- * Validate template instances (required by derive statements)
 -- * Validate template ports (required by derive statements)
 -- * Validate derive statements (required to build template namespaces)
 -- * Validate template namespaces
--- * Validate types
+-- * Validate types (but not array sizes)
+-- * Validate constant types (but not initial assignments)
+-- * Validate variable types (but not initial assignments)
+-- * Validate continuous assignments (LHS only)
+-- We are now ready to validate components of the specification containing expressions:
 -- * Validate method declarations
--- * Validate variable declarations
-
--- * Validate constants
+-- * Validate process declarations
+-- * Validate initial assignment expressions in constant declarations
+-- * Validate array size declarations
+-- * Validate initial variable assignments
+-- * Validate process and method bodies
+-- * Validate RHS of continous assignments; check acyclicity of cont assignments
 
 -- Validating instance:
 -- * only concrete templates can be instantiated
@@ -30,9 +38,6 @@ import NS
 -- Additionally for enum declarations
 -- * enum values must be valid static expressions
 --
--- Validating template declarations:
--- * method declarations match prototypes in parent templates
--- 
 -- Validating constant declarations
 -- * value expressions are valid and type-compliant static expressions
 -- 
@@ -45,6 +50,9 @@ import NS
 -- Validating method declarations
 -- * valid argument and return types
 -- * argument types cannot be void
+--
+-- Validate process declarations:
+-- * var declarations have unique names
 --
 -- Validating expressions
 -- * terms refer to variables that are 
@@ -99,7 +107,7 @@ import NS
 --   - valid goal name or boolean goal expression
 -- 
 -- Validating goals:
---
+-- 
 --
 -- Validating continuous assignments:
 -- * LHS must be a variable, field or slice (no pointers, array elements)
