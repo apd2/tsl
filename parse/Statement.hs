@@ -13,25 +13,25 @@ import Expr
 import Var
 
 -- Statements
-data Statement = SVarDecl {spos::Pos, svar::Var}
-               | SReturn  {spos::Pos, retval::Expr}
-               | SSeq     {spos::Pos, statements::[Statement]}
-               | SPar     {spos::Pos, statements::[Statement]}
-               | SForever {spos::Pos, body::Statement}
-               | SDo      {spos::Pos, body::Statement, cond::Expr}
-               | SWhile   {spos::Pos, cond::Expr, body::Statement}
-               | SFor     {spos::Pos, limits::(Maybe Statement, Expr, Statement), body::Statement}
-               | SChoice  {spos::Pos, statements::[Statement]}
-               | SPause   {spos::Pos}
-               | SStop    {spos::Pos}
-               | SBreak   {spos::Pos}
-               | SInvoke  {spos::Pos, mname::MethodRef, args::[Expr]}
-               | SAssert  {spos::Pos, cond::Expr}
-               | SAssume  {spos::Pos, cond::Expr}
-               | SAssign  {spos::Pos, lhs::Expr, rhs::Expr}
-               | SITE     {spos::Pos, cond::Expr, sthen::Statement, selse::(Maybe Statement)}     -- if () then {..} [else {..}]
-               | SCase    {spos::Pos, caseexpr::Expr, cases::[(Expr, Statement)], def::(Maybe Statement)}
-               | SMagic   {spos::Pos, magiccond::(Either Ident Expr)}
+data Statement = SVarDecl {stpos::Pos, svar::Var}
+               | SReturn  {stpos::Pos, retval::Expr}
+               | SSeq     {stpos::Pos, statements::[Statement]}
+               | SPar     {stpos::Pos, statements::[Statement]}
+               | SForever {stpos::Pos, body::Statement}
+               | SDo      {stpos::Pos, body::Statement, cond::Expr}
+               | SWhile   {stpos::Pos, cond::Expr, body::Statement}
+               | SFor     {stpos::Pos, limits::(Maybe Statement, Expr, Statement), body::Statement}
+               | SChoice  {stpos::Pos, statements::[Statement]}
+               | SPause   {stpos::Pos}
+               | SStop    {stpos::Pos}
+               | SBreak   {stpos::Pos}
+               | SInvoke  {stpos::Pos, mname::MethodRef, args::[Expr]}
+               | SAssert  {stpos::Pos, cond::Expr}
+               | SAssume  {stpos::Pos, cond::Expr}
+               | SAssign  {stpos::Pos, lhs::Expr, rhs::Expr}
+               | SITE     {stpos::Pos, cond::Expr, sthen::Statement, selse::(Maybe Statement)}     -- if () then {..} [else {..}]
+               | SCase    {stpos::Pos, caseexpr::Expr, cases::[(Expr, Statement)], def::(Maybe Statement)}
+               | SMagic   {stpos::Pos, magiccond::(Either Ident Expr)}
 instance PP Statement where
     pp (SVarDecl _ d)               = pp d
     pp (SReturn _ e)                = text "return" <+> pp e
@@ -62,8 +62,8 @@ instance PP Statement where
     pp (SMagic _ (Right c))         = (braces $ text "...") <+> text "post" <+> pp c
 
 instance WithPos Statement where
-    pos       = spos
-    atPos s p = s{spos = p}
+    pos       = stpos
+    atPos s p = s{stpos = p}
 
 stmtVar :: Statement -> [Var]
 stmtVar (SVarDecl _ v)          = [v]

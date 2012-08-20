@@ -6,6 +6,7 @@ import Data.List
 import Data.Maybe
 
 import Util hiding(name)
+import Pos
 import Name
 import Template
 import Process
@@ -29,7 +30,38 @@ data Obj = ObjTemplate Template
          | ObjTypeDecl TypeDecl
          | ObjConst    Const
          | ObjEnum     Enumerator
-         
+
+instance WithPos Obj where
+    pos (ObjTemplate t) = pos t
+    pos (ObjPort     p) = pos p
+    pos (ObjInstance i) = pos i
+    pos (ObjProcess  p) = pos p
+    pos (ObjMethod   m) = pos m
+    pos (ObjVar      v) = pos v
+    pos (ObjGVar     v) = pos v
+    pos (ObjArg      a) = pos a
+    pos (ObjType     t) = pos t
+    pos (ObjTypeDecl t) = pos t
+    pos (ObjConst    c) = pos c
+    pos (ObjEnum     e) = pos e
+    atPos _ = error $ "Not implemented: atPos Obj"
+
+
+instance WithName Obj where
+    name (ObjTemplate t) = name t
+    name (ObjPort     p) = name p
+    name (ObjInstance i) = name i
+    name (ObjProcess  p) = name p
+    name (ObjMethod   m) = name m
+    name (ObjVar      v) = name v
+    name (ObjGVar     v) = name v
+    name (ObjArg      a) = name a
+    name (ObjType     t) = error $ "requesting name of a TypeSpec"
+    name (ObjTypeDecl t) = name t
+    name (ObjConst    c) = name c
+    name (ObjEnum     e) = name e
+
+
 objLookup :: (?spec::Spec) => Obj -> Ident -> Maybe Obj
 objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,pr,m,d,c,e,par]
     where -- search for the name in the local scope
@@ -67,11 +99,3 @@ objLookup (ObjType (StructSpec _ fs)) n = fmap (ObjType . typ) $ find ((==n) . n
 
 objGet :: (?spec::Spec) => Obj -> Ident -> Obj
 objGet o n = fromJustMsg ("objLookup failed: " ++ show n) $ objLookup o n
-
---typeLookup ::
---
---typeGet
---
---constLookup
---
---constGet

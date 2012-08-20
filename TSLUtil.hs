@@ -18,14 +18,11 @@ err :: (MonadError String me) => Pos -> String -> me a
 err p e = throwError $ show p ++ ": " ++ e
 
 -- Check for duplicate declarations
-uniqNames :: (MonadError String me, WithPos a, WithName a) => String -> [a] -> me ()
-uniqNames m xs = do 
-    foldM (\xs' x -> case find ((== name x) . name) xs' of
-                          Nothing -> return $ x:xs'
-                          Just y  -> err (pos x) $ "Duplicate " ++ m ++ " " ++ show (name x) ++ " previous declaration: " ++ show (pos y)) 
-          [] xs
-    return ()
-
+uniqNames :: (MonadError String me, WithPos a, WithName a) => (String -> String) -> [a] -> me ()
+uniqNames msgfunc xs = do
+    case filter ((>1) . length) $ groupBy (\x1 x2 -> name x1 == name x2) xs of
+         []        -> return ()
+         g@(x:_):_ -> err (pos x) $ msgfunc (sname x) ++ " at the following locations:\n  " ++ (intercalate "\n  " $ map spos g)
 
 -- Find a cycle in a graph
 grCycle :: Graph gr => gr a b -> Maybe [LNode a]

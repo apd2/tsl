@@ -1,4 +1,6 @@
-module Pos(Pos, WithPos(..)) where
+module Pos(Pos, 
+           WithPos(..),
+           spos) where
 
 import Text.Parsec.Pos
 
@@ -8,3 +10,5 @@ class WithPos a where
     pos   :: a -> Pos
     atPos :: a -> Pos -> a
 
+spos :: (WithPos a) => a -> String
+spos x = show $ pos x

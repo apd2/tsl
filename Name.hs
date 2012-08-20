@@ -5,7 +5,8 @@
 module Name(Ident(..), 
             StaticSym, 
             GStaticSym, 
-            WithName(..)) where
+            WithName(..),
+            sname) where
 
 import Text.PrettyPrint
 
@@ -35,7 +36,14 @@ type StaticSym = [Ident]
 instance PP StaticSym where
     pp s = hcat $ punctuate (text "::") (map pp s)
 
+instance WithPos StaticSym where
+    pos s = ((fst $ pos $ head s),(snd $ pos $ last s))
+    atPos = error $ "Not implemented: atPos StaticSym"
+
 type GStaticSym = StaticSym
 
 class WithName a where
     name :: a -> Ident
+
+sname :: (WithName a) => a -> String
+sname x = show $ name x
