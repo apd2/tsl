@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances #-}
 
 module TypeSpec(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec), 
+                isIntType,
                 WithType(..),
                 TypeDecl(TypeDecl), 
                 Enumerator(Enumerator,enumVal),
@@ -50,14 +51,18 @@ instance WithName Field where
 instance WithType Field where
     typ = ftyp
 
-data TypeSpec = BoolSpec      {tpos :: Pos}
-              | SIntSpec      {tpos :: Pos, width :: Int}
-              | UIntSpec      {tpos :: Pos, width :: Int}
-              | StructSpec    {tpos :: Pos, fields :: [Field]}
-              | EnumSpec      {tpos :: Pos, enums :: [Enumerator]}
-              | PtrSpec       {tpos :: Pos, ptype :: TypeSpec}
-              | ArraySpec     {tpos :: Pos, eltype :: TypeSpec, len :: Expr}
-              | UserTypeSpec  {tpos :: Pos, tname :: StaticSym}
+-- Flatten out all type references
+typ' :: (?spec::Spec, ?scope::Scope, WithType a) => a -> TypeSpec
+
+data TypeSpec = BoolSpec         {tpos :: Pos}
+              | SIntSpec         {tpos :: Pos, width  :: Int}
+              | UIntSpec         {tpos :: Pos, width  :: Int}
+              | StructSpec       {tpos :: Pos, fields :: [Field]}
+              | EnumSpec         {tpos :: Pos, enums  :: [Enumerator]}
+              | PtrSpec          {tpos :: Pos, ptype  :: TypeSpec}
+              | ArraySpec        {tpos :: Pos, eltype :: TypeSpec, len :: Expr}
+              | UserTypeSpec     {tpos :: Pos, tname  :: StaticSym}
+              | TemplateTypeSpec {tpos :: Pos, tmname :: Ident}
 
 instance PP TypeSpec where
     pp (BoolSpec _)       = text "bool"
@@ -68,6 +73,7 @@ instance PP TypeSpec where
     pp (PtrSpec _ t)      = pp t <> char '*'
     pp (ArraySpec _ t l)  = pp t <> (brackets $ pp l)
     pp (UserTypeSpec _ n) = pp n
+    pp (TemplateType _ n) = text "template" <+> pp n
 
 instance Show TypeSpec where
     show = render . pp
@@ -97,4 +103,4 @@ instance WithName TypeDecl where
 instance WithType TypeDecl where
     typ = dspec
 
- 
+

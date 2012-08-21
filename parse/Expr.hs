@@ -8,6 +8,8 @@ module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,EUnOp,EBinOp,ETer
             BOp(..)) where
 
 import Text.PrettyPrint
+import Data.List
+import Data.Bits
 import Numeric
 import Data.Char
 
@@ -21,11 +23,6 @@ instance PP Slice where
     pp (l,h) = brackets $ pp l <> colon <> pp h 
 
 data Radix = Rad2 | Rad8 | Rad10 | Rad16
-instance PP Radix where
-    pp Rad2  = text "'b"
-    pp Rad8  = text "'o"
-    pp Rad10 = text "'d"
-    pp Rad16 = text "'h"
 
 data MethodRef = MethodRef Pos [Ident]
 
@@ -65,6 +62,8 @@ data BOp = Eq
          | BinMinus 
          | Mod
          | Mul
+         deriving(Eq)
+
 instance PP BOp where
     pp Eq       = text "=="
     pp Neq      = text "!="
@@ -87,7 +86,7 @@ instance PP BOp where
 
 -- Expressions 
 data Expr = ETerm   {epos::Pos, ssym::StaticSym}
-          | ELit    {epos::Pos, width::(Maybe Int), rad::Radix, ival::Integer}
+          | ELit    {epos::Pos, width::Int, signed::Bool, rad::Radix, ival::Integer}
           | EBool   {epos::Pos, bval::Bool}
           | EApply  {epos::Pos, mref::MethodRef, args::[Expr]}
           | EField  {epos::Pos, struct::Expr, field::Ident}
@@ -104,12 +103,20 @@ data Expr = ETerm   {epos::Pos, ssym::StaticSym}
 
 instance PP Expr where
     pp (ETerm _ s)              = pp s
-    pp (ELit _ w r v)           = pp w <> pp r <> 
-                                  case r of
-                                       Rad2  -> text $ showIntAtBase 2 intToDigit v ""
-                                       Rad8  -> text $ showOct v ""
-                                       Rad10 -> pp v
-                                       Rad16 -> text $ showHex v ""
+    pp (ELit _ w s r v)         = let -- negate v if v<0
+                                      v' = if v >= 0 
+                                              then v
+                                              else (foldl' (\v i -> complementBit (abs v) i) v [0..w-1]) + 1
+                                  in pp w <> 
+                                     case (s,r) of
+                                          (False, Rad2)  -> text "'b"  <> (text $ showIntAtBase 2 intToDigit v' "")
+                                          (True,  Rad2)  -> text "'sb" <> (text $ showIntAtBase 2 intToDigit v' "")
+                                          (False, Rad8)  -> text "'o"  <> (text $ showOct v' "")
+                                          (True,  Rad8)  -> text "'so" <> (text $ showOct v' "")
+                                          (False, Rad10) -> text "'d"  <> pp v
+                                          (True,  Rad10) -> text "'sd" <> pp v
+                                          (False, Rad16) -> text "'h"  <> (text $ showHex v' "")
+                                          (True,  Rad16) -> text "'sh" <> (text $ showHex v' "")
     pp (EBool _ True)            = text "true"
     pp (EBool _ False)           = text "false"
     pp (EApply _ m args)         = pp m <+> (parens $ hsep $ punctuate comma $ map pp args)

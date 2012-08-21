@@ -40,15 +40,12 @@ validateDrvInst :: (?spec::Spec, MonadError String me) => Template -> Ident -> [
 validateDrvInst tm tname ports posit = do
     specCheckTemplate tname
     let t = specGetTemplate tname 
-    if (length $ tmPort t) /= (length ports) 
-       then err posit $ "Incorrect number of parameters to template " ++ sname t ++ 
-                        ". " ++ (show $ length $ tmPort t) ++ " parameters required."
-       else return ()
+    assert ((length $ tmPort t) == (length ports)) posit $ 
+           "Incorrect number of parameters to template " ++ sname t ++ 
+           ". " ++ (show $ length $ tmPort t) ++ " parameters required."
     mapM (\(p,n) -> do ptm <- tmLookupPortInst tm n
-                       if (portTemplate p /= ptm)
-                          then err (pos n) $ "Invalid template parameter: expected template type: " ++ 
-                                             (show $ portTemplate p) ++ ", actual type: " ++ show ptm
-                          else return ())
+                       assert (portTemplate p == ptm) (pos n) $ 
+                              "Invalid template parameter: expected template type: " ++ (show $ portTemplate p) ++ ", actual type: " ++ show ptm)
          (zip (tmPort t) ports)
     return ()
 
@@ -70,7 +67,7 @@ validateInstance tm i = validateDrvInst tm (instTemplate i) (instPort i) (pos i)
 -----------------------------------------------------------
 
 validatePort :: (?spec::Spec, MonadError String me) => Template -> Port -> me ()
-validatePort tm p = specCheckTemplate $ portTemplate p
+validatePort tm p = do {specCheckTemplate $ portTemplate p; return ()}
 
 
 -----------------------------------------------------------

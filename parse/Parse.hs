@@ -384,19 +384,29 @@ ecase   = (fmap uncurry (ECase nopos <$ reserved "case" <*> (parens expr))) <*> 
 econd   = (fmap uncurry (ECond nopos <$ reserved "cond")) <*> (braces $ (,) <$> (many $ (,) <$> expr <* colon <*> expr <* semi) 
                                                                             <*> optionMaybe (reserved "default" *> colon *> expr <* semi))
 
-elit' = (lookAhead $ char '\'' <|> digit) *> (fmap uncurry $ ELit nopos <$> width) <*> radval
+elit' = (lookAhead $ char '\'' <|> digit) *> (do w         <- width
+                                                 ((s,r),v) <- sradval
+                                                 mkLit w s r v)
+
 width = optionMaybe (try $ ((fmap fromIntegral parseDec) <* (lookAhead $ char '\'')))
-radval =  ((,) <$> (Rad2  <$ (try $ string "'b")) <*> parseBin)
-      <|> ((,) <$> (Rad8  <$ (try $ string "'o")) <*> parseOct)
-      <|> ((,) <$> (Rad10 <$ (try $ string "'d")) <*> parseDec)
-      <|> ((,) <$> (Rad16 <$ (try $ string "'h")) <*> parseHex)
-      <|> ((Rad10,) <$> parseDec)
+sradval =  ((,) <$> ((False, Rad2)  <$ (try $ string "'b"))  <*> parseBin)
+       <|> ((,) <$> ((True,  Rad2)  <$ (try $ string "'sb")) <*> parseBin)
+       <|> ((,) <$> ((False, Rad8)  <$ (try $ string "'o"))  <*> parseOct)
+       <|> ((,) <$> ((True,  Rad8)  <$ (try $ string "'so")) <*> parseOct)
+       <|> ((,) <$> ((False, Rad10) <$ (try $ string "'d"))  <*> parseDec)
+       <|> ((,) <$> ((True,  Rad10) <$ (try $ string "'sd")) <*> parseSDec)
+       <|> ((,) <$> ((False, Rad16) <$ (try $ string "'h"))  <*> parseHex)
+       <|> ((,) <$> ((True,  Rad16) <$ (try $ string "'sh")) <*> parseHex)
+       <|> (((False,Rad10),) <$> parseDec)
 parseBin :: Stream s m Char => ParsecT s u m Integer
 parseBin = readBin <$> (many1 $ (char '0') <|> (char '1'))
 parseOct :: Stream s m Char => ParsecT s u m Integer
 parseOct = (fst . head . readOct) <$> many1 octDigit
 parseDec :: Stream s m Char => ParsecT s u m Integer
 parseDec = (fst . head . readDec) <$> many1 digit
+parseSDec = (\m v -> m * v)
+            <$> (option 1 ((-1) <$ reservedOp "-"))
+            <*> ((fst . head . readDec) <$> many1 digit)
 parseHex :: Stream s m Char => ParsecT s u m Integer
 parseHex = (fst . head . readHex) <$> many1 hexDigit
 readBin :: String -> Integer
@@ -404,6 +414,30 @@ readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
                               case c of
                                    '0' -> 0
                                    '1' -> 1) 0 s
+
+mkLit :: Maybe Int -> Bool -> Radix -> Integer -> ParsecT s u m Expr
+mkLit Nothing  False Rad10 v                       = return $ ELit nopos (msb v + 1) False Rad10 v
+mkLit Nothing  False r     v                       = return $ ELit nopos (msb v + 1) False r     v
+mkLit Nothing  True  r     v                       = fail "Explicit width required for signed literal"
+mkLit (Just w) False r     v | w == 0              = fail "Unsigned literals must have width >0"
+                             | msb v < w           = return $ ELit nopos w False r v
+                             | otherwise           = fail "Value exceeds specified width"
+mkLit (Just w) True  Rad10 v | w < 2               = fail "Signed literals must have width >1"
+                             | (msb $ abs v) < w-1 = return $ ELit nopos w True Rad10 v
+                             | otherwise           = fail "Value exceeds specified width"
+mkLit (Just w) True  r     v | w < 2               = fail "Signed literals must have width >1"
+                             | msb v == w - 1      = do let v' = (foldl' (\v i -> complementBit v i) v [0..w-1]) + 1
+                                                        return $ ELit nopos w True r (-v')
+                             | msb v < w - 1       = return $ ELit nopos w True r v
+                             | otherwise           = fail "Value exceeds specified width"
+
+-- Determine the most significant set bit of a non-negative number 
+-- (returns 0 if not bits are set)
+msb :: (Bits b) => b -> Int
+msb 0 = 0
+msb 1 = 0
+msb n = 1 + (msb $ n `shiftR` 1)
+
 
 expr =  (withPos $ ENonDet nopos <$ reservedOp "*")
     <|> buildExpressionParser table term

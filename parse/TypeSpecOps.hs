@@ -19,20 +19,33 @@ import Spec
 import Scope
 import ExprOps
 
+-- Flatten out all type references
+typ' :: (?spec::Spec, ?scope::Scope, WithType a) => a -> TypeSpec
+
+
+isInt :: TypeSpec -> Bool
+isInt (SIntSpec _ _) = True
+isInt (UIntSpec _ _) = True
+isInt _              = False
+
+isBool :: TypeSpec -> Bool
+isBool (BoolSpec _) = True
+isBool _            = False
 
 eqType :: (?spec::Spec) => (TypeSpec, Scope) -> (TypeSpec,Scope) -> Bool
-eqType (BoolSpec _       , _)   (BoolSpec _       , _)  = True
-eqType (SIntSpec _ i1    , _)   (SIntSpec _ i2    , _)  = i1 == i2
-eqType (UIntSpec _ i1    , _)   (UIntSpec _ i2    , _)  = i1 == i2
-eqType (StructSpec _ fs1 , c1)  (StructSpec _ fs2 , c2) = (length fs1 == length fs2) &&
-                                                          (and $ map (\(f1,f2) -> name f2 == name f2 && eqType (typ f1,c1) (typ f2,c2)) (zip fs1 fs2))
-eqType (EnumSpec _ es1   , _)   (EnumSpec _ es2   , _)  = False
-eqType (PtrSpec _ t1     , c1)  (PtrSpec _ t2     , c2) = eqType (t1,c1) (t2,c2)
-eqType (ArraySpec _ t1 l1, c1)  (ArraySpec _ t2 l2, c2) = eqType (t1,c1) (t2,c2) && evalInt c1 l1 == evalInt c2 l2
-eqType (UserTypeSpec _ n1, c1)  (UserTypeSpec _ n2, c2) = let (d1,c1') = scopeGetType c1 n1
-                                                              (d2,c2') = scopeGetType c2 n2
-                                                          in eqType (typ d1, c1') (typ d2, c2')
-
+eqType (BoolSpec _       , _)    (BoolSpec _       , _)    = True
+eqType (SIntSpec _ i1    , _)    (SIntSpec _ i2    , _)    = i1 == i2
+eqType (UIntSpec _ i1    , _)    (UIntSpec _ i2    , _)    = i1 == i2
+eqType (StructSpec _ fs1 , c1)   (StructSpec _ fs2 , c2)   = (length fs1 == length fs2) &&
+                                                             (and $ map (\(f1,f2) -> name f2 == name f2 && eqType (typ f1,c1) (typ f2,c2)) (zip fs1 fs2))
+eqType (EnumSpec _ es1   , _)    (EnumSpec _ es2   , _)    = False
+eqType (PtrSpec _ t1     , c1)   (PtrSpec _ t2     , c2)   = eqType (t1,c1) (t2,c2)
+eqType (ArraySpec _ t1 l1, c1)   (ArraySpec _ t2 l2, c2)   = eqType (t1,c1) (t2,c2) && evalInt c1 l1 == evalInt c2 l2
+eqType (UserTypeSpec _ n1, c1)   (UserTypeSpec _ n2, c2)   = let (d1,c1') = scopeGetType c1 n1
+                                                                 (d2,c2') = scopeGetType c2 n2
+                                                             in eqType (typ d1, c1') (typ d2, c2')
+eqType (TemplateTypeSpec _ n1,_) (TemplateTypeSpec _ n2,_) = n1 == n2
+eqType _                         _                         = False
 
 eqMType :: (?spec::Spec) => (Maybe TypeSpec, Scope) -> (Maybe TypeSpec,Scope) -> Bool
 eqMType (Nothing, _)  (Nothing, _)  = True
@@ -57,7 +70,7 @@ validateTypeSpec scope (EnumSpec _ es) = do
     return ()
 
 -- * user-defined type names refer to valid types
-validateTypeSpec scope (UserTypeSpec _ n) = scopeCheckType scope n
+validateTypeSpec scope (UserTypeSpec _ n) = do {scopeCheckType scope n; return ()}
 
 validateTypeSpec scope _ = return ()
 

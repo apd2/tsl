@@ -1,8 +1,10 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module SpecOps(specNamespace) where
+module SpecOps(specNamespace,
+               specLookup) where
 
 import Data.List
+import Data.Maybe
 import Control.Monad.Error
 
 import TSLUtil
@@ -11,6 +13,14 @@ import Pos
 import Name
 import Spec
 import NS
+import Template
+import Const
+
+specLookup :: (?spec::Spec) => Ident -> Maybe Obj
+specLookup n = listToMaybe $ catMaybes [tm, t, c]
+    where tm = fmap ObjTemplate $ find ((== n) . name) (specTemplate ?spec)
+          t  = fmap ObjTypeDecl $ find ((== n) . name) (specType ?spec)
+          c  = fmap ObjConst    $ find ((== n) . name) (specConst ?spec)
 
 -- Validation order:
 --
@@ -25,12 +35,14 @@ import NS
 -- * Validate continuous assignments (LHS only)
 -- We are now ready to validate components of the specification containing expressions:
 -- * Validate method declarations
+-- * Validate call graph (no recursion, all possible stacks are valid (only invoke methods allowed in this context))
 -- * Validate process declarations
 -- * Validate initial assignment expressions in constant declarations
 -- * Validate array size declarations
 -- * Validate initial variable assignments
 -- * Validate process and method bodies
 -- * Validate RHS of continous assignments; check acyclicity of cont assignments
+-- From now on, check that
 
 -- Validating instance:
 -- * only concrete templates can be instantiated
@@ -57,7 +69,6 @@ import NS
 -- Validating expressions
 -- * terms refer to variables that are 
 --   - visible in the current scope;
---   - are not continuous assignment variables
 -- * literals: value matches width
 -- * method applications:
 --   - method name refers to a visible method (local or exported)
@@ -99,7 +110,8 @@ import NS
 --   - the number and types of arguments match
 --   - no recursion
 -- * assert, assume arguments must be valid, side effect-free boolean expressions 
--- * assign: LHS is a valid l-value expression; RHS is a valid expression of a matching type
+-- * assign: LHS is a valid l-value expression (in particular, it cannot be a continous 
+--   assignment variable); RHS is a valid expression of a matching type
 -- * if-then-else.  The conditional expression is of type bool
 -- * case: the key expression and case clauses have matching types
 -- * magic block: 
@@ -133,8 +145,5 @@ specNamespace = map ObjTemplate (specTemplate ?spec) ++
 -- Validate top-level namespace:
 -- * No identifier is declared twice at the top level
 validateSpecNS :: (?spec::Spec, MonadError String me) => me ()
-validateSpecNS = do
-    case filter ((> 1) . length) $ groupBy (\o1 o2 -> name o1 == name o2) specNamespace of
-         []          -> return ()
-         (g@(o:_)):_ -> err (pos o) $ "Identifier " ++ sname o ++ " declared more than once in the top-level scope " ++
-                                      " at locations:\n  " ++ (intercalate "\n  " $ map spos g)
+validateSpecNS = 
+    uniqNames (\n -> "Identifier " ++ n ++ " declared more than once in the top-level scope") specNamespace
