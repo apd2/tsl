@@ -26,5 +26,5 @@ instance WithPos Var where
 instance WithName Var where
     name = vname
 
-instance WithType Var where
-    typ = vtyp
+instance WithTypeSpec Var where
+    tspec = vtyp

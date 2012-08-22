@@ -122,8 +122,8 @@ instance WithPos GVar where
 instance WithName GVar where
     name = name . gvvar
 
-instance WithType GVar where
-    typ = typ . gvvar
+instance WithTypeSpec GVar where
+    tspec = tspec . gvvar
 
 -- Template
 data Template = Template { tpos       :: Pos

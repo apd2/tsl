@@ -1,7 +1,6 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module SpecOps(specNamespace,
-               specLookup) where
+module SpecOps(specNamespace) where
 
 import Data.List
 import Data.Maybe
@@ -16,11 +15,11 @@ import NS
 import Template
 import Const
 
-specLookup :: (?spec::Spec) => Ident -> Maybe Obj
-specLookup n = listToMaybe $ catMaybes [tm, t, c]
-    where tm = fmap ObjTemplate $ find ((== n) . name) (specTemplate ?spec)
-          t  = fmap ObjTypeDecl $ find ((== n) . name) (specType ?spec)
-          c  = fmap ObjConst    $ find ((== n) . name) (specConst ?spec)
+--specLookup :: (?spec::Spec) => Ident -> Maybe Obj
+--specLookup n = listToMaybe $ catMaybes [tm, t, c]
+--    where tm = fmap (ObjTemplate ScopeTop) $ find ((== n) . name) (specTemplate ?spec)
+--          t  = fmap (ObjTypeDecl ScopeTop) $ find ((== n) . name) (specType ?spec)
+--          c  = fmap (ObjConst    ScopeTop) $ find ((== n) . name) (specConst ?spec)
 
 -- Validation order:
 --
@@ -135,11 +134,11 @@ specLookup n = listToMaybe $ catMaybes [tm, t, c]
 
 
 specNamespace :: (?spec::Spec) => [Obj]
-specNamespace = map ObjTemplate (specTemplate ?spec) ++ 
-                map ObjTypeDecl (specType ?spec) ++ 
-                map ObjConst    (specConst ?spec) ++ 
+specNamespace = map (ObjTemplate ScopeTop) (specTemplate ?spec) ++ 
+                map (ObjTypeDecl ScopeTop) (specType ?spec) ++ 
+                map (ObjConst    ScopeTop) (specConst ?spec) ++ 
                 (concat $ map (\t -> case typ t of
-                                          EnumSpec _ es -> map ObjEnum es
+                                          EnumSpec _ es -> map (ObjEnum ScopeTop) es
                                           _             -> []) (specType ?spec))
 
 -- Validate top-level namespace:

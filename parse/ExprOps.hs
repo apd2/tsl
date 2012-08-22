@@ -11,9 +11,30 @@ import Spec
 evalInt :: (?spec::Spec) => Scope -> ConstExpr -> Integer
 evalInt = error "evalInt not implemented"
 
+exprType :: (?spec::Spec, ?scope::Scope) => Expr -> (TypeSpec, Scope)
+exprType (ETerm   _ n)           = (typ o, scope o) where o = scopeGetTerm ?scope n
+exprType (ELit    p w True _ _)  = (SIntSpec p w,?scope)
+exprType (ELit    p w False _ _) = (UIntSpec p w,?scope)
+exprType (EBool   p _)           = (BoolSpec p  ,?scope)
+exprType (EApply  _ m _)         = mapFst methRettyp $ scopeGetMethod ?scope m
+exprType (EField  _ e f)         = (typ $ objGet (ObjType s t) f, s) where (t,s) = expandType ?scope $ exprType e
+exprType (EPField _ e f)         = (typ $ objGet (ObjType s t) f, s) where (PtrSpec _ t,s) = expandType ?scope $ exprType e
+exprType (EIndex _ e i)          = (t,s) where (ArraySpec _ t _,s) = expandType ?scope $ exprType e
+
+          | EIndex  {epos::Pos, arr::Expr, idx::Expr}
+          | EUnOp   {epos::Pos, uop::UOp, arg1::Expr}
+          | EBinOp  {epos::Pos, bop::BOp, arg1::Expr, arg2::Expr}
+          | ETernOp {epos::Pos, arg1::Expr, arg2::Expr, arg3::Expr}
+          | ECase   {epos::Pos, caseexpr::Expr, cases::[(Expr, Expr)], def::(Maybe Expr)}
+          | ECond   {epos::Pos, cases::[(Expr, Expr)], def::(Maybe Expr)}
+          | ESlice  {epos::Pos, slexpr::Expr, slice::Slice}
+          | EStruct {epos::Pos, typename::StaticSym, fields::(Either [(Ident, Expr)] [Expr])} -- either named or anonymous list of fields
+          | ENonDet {epos::Pos}
+
+
 -- Assumes that expression has been validated first
 instance (?spec::Spec, ?scope::Scope) => WithType Expr where
-    typ
+
 
 -- Validating expressions
 -- * case: 
@@ -33,30 +54,32 @@ instance (?spec::Spec, ?scope::Scope) => WithType Expr where
 
 
 validateExpr :: (?spec::Spec, MonadError String me) => Scope -> Expr -> me ()
+validateExpr s e = let ?scope = s 
+                   in validateExpr' e
 
 -- * terms refer to variable or constants visible in the current scope
-validateExpr s (ETerm _ n)        = do {scopeCheckTerm s n; return ()}
-validateExpr s (ELit _ w r v)     = return ()
-validateExpr s (EBool _ _)        = return ()
+validateExpr' (ETerm _ n)        = do {scopeCheckTerm s n; return ()}
+validateExpr' (ELit _ w r v)     = return ()
+validateExpr' (EBool _ _)        = return ()
 
 -- * method application:
 --   - method name refers to a visible method (local or exported)
 --   - the number and types of arguments match
-validateExpr s (EApply p mref as) = do
+validateExpr' (EApply p mref as) = do
     m <- scopeCheckMethod s mref
     assert ((length $ methArg m) == length as) p $
            "Method " ++ sname m ++ " takes " ++ show (length $ methArg m) ++ 
            " arguments, but is invoked with " ++ show (length as) ++ " arguments"
-    mapM (\(marg,a) -> do validateExpr s a
+    mapM (\(marg,a) -> do validateExpr' a
                           assert (typeMatch marg a) (pos a) $
                                  "Argument type " ++ show (typ a) ++ " does not match expected type " ++ show (typ marg))
          (zip (methArg m) as)
 
 -- * field selection refers to a valid struct field, or a valid and externally 
 --   visible template variable, port or instance
-validateExpr s (EField p e f) = do
-    validateExpr s e
-    case typ' e of
+validateExpr' (EField p e f) = do
+    validateExpr' e
+    case typ' ?scope e of
          StructSpec _ fs      -> assert (any ((==f) . name) fs) (pos f) $ "Unknown field name " ++ show f
          TemplateTypeSpec _ t -> case objLookup (ObjTemplate t) f of
                                       Nothing              -> err (pos f) $ "Unknown identifier " ++ show f
@@ -67,44 +90,44 @@ validateExpr s (EField p e f) = do
                                       _                    -> show f ++ " does not refer to an externally visible member of template " ++ show t
          _                    -> err (pos f) $ "Expression " ++ show s ++ " is not a struct or template"
 
-validateExpr s (EPField p e f) = do
-    validateExpr s e
-    case typ' e of
+validateExpr' (EPField p e f) = do
+    validateExpr' e
+    case flattenType ?scope e of
          PtrSpec _ (StructSpec _ fs) -> assert (any ((==f) . name) fs) (pos f) $ "Unknown field name " ++ show f
          _                           -> err (pos f) $ "Expression " ++ show s ++ " is not a struct pointer"
 
 
 -- * index[]: applied to an array type expression; index value is a valid 
 --   integral expression 
-validateExpr s (EIndex _ a i) = do
-    validateExpr s a
-    validateExpr s i
+validateExpr' (EIndex _ a i) = do
+    validateExpr' a
+    validateExpr' i
     assert (isInt i) (pos i) $ show i ++ " is not of integral type"
     assert (isArray a) (pos i) $ show a ++ " is not an array"
 
-validateExpr s (EUnOp p UMinus e) = do
-    validateExpr s e
+validateExpr' (EUnOp p UMinus e) = do
+    validateExpr' e
     assert (isInt e) p $ "Unary minus applied to expression " ++ show e ++ " of non-integral type"
 
-validateExpr s (EUnOp p UNot e) = do
-    validateExpr s e
+validateExpr' (EUnOp p UNot e) = do
+    validateExpr' e
     assert (isBool e) p $ "Logical negation applied to expression " ++ show e ++ " of non-boolean type"
 
-validateExpr s (EUnOp p BNeg e) = do
-    validateExpr s e
+validateExpr' (EUnOp p BNeg e) = do
+    validateExpr' e
     assert (isInt e) p $ "Bit-wise negation applied to expression " ++ show e ++ " of non-integral type"
 
-validateExpr s (EUnOp p Deref e) = do
-    validateExpr s e
+validateExpr' (EUnOp p Deref e) = do
+    validateExpr' e
     assert (isPtr e) p $ "Cannot dereference non-pointer expression " ++ show e
 
-validateExpr s (EUnOp p AddrOf e) = do
-    validateExpr s e
+validateExpr' (EUnOp p AddrOf e) = do
+    validateExpr' e
     assert (isLExpr e) p $ "Cannot take address of expression " ++ show e ++ ", which is not an L-value"
 
-validateExpr s (EBool p op e1 e2) = do
-    validateExpr s e1
-    validateExpr s e2
+validateExpr' (EBool p op e1 e2) = do
+    validateExpr' e1
+    validateExpr' e2
     if elem op [Eq,Neq]
       then assert (typesComparable e1 e2) p $ "Operator " ++ show op ++ " applied to expressions " ++ show e1 ++ 
                                               " and " ++ show e2 ++ " that have uncomparable types"
@@ -118,10 +141,10 @@ validateExpr s (EBool p op e1 e2) = do
                assert (isBool e2) p $ "Second operand " ++ show e2 ++ " of " ++ show op ++ " is of non-boolean type"
        else return ()
     if elem op [BAnd, BOr, BXor]
-       then assert ((intTypeWidth $ typ' e1) == (intTypeWidth $ typ' e2)) p $ 
+       then assert ((intTypeWidth $ typ' ?scope e1) == (intTypeWidth $ typ' ?scope e2)) p $ 
                    "Binary bitwise operator " ++ show op ++ " applied to arguments of different width: " ++
-                   show e1 ++ " has width " ++ (show $ intTypeWidth $ typ' e1) ++ ", " ++ 
-                   show e2 ++ " has width " ++ (show $ intTypeWidth $ typ' e2)
+                   show e1 ++ " has width " ++ (show $ intTypeWidth $ typ' ?scope e1) ++ ", " ++ 
+                   show e2 ++ " has width " ++ (show $ intTypeWidth $ typ' ?scope e2)
        else return ()
 
 --ETernOp {epos::Pos, arg1::Expr, arg2::Expr, arg3::Expr}

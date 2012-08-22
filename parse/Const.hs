@@ -25,5 +25,5 @@ instance WithPos Const where
 instance WithName Const where
     name = cname
 
-instance WithType Const where
-    typ = ctyp
+instance WithTypeSpec Const where
+    tspec = ctyp

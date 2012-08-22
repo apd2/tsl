@@ -1,8 +1,7 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances #-}
 
-module TypeSpec(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec), 
-                isIntType,
-                WithType(..),
+module TypeSpec(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec,TemplateTypeSpec), 
+                WithTypeSpec(..),
                 TypeDecl(TypeDecl), 
                 Enumerator(Enumerator,enumVal),
                 Field(Field)) where
@@ -48,11 +47,8 @@ instance WithPos Field where
 instance WithName Field where
     name = fname
 
-instance WithType Field where
-    typ = ftyp
-
--- Flatten out all type references
-typ' :: (?spec::Spec, ?scope::Scope, WithType a) => a -> TypeSpec
+instance WithTypeSpec Field where
+    tspec = ftyp
 
 data TypeSpec = BoolSpec         {tpos :: Pos}
               | SIntSpec         {tpos :: Pos, width  :: Int}
@@ -65,15 +61,15 @@ data TypeSpec = BoolSpec         {tpos :: Pos}
               | TemplateTypeSpec {tpos :: Pos, tmname :: Ident}
 
 instance PP TypeSpec where
-    pp (BoolSpec _)       = text "bool"
-    pp (SIntSpec _ i)     = text "sint" <> char '<' <> pp i <> char '>'
-    pp (UIntSpec _ i)     = text "uint" <> char '<' <> pp i <> char '>'
-    pp (StructSpec _ fs)  = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
-    pp (EnumSpec _ es)    = text "enum" <+> (braces $ nest' $ vcat $ punctuate comma $ map pp es)
-    pp (PtrSpec _ t)      = pp t <> char '*'
-    pp (ArraySpec _ t l)  = pp t <> (brackets $ pp l)
-    pp (UserTypeSpec _ n) = pp n
-    pp (TemplateType _ n) = text "template" <+> pp n
+    pp (BoolSpec _)           = text "bool"
+    pp (SIntSpec _ i)         = text "sint" <> char '<' <> pp i <> char '>'
+    pp (UIntSpec _ i)         = text "uint" <> char '<' <> pp i <> char '>'
+    pp (StructSpec _ fs)      = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
+    pp (EnumSpec _ es)        = text "enum" <+> (braces $ nest' $ vcat $ punctuate comma $ map pp es)
+    pp (PtrSpec _ t)          = pp t <> char '*'
+    pp (ArraySpec _ t l)      = pp t <> (brackets $ pp l)
+    pp (UserTypeSpec _ n)     = pp n
+    pp (TemplateTypeSpec _ n) = text "template" <+> pp n
 
 instance Show TypeSpec where
     show = render . pp
@@ -82,8 +78,11 @@ instance WithPos TypeSpec where
     pos       = tpos
     atPos t p = t{tpos = p}
 
-class WithType a where
-    typ :: a -> TypeSpec
+class WithTypeSpec a where
+    tspec :: a -> TypeSpec
+
+instance WithTypeSpec TypeSpec where
+    tspec = id
 
 -- Type declaration
 data TypeDecl = TypeDecl { dpos  :: Pos
@@ -100,7 +99,7 @@ instance WithPos TypeDecl where
 instance WithName TypeDecl where
     name = dname
 
-instance WithType TypeDecl where
-    typ = dspec
+instance WithTypeSpec TypeDecl where
+    tspec = dspec
 
 

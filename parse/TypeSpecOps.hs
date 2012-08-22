@@ -1,6 +1,9 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module TypeSpecOps(eqType,
+module TypeSpecOps(typ',
+                   isInt, isBool, isPtr,
+                   expandType,
+                   eqType,
                    eqMType,
                    validateTypeSpec) where
 
@@ -20,17 +23,41 @@ import Scope
 import ExprOps
 
 -- Flatten out all type references
-typ' :: (?spec::Spec, ?scope::Scope, WithType a) => a -> TypeSpec
+flattenType :: (?spec::Spec, WithType a) => Scope -> a -> TypeSpec
+flattenType s x = 
+    case typ x of
+         (StructSpec p fs)  -> StructSpec p $ map (\f -> Field {pos f, flattenType s f, name f}) fs
+         (PtrSpec p t)      -> PtrSpec    p $ flattenType s t
+         (ArraySpec p t l)  -> ArraySpec  p (flattenType s t) l
+         (UserTypeSpec p n) -> let (d,scope') = scopeGetType ?scope n
+                               in flattenType scope' d
+         t                  -> t
 
+typ' :: (?spec::Spec, WithType a) => Scope -> a -> TypeSpec
+typ' s a = fst $ expandType s a
 
-isInt :: TypeSpec -> Bool
-isInt (SIntSpec _ _) = True
-isInt (UIntSpec _ _) = True
-isInt _              = False
+expandType :: (?spec::Spec, WithType a) => Scope -> a -> (TypeSpec, Scope)
+expandType s x = case typ x of
+                      (UserTypeSpec _ n) -> let (t,s') = scopeGetType s n
+                                            in expandType s' t
+                      t                  -> (t,s)
 
-isBool :: TypeSpec -> Bool
-isBool (BoolSpec _) = True
-isBool _            = False
+isInt :: (?spec::Spec, WithType a) => Scope -> a -> Bool
+isInt s x = case typ' s x of
+                 SIntSpec _ _ -> True
+                 UIntSpec _ _ -> True
+                 _            -> False
+
+isBool :: (?spec::Spec, WithType a) => Scope -> a -> Bool
+isBool s x = case typ' s x of
+                  BoolSpec _ -> True
+                  _          -> False
+
+isPtr :: (?spec::Spec, WithType a) => Scope -> a -> Bool
+isPtr s x = case typ' s x of
+                 PtrSpec _ _ -> True
+                 _           -> False
+
 
 eqType :: (?spec::Spec) => (TypeSpec, Scope) -> (TypeSpec,Scope) -> Bool
 eqType (BoolSpec _       , _)    (BoolSpec _       , _)    = True

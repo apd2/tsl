@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module TSLUtil(err,
+module TSLUtil(mapFst,
+               mapSnd,
+               err,
                assert,
                uniqNames,
                grCycle) where
@@ -15,10 +17,17 @@ import Data.Graph.Inductive.Query.DFS
 import Pos
 import Name
 
+mapFst :: (a->b) -> (a,c) -> (b,c)
+mapFst f (x,y) = (f x,y)
+
+mapSnd :: (c->b) -> (a,c) -> (a,b)
+mapSnd f (x,y) = (x,f y)
+
+
 err :: (MonadError String me) => Pos -> String -> me a
 err p e = throwError $ show p ++ ": " ++ e
 
-assert :: (MonadError String me) => Bool -> Pos -> String -> me a
+assert :: (MonadError String me) => Bool -> Pos -> String -> me ()
 assert b p m = 
     if b 
        then return ()

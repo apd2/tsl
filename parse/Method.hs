@@ -58,7 +58,7 @@ data Arg = Arg { apos   :: Pos
                , aname  :: Ident}
 
 instance PP Arg where
-    pp a = pp (argDir a) <+> pp (typ a) <+> pp (name a)
+    pp a = pp (argDir a) <+> pp (tspec a) <+> pp (name a)
 
 instance WithName Arg where
     name = aname
@@ -67,8 +67,8 @@ instance WithPos Arg where
     pos       = apos
     atPos a p = a{apos = p}
 
-instance WithType Arg where 
-    typ = atyp
+instance WithTypeSpec Arg where 
+    tspec = atyp
 
 -- Method
 data Method = Method { mpos       :: Pos
