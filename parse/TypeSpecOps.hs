@@ -4,7 +4,7 @@ module TypeSpecOps(typ',
                    typeMatch,
                    typeComparable,
                    typeWidth,
-                   isInt, isBool, isPtr, isArray,
+                   isInt, isBool, isPtr, isArray, isStruct,
                    validateTypeSpec) where
 
 import Control.Monad.Error
@@ -59,6 +59,11 @@ isArray :: (?spec::Spec, WithType a) => a -> Bool
 isArray x = case fst $ typ' x of
                ArraySpec _ _ _ -> True
                _               -> False
+
+isStruct :: (?spec::Spec, WithType a) => a -> Bool
+isStruct x = case fst $ typ' x of
+               StructSpec _ _ -> True
+               _              -> False
 
 
 -- Types can substitute each other in an expression.

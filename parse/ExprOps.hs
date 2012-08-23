@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, FlexibleContexts #-}
+{-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
 module ExprOps(evalInt) where
 
@@ -31,19 +31,23 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
     typ (EApply  _ mref _)      = (fromJust $ methRettyp m,s) where (m,s) = getMethod ?scope mref
     typ (EField  _ e f)         = typ $ objGet (ObjType $ typ e) f 
     typ (EPField _ e f)         = typ $ objGet (ObjType (t,s)) f where (PtrSpec _ t,s) = typ' e
-    typ (EIndex _ e i)          = (t,s) where (ArraySpec _ t _,s) = typ' e
-    typ (EUnOp _ UMinus e)      = case typ' e of
+    typ (EIndex  _ e i)         = (t,s) where (ArraySpec _ t _,s) = typ' e
+    typ (EUnOp   _ UMinus e)    = case typ' e of
                                        t@(SIntSpec p w, s) -> t
                                        (UIntSpec p w, s)   -> (SIntSpec p w, s)
+    typ (EUnOp   p Not e)       = (BoolSpec p,?scope)
+    typ (EUnOp   _ BNeg e)      = typ e
+    typ (EUnOp   _ Deref e)     = (t,s) where (PtrSpec _ t,s) = typ' e
+    typ (EUnOp   p AddrOf e)    = (PtrSpec p t,s) where (t,s) = typ' e
 
---         | Not 
---         | BNeg
---         | Deref
---         | AddrOf
---         deriving (Eq)
+    typ (EBinOp  p op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] = (BoolSpec p,?scope)
+                             | elem op [BAnd,BOr,BXor] = typ e1
+                             | elem op [Plus,Mul] = case (tspec e1, tspec e2) of
+                                                         ((UIntSpec _ w1), (UIntSpec _ w2)) -> (UIntSpec p (max w1 w2),?scope)
+                                                         _                                  -> (SIntSpec p (max (typeWidth e1) (typeWidth e2)),?scope)
+                             | op == BinMinus = (SIntSpec p (max (typeWidth e1) (typeWidth e2)),?scope)
+                             | op == Mod = typ e1
 
-
---          | EBinOp  {epos::Pos, bop::BOp, arg1::Expr, arg2::Expr}
 --          | ETernOp {epos::Pos, arg1::Expr, arg2::Expr, arg3::Expr}
 --          | ECase   {epos::Pos, caseexpr::Expr, cases::[(Expr, Expr)], def::(Maybe Expr)}
 --          | ECond   {epos::Pos, cases::[(Expr, Expr)], def::(Maybe Expr)}
@@ -55,23 +59,6 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
 instance (?spec::Spec,?scope::Scope) => WithTypeSpec Expr where
     tspec = fst . typ
 
-
-
--- Validating expressions
--- * case: 
---    - all components are valid expressions
---    - case conditions must type-match the case expression (should they be statically computable?)
---    - value expressions must match the type of the key expression
--- * cond: 
---    - condition expressions are valid boolean expressions
---    - value expressions have compatible types
--- * slice: 
---    - applied to an integer (unsigned?) value; 
---    - lower and upper bounds are constant expressions
---    - 0 <= lower bound <= upper bound <= type width - 1
--- * struct:
---    - typename refers to a struct type
---    - correct number and types of fields
 
 
 validateExpr :: (?spec::Spec, MonadError String me) => Scope -> Expr -> me ()
@@ -174,9 +161,93 @@ validateExpr' (EBinOp p op e1 e2) = do
                    show e2 ++ " has width " ++ (show $ typeWidth e2)
        else return ()
 
---ETernOp {epos::Pos, arg1::Expr, arg2::Expr, arg3::Expr}
---ECase   {epos::Pos, caseexpr::Expr, cases::[(Expr, Expr)], def::(Maybe Expr)}
---ECond   {epos::Pos, cases::[(Expr, Expr)], def::(Maybe Expr)}
---ESlice  {epos::Pos, slexpr::Expr, slice::Slice}
---EStruct {epos::Pos, typename::StaticSym, fields::(Either [(Ident, Expr)] [Expr])} -- either named or anonymous list of fields
+validateExpr' (ETernOp p e1 e2 e3) = do
+    validateExpr' e1
+    validateExpr' e2
+    validateExpr' e3
+    assert (isBool e1) (pos e1) $ "First operand " ++ show e1 ++ " of ?: is of non-boolean type"
+    assert (typeMatch e1 e2) p $ "Arguments of ternary operator have incompatible types: " ++
+                                 show e1 ++ " has type " ++ show (tspec e1) ++ ", " ++
+                                 show e2 ++ " has type " ++ show (tspec e2)
+
+-- * case: 
+--    - case conditions must type-match the case expression (should they be statically computable?)
+--    - value expressions and default expression must all have matching types
+validateExpr' (ECase p e cs md) = do
+    validateExpr' e
+    mapM (\(e1,e2) -> do {validateExpr' e1; validateExpr' e2}) cs
+    case md of
+         Just d  -> validateExpr' d
+         Nothing -> return ()
+    mapM (\(e1,_) -> assert (typeComparable e e1) (pos e1) $ 
+                     "Expression " ++ show e1 ++ " has type "  ++ (show $ tspec e1) ++ 
+                     ", which does not match the type " ++ (show $ tspec e) ++ " of the key expression " ++ show e) cs
+    case cs of
+         []     -> return ()
+         _      -> do let e1 = fst $ head cs
+                      mapM (\(_,e2) -> assert (typeMatch e1 e2) (pos e2) $ 
+                                              "Clauses of a case expression return values of incompatible types:\n  " ++ 
+                                              show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ tspec e1) ++ "\n  " ++
+                                              show e2 ++ "(" ++ spos e2 ++ ") has type " ++ (show $ tspec e2))
+                           ((tail cs) ++ (map (undefined,) $ maybeToList md))
+                      return ()
+                      
+-- * cond: 
+--    - condition expressions are valid boolean expressions
+--    - value expressions have compatible types
+validateExpr' (ECond p cs md) = do
+    mapM (\(e1,e2) -> do validateExpr' e1
+                         validateExpr' e2
+                         assert (isBool e1) (pos e1) $ "Expression " ++ show e1 ++ " is of non-boolean type")
+         cs
+    case md of
+         Just d  -> validateExpr' d
+         Nothing -> return ()
+    case cs of
+         []     -> return ()
+         _      -> do let e1 = fst $ head cs
+                      mapM (\(_,e2) -> assert (typeMatch e1 e2) (pos e2) $ 
+                                              "Clauses of a conditional expression return values of incompatible types:\n  " ++ 
+                                              show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ tspec e1) ++ "\n  " ++
+                                              show e2 ++ "(" ++ spos e2 ++ ") has type " ++ (show $ tspec e2))
+                           ((tail cs) ++ (map (undefined,) $ maybeToList md))
+                      return ()
+    
+-- * slice: 
+--    - applied to an integer (unsigned?) value; 
+--    - lower and upper bounds are constant expressions
+--    - 0 <= lower bound <= upper bound <= type width - 1
+validateExpr' (ESlice p e (l,h)) = do
+    validateExpr' e
+    validateExpr' l
+    validateExpr' h
+    assert (isInt e) (pos e)                $ "Cannot compute slice of a non-integer expression " ++ show e
+    assert (isConstExpr l) (pos l)          $ "Lower bound " ++ show l ++ " of a slice is a non-constant expression"
+    assert (isConstExpr h) (pos h)          $ "Upper bound " ++ show h ++ " of a slice is a non-constant expression"
+    assert (0 <= evalInt l) (pos l)         $ "Lower bound " ++ show l ++ " of a slice has negative value " ++ (show $ evalInt l)
+    assert (evalInt l <= evalInt h) (pos l) $ "Lower bound " ++ show l ++ "=" ++ (show $ evalInt l) ++ " of a slice is greater than " ++
+                                              "upper bound " ++ show h ++ "=" ++ (show $ evalInt h) 
+    let w = typeWidth e
+    assert (evalInt h < w) (pos l)          $ "Upper bound " ++ show h ++ "=" ++ (show $ evalInt h) ++ " of a slice " ++
+                                              "exceeds argument width (" ++ show w ++ ") bits"
+
+-- * struct:
+--    - typename refers to a struct type
+--    - correct number and types of fields
+validateExpr' (EStruct p n es) = do
+    (d,s) <- checkTypeDecl ?scope n
+    let t = (tspec d,s)
+    assert (isStruct t) (pos n) $ show n ++ " is not a struct type"
+    let (StructSpec _ fs) = tspec d
+        nes = case es of 
+                   Left es -> length es
+                   Right es -> length es
+    assert (length fs = nes) p $ "struct " ++ name d ++ " has " ++ show (length fs) ++ " members, but "
+    case es of
+         Left  es -> mapM (\(n,e) -> ) es
+         Right es ->
+
+
+--fields::(Either [(Ident, Expr)] [Expr])} 
+
 --ENonDet {epos::Pos}
