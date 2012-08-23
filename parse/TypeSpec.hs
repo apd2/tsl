@@ -37,6 +37,9 @@ data Field = Field { fpos  :: Pos
                    , ftyp  :: TypeSpec
                    , fname :: Ident}
 
+instance Eq Field where
+    (==) (Field _ t1 n1) (Field _ t2 n2) = t1 == t2 && n1 == n2
+
 instance PP Field where
     pp (Field _ t n) = pp t <+> pp n
 
@@ -59,6 +62,20 @@ data TypeSpec = BoolSpec         {tpos :: Pos}
               | ArraySpec        {tpos :: Pos, eltype :: TypeSpec, len :: Expr}
               | UserTypeSpec     {tpos :: Pos, tname  :: StaticSym}
               | TemplateTypeSpec {tpos :: Pos, tmname :: Ident}
+
+-- Check exact syntactic equivalence of type specs
+instance Eq TypeSpec where
+    (==) (BoolSpec _)            (BoolSpec _)            = True
+    (==) (SIntSpec _ i1)         (SIntSpec _ i2)         = i1 == i2
+    (==) (UIntSpec _ i1)         (UIntSpec _ i2)         = i1 == i2
+    (==) (StructSpec _ fs1)      (StructSpec _ fs2)      = fs1 == fs2
+    (==) (EnumSpec _ es1)        (EnumSpec _ es2)        = False
+    (==) (PtrSpec _ t1)          (PtrSpec _ t2)          = t1 == t2
+    (==) (ArraySpec _ t1 l1)     (ArraySpec _ t2 l2)     = t1 == t2 && l1 == l2
+    (==) (UserTypeSpec _ n1)     (UserTypeSpec _ n2)     = n1 == n2
+    (==) (TemplateTypeSpec _ n1) (TemplateTypeSpec _ n2) = n1 == n2
+    (==) _                         _                     = False
+
 
 instance PP TypeSpec where
     pp (BoolSpec _)           = text "bool"

@@ -134,11 +134,11 @@ import Const
 
 
 specNamespace :: (?spec::Spec) => [Obj]
-specNamespace = map (ObjTemplate ScopeTop) (specTemplate ?spec) ++ 
+specNamespace = map ObjTemplate (specTemplate ?spec) ++ 
                 map (ObjTypeDecl ScopeTop) (specType ?spec) ++ 
                 map (ObjConst    ScopeTop) (specConst ?spec) ++ 
-                (concat $ map (\t -> case typ t of
-                                          EnumSpec _ es -> map (ObjEnum ScopeTop) es
+                (concat $ map (\d -> case tspec d of
+                                          EnumSpec _ es -> map (ObjEnum (tspec d,ScopeTop)) es
                                           _             -> []) (specType ?spec))
 
 -- Validate top-level namespace:

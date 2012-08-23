@@ -20,10 +20,9 @@ import Template
 import Spec
 import SpecOps
 import NS
-import Scope
 
 tmParents :: (?spec::Spec) => Template -> [Template]
-tmParents t = map (specGetTemplate . drvTemplate) (tmDerive t)
+tmParents t = map (getTemplate . drvTemplate) (tmDerive t)
 
 -- Find port or instance by name.  Returns the name of the associated template.
 tmLookupPortInst :: (MonadError String me) => Template -> Ident -> me Ident
@@ -38,8 +37,8 @@ tmLookupPortInst t n = case listToMaybe $ catMaybes [p, i] of
 -- * correct number and types of parameters
 validateDrvInst :: (?spec::Spec, MonadError String me) => Template -> Ident -> [Ident] -> Pos -> me ()
 validateDrvInst tm tname ports posit = do
-    specCheckTemplate tname
-    let t = specGetTemplate tname 
+    checkTemplate tname
+    let t = getTemplate tname 
     assert ((length $ tmPort t) == (length ports)) posit $ 
            "Incorrect number of parameters to template " ++ sname t ++ 
            ". " ++ (show $ length $ tmPort t) ++ " parameters required."
@@ -67,7 +66,7 @@ validateInstance tm i = validateDrvInst tm (instTemplate i) (instPort i) (pos i)
 -----------------------------------------------------------
 
 validatePort :: (?spec::Spec, MonadError String me) => Template -> Port -> me ()
-validatePort tm p = do {specCheckTemplate $ portTemplate p; return ()}
+validatePort tm p = do {checkTemplate $ portTemplate p; return ()}
 
 
 -----------------------------------------------------------
@@ -110,22 +109,22 @@ validateDerive tm d = validateDrvInst tm (drvTemplate d) (drvPort d) (pos d)
 ------------------------------------------------------------------------------
 
 tmLocalDecls :: (?spec::Spec) => Template -> [Obj]
-tmLocalDecls t = (map ObjPort     (tmPort t)) ++
-                 (map ObjConst    (tmConst t)) ++
-                 (map ObjTypeDecl (tmTypeDecl t)) ++
-                 (map ObjGVar     (tmVar t)) ++
-                 (map ObjInstance (tmInst t)) ++
-                 (map ObjProcess  (tmProcess t)) ++
-                 (map ObjMethod   (tmMethod t)) ++
-                 (concat $ map (\t -> case typ t of
-                                           EnumSpec _ es -> map ObjEnum es
+tmLocalDecls t = (map (ObjPort t)                     (tmPort t))     ++
+                 (map (ObjConst (ScopeTemplate t))    (tmConst t))    ++
+                 (map (ObjTypeDecl (ScopeTemplate t)) (tmTypeDecl t)) ++
+                 (map (ObjGVar t)                     (tmVar t))      ++
+                 (map (ObjInstance t)                 (tmInst t))     ++
+                 (map (ObjProcess t)                  (tmProcess t))  ++
+                 (map (ObjMethod t)                   (tmMethod t))   ++
+                 (concat $ map (\d -> case tspec d of
+                                           EnumSpec _ es -> map (ObjEnum (tspec d, ScopeTemplate t)) es
                                            _             -> []) (tmTypeDecl t))
 
 
 -- All objects declared in the template or inherited from parents
 tmLocalAndParentDecls :: (?spec::Spec) => Template -> [Obj]
 tmLocalAndParentDecls t = concat $ (tmLocalDecls t):parents
-    where parents = map (tmLocalAndParentDecls . specGetTemplate . drvTemplate) (tmDerive t)
+    where parents = map (tmLocalAndParentDecls . getTemplate . drvTemplate) (tmDerive t)
 
 -- All identifiers visible as local names at the template level
 tmNamespace :: (?spec::Spec) => Template -> [Obj]
@@ -148,7 +147,7 @@ validateTmNS t = do
 -- * derived template-level namespaces do not overlap
 validateTmDeriveNS :: (?spec::Spec, MonadError String me) => Scope -> Template -> me ()
 validateTmDeriveNS c t = do
-    let nss = map (\d -> map (d,) $ tmLocalAndParentDecls $ specGetTemplate $ drvTemplate d) (tmDerive t)
+    let nss = map (\d -> map (d,) $ tmLocalAndParentDecls $ getTemplate $ drvTemplate d) (tmDerive t)
     foldM (\names ns -> case intersectBy (\o1 o2 -> (name $ snd o1) == (name $ snd o2)) names ns of
                              []      -> return $ names++ns
                              (d,o):_ -> err (pos d) $ "Template " ++ sname t ++ " derives mutiple declarations of identifier " ++ sname o ++ 
@@ -161,11 +160,11 @@ validateTmDeriveNS c t = do
 checkTmOverrides :: (?spec::Spec, MonadError String me) => Template -> me ()
 checkTmOverrides t = do
     let local = tmLocalDecls t
-        enviro = specNamespace ++ (concat $ map (tmLocalAndParentDecls . specGetTemplate . drvTemplate) (tmDerive t))
+        enviro = specNamespace ++ (concat $ map (tmLocalAndParentDecls . getTemplate . drvTemplate) (tmDerive t))
         override = filter (\(o1,o2) -> name o1 == name o2) $ (,) <$> local <*> enviro
     mapM (\(o1,o2) -> case (o1,o2) of
-                           (ObjMethod m1, ObjMethod m2) -> return ()
-                           (ObjPort p1,   ObjPort p2)   -> return ()
-                           _                            -> err (pos o1) $ "Identifier " ++ (sname o1) ++ " overrides previous declaration at " ++ spos o2)
+                           (ObjMethod _ m1, ObjMethod _ m2) -> return ()
+                           (ObjPort _ p1,   ObjPort _ p2)   -> return ()
+                           _                                -> err (pos o1) $ "Identifier " ++ (sname o1) ++ " overrides previous declaration at " ++ spos o2)
          override
     return ()

@@ -1,6 +1,14 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, MultiParamTypeClasses, UndecidableInstances, TupleSections, TypeSynonymInstances, FlexibleInstances #-}
 
-module NS(Obj(..), objLookup, objGet) where
+module NS(Scope(..),
+          Type,
+          WithType(..),
+          WithScope(..),
+          lookupTemplate, checkTemplate, getTemplate, 
+          lookupTypeDecl, checkTypeDecl, getTypeDecl,
+          lookupTerm, checkTerm, getTerm,
+          lookupMethod, checkMethod, getMethod,
+          Obj(..), objLookup, objGet) where
 
 import Control.Monad.Error
 import Data.List
@@ -17,6 +25,7 @@ import Var
 import Const
 import TypeSpec
 import Spec
+import Expr
 
 data Scope = ScopeTop
            | ScopeTemplate {scopeTm::Template}
@@ -34,8 +43,15 @@ instance WithScope Type where
 instance WithTypeSpec Type where
     tspec = fst
 
+instance Show Type where
+    show = show . fst
+
 class WithType a where
     typ :: a -> Type
+
+instance WithType Type where
+    typ = id
+
 
 -- TSL specification objects
 
@@ -113,6 +129,9 @@ instance (?spec::Spec) => WithType Obj where
     typ (ObjConst    s c) = (tspec c,s)
     typ (ObjEnum     t e) = (tspec t,scope t)
 
+instance (?spec::Spec) => WithTypeSpec Obj where
+    tspec = fst . typ
+
 
 objLookup :: (?spec::Spec) => Obj -> Ident -> Maybe Obj
 objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c]
@@ -171,8 +190,15 @@ objLookup (ObjType (UserTypeSpec _ tn,s)) n = case lookupTypeDecl s tn of
 objGet :: (?spec::Spec) => Obj -> Ident -> Obj
 objGet o n = fromJustMsg ("objLookup failed: " ++ show n) $ objLookup o n
 
+objLookupPath :: (?spec::Spec) => Obj -> [Ident] -> Maybe Obj
+objLookupPath o []     = Just o
+objLookupPath o (n:ns) = case objLookup o n of
+                              Nothing -> Nothing
+                              Just o' -> objLookupPath o' ns
 
--- 
+
+
+-- Lookup identifier visible in the local scope
 lookupIdent :: (?spec::Spec) => Scope -> Ident -> Maybe Obj
 lookupIdent ScopeTop n          = objLookup ObjSpec n
 lookupIdent (ScopeTemplate t) n = listToMaybe $ catMaybes [tm,global]
@@ -187,15 +213,15 @@ lookupIdent (ScopeProcess t p) n = listToMaybe $ catMaybes [local,tm,global]
           tm     = objLookup (ObjTemplate t) n
           global = objLookup ObjSpec n
 
+-- Lookup path from the local scope
+lookupPath :: (?spec::Spec) => Scope -> [Ident] -> Maybe Obj
+lookupPath s (n:ns) = case lookupIdent s n of
+                           Nothing -> Nothing
+                           Just o  -> objLookupPath o ns
+
+-- Lookup name in the global namespace
 lookupGlobal :: (?spec::Spec) => [Ident] -> Maybe Obj
-lookupGlobal ns = lookupGlobal' ObjSpec ns
-
-lookupGlobal' :: (?spec::Spec) => Obj -> [Ident] -> Maybe Obj
-lookupGlobal' o []     = Just o
-lookupGlobal' o (n:ns) = case objLookup o n of
-                              Nothing -> Nothing
-                              Just o' -> lookupGlobal' o' ns
-
+lookupGlobal ns = objLookupPath ObjSpec ns
 
 lookupTemplate :: (?spec::Spec) => Ident -> Maybe Template
 lookupTemplate n = case objLookup ObjSpec n of
@@ -236,11 +262,7 @@ checkTypeDecl s n = do
 
 
 getTypeDecl :: (?spec::Spec) => Scope -> StaticSym -> (TypeDecl,Scope)
-getTypeDecl s = fromJustMsg "scopeGetType: type not found" . lookupTypeDecl s
-
-scopeGTypeName :: (TypeDecl,Scope) -> GStaticSym
-scopeGTypeName (d,ScopeTop)        = [name d]
-scopeGTypeName (d,ScopeTemplate t) = [name t,name d]
+getTypeDecl s = fromJustMsg "getTypeDecl: type not found" . lookupTypeDecl s
 
 -- Term lookup
 -- A term is either a local name, which corresponds to any object in the local or
@@ -261,10 +283,22 @@ checkTerm s n = case lookupTerm s n of
                      Just t  -> return t
 
 getTerm :: (?spec::Spec) => Scope -> StaticSym -> Obj
-getTerm s n = fromJustMsg "scopeGetTerm: term lookup failed" $ lookupTerm s n 
+getTerm s n = fromJustMsg "getTerm: term lookup failed" $ lookupTerm s n 
 
 -- Method lookup
---scopeGetMethod :: (?scpe::Spec) => Scope -> MethodRef -> (Method, Scope)
+lookupMethod :: (?spec::Spec) => Scope -> MethodRef -> Maybe (Method, Scope)
+lookupMethod s (MethodRef _ p) = case lookupPath s p of
+                                      Just (ObjMethod t m) -> Just (m, ScopeTemplate t)
+                                      _                    -> Nothing
+
+checkMethod :: (?spec::Spec, MonadError String me) => Scope -> MethodRef -> me (Method, Scope)
+checkMethod s m = case lookupMethod s m of
+                       Just x  -> return x
+                       Nothing -> err (pos m) $ "Unknown method " ++ show m
+
+getMethod :: (?spec::Spec) => Scope -> MethodRef -> (Method, Scope)
+getMethod s m = fromJustMsg "getMethod: method not found" $ lookupMethod s m
+
+
 --scopeUniqName :: (?spec::Spec, MonadError String me) => Scope -> Ident -> me ()
 --scopeUniqName = undefined
-
