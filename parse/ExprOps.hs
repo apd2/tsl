@@ -16,11 +16,38 @@ import Spec
 import Method
 import NS
 
-evalInt :: (?spec::Spec) => Scope -> ConstExpr -> Integer
+-- Eval constant expression
+eval :: (?spec::Spec) => Scope -> ConstExpr -> Integer
+eval s (ETerm _ n) = case getTerm s n of
+                        ObjConst s' c -> eval s' (constVal c)
+                        ObjEnum t e   -> 
+          ELit    {epos::Pos, width::Int, signed::Bool, rad::Radix, ival::Integer}
+          EBool   {epos::Pos, bval::Bool}
+          EApply  {epos::Pos, mref::MethodRef, args::[Expr]}
+          EField  {epos::Pos, struct::Expr, field::Ident}
+          EPField {epos::Pos, struct::Expr, field::Ident}
+          EIndex  {epos::Pos, arr::Expr, idx::Expr}
+          EUnOp   {epos::Pos, uop::UOp, arg1::Expr}
+          EBinOp  {epos::Pos, bop::BOp, arg1::Expr, arg2::Expr}
+          ETernOp {epos::Pos, arg1::Expr, arg2::Expr, arg3::Expr}
+          ECase   {epos::Pos, caseexpr::Expr, cases::[(Expr, Expr)], def::(Maybe Expr)}
+          ECond   {epos::Pos, cases::[(Expr, Expr)], def::(Maybe Expr)}
+          ESlice  {epos::Pos, slexpr::Expr, slice::Slice}
+          | EStruct {epos::Pos, typename::StaticSym, fields::(Either [(Ident, Expr)] [Expr])} -- either named or anonymous list of fields
+          | ENonDet {epos::Pos}
+
+
+evalInt :: (?spec::Spec, ?scope::Scope) => ConstExpr -> Integer
 evalInt = error "evalInt not implemented"
 
-isLExpr :: (?spec::Spec) => Scope -> Expr -> Bool
-isLExpr s e = error "isLExpr not implemented"
+isLExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+isLExpr e = error "isLExpr not implemented"
+
+isConstExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+isConstExpr e = error "isConstExpr not implemented"
+
+maxType :: (?spec::Spec, WithType a) => [a] -> Type
+maxType = error "maxType not implemented"
 
 -- Assumes that expression has been validated first
 instance (?spec::Spec,?scope::Scope) => WithType Expr where
@@ -47,13 +74,12 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
                                                          _                                  -> (SIntSpec p (max (typeWidth e1) (typeWidth e2)),?scope)
                              | op == BinMinus = (SIntSpec p (max (typeWidth e1) (typeWidth e2)),?scope)
                              | op == Mod = typ e1
-
---          | ETernOp {epos::Pos, arg1::Expr, arg2::Expr, arg3::Expr}
---          | ECase   {epos::Pos, caseexpr::Expr, cases::[(Expr, Expr)], def::(Maybe Expr)}
---          | ECond   {epos::Pos, cases::[(Expr, Expr)], def::(Maybe Expr)}
---          | ESlice  {epos::Pos, slexpr::Expr, slice::Slice}
---          | EStruct {epos::Pos, typename::StaticSym, fields::(Either [(Ident, Expr)] [Expr])} -- either named or anonymous list of fields
---          | ENonDet {epos::Pos}
+    typ (ETernOp _ _ e2 e3)     = maxType [e2, e3]
+    typ (ECase _ _ cs md)       = maxType $ (map snd cs) ++ (maybeToList md)
+    typ (ECond _ cs md)         = maxType $ (map snd cs) ++ maybeToList md
+    typ (ESlice p e (l,h))      = (UIntSpec p (fromInteger (evalInt h - evalInt l + 1)), ?scope)
+    typ (EStruct p tn _)        = (UserTypeSpec p tn, ?scope)
+    typ (ENonDet p)             = (FlexTypeSpec p, ?scope)
 
 
 instance (?spec::Spec,?scope::Scope) => WithTypeSpec Expr where
@@ -137,7 +163,7 @@ validateExpr' (EUnOp p Deref e) = do
 
 validateExpr' (EUnOp p AddrOf e) = do
     validateExpr' e
-    assert (isLExpr ?scope e) p $ "Cannot take address of expression " ++ show e ++ ", which is not an L-value"
+    assert (isLExpr e) p $ "Cannot take address of expression " ++ show e ++ ", which is not an L-value"
 
 validateExpr' (EBinOp p op e1 e2) = do
     validateExpr' e1
@@ -228,8 +254,8 @@ validateExpr' (ESlice p e (l,h)) = do
     assert (evalInt l <= evalInt h) (pos l) $ "Lower bound " ++ show l ++ "=" ++ (show $ evalInt l) ++ " of a slice is greater than " ++
                                               "upper bound " ++ show h ++ "=" ++ (show $ evalInt h) 
     let w = typeWidth e
-    assert (evalInt h < w) (pos l)          $ "Upper bound " ++ show h ++ "=" ++ (show $ evalInt h) ++ " of a slice " ++
-                                              "exceeds argument width (" ++ show w ++ ") bits"
+    assert (evalInt h < fromIntegral w) (pos h) $ "Upper bound " ++ show h ++ "=" ++ (show $ evalInt h) ++ " of a slice " ++
+                                                  "exceeds argument width (" ++ show w ++ ") bits"
 
 -- * struct:
 --    - typename refers to a struct type
@@ -242,12 +268,18 @@ validateExpr' (EStruct p n es) = do
         nes = case es of 
                    Left es -> length es
                    Right es -> length es
-    assert (length fs = nes) p $ "struct " ++ name d ++ " has " ++ show (length fs) ++ " members, but "
+    assert (length fs == nes) p $ "struct " ++ sname d ++ " has " ++ show (length fs) ++ " members, but is instantiated with " ++  show nes ++ " members"
     case es of
-         Left  es -> mapM (\(n,e) -> ) es
-         Right es ->
+         Left  es -> mapM (\(((n,e),f),id) -> do assert (n == name f) (pos n) $ 
+                                                        "Incorrect field name: field " ++ show id ++ " of struct " ++ sname d ++ " has name " ++ show n
+                                                 validateExpr' e
+                                                 assert (typeComparable e (tspec f,s)) (pos e) $ 
+                                                        "Could not match expected type " ++ (show $ tspec f) ++ " with actual type " ++ (show $ tspec e) ++ " in expression " ++ show e)
+                          (zip (zip es fs) [1..])
+         Right es -> mapM (\((e,f),id) -> do validateExpr' e
+                                             assert (typeComparable e (tspec f,s)) (pos e) $ 
+                                                    "Could not match expected type " ++ (show $ tspec f) ++ " with actual type " ++ (show $ tspec e) ++ " in expression " ++ show e)
+                          (zip (zip es fs) [1..])
+    return ()
 
-
---fields::(Either [(Ident, Expr)] [Expr])} 
-
---ENonDet {epos::Pos}
+validateExpr' (ENonDet _) = return ()

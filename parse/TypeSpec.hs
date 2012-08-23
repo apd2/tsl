@@ -62,6 +62,7 @@ data TypeSpec = BoolSpec         {tpos :: Pos}
               | ArraySpec        {tpos :: Pos, eltype :: TypeSpec, len :: Expr}
               | UserTypeSpec     {tpos :: Pos, tname  :: StaticSym}
               | TemplateTypeSpec {tpos :: Pos, tmname :: Ident}
+              | FlexTypeSpec     {tpos :: Pos}
 
 -- Check exact syntactic equivalence of type specs
 instance Eq TypeSpec where
@@ -87,6 +88,8 @@ instance PP TypeSpec where
     pp (ArraySpec _ t l)      = pp t <> (brackets $ pp l)
     pp (UserTypeSpec _ n)     = pp n
     pp (TemplateTypeSpec _ n) = text "template" <+> pp n
+    pp (FlexTypeSpec _)       = text "*"
+
 
 instance Show TypeSpec where
     show = render . pp
@@ -118,5 +121,3 @@ instance WithName TypeDecl where
 
 instance WithTypeSpec TypeDecl where
     tspec = dspec
-
-
