@@ -116,11 +116,47 @@ isLExpr e = error "isLExpr not implemented"
 
 -- case/cond must be exhaustive
 isConstExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
-isConstExpr e = error "isConstExpr not implemented"
+isConstExpr (ETerm _ n)              = case getTerm ?scope n of
+                                            ObjConst _ _ -> True
+                                            ObjEnum _ _  -> True
+                                            _            -> False
+isConstExpr (ELit _ _ _ _ _)         = True
+isConstExpr (EBool _ _)              = True
+isConstExpr (EApply _ _ _)           = False -- TODO: constant functions
+isConstExpr (EField _ s _)           = isConstExpr s
+isConstExpr (EPField _ _ _)          = False
+isConstExpr (EIndex _ a i)           = isConstExpr a && isConstExpr i
+isConstExpr (EUnOp _ _ e)            = isConstExpr e
+isConstExpr (EBinOp _ _ e1 e2)       = isConstExpr e1 && isConstExpr e2
+isConstExpr (ETernOp _ e1 e2 e3)     = isConstExpr e1 && isConstExpr e2 && isConstExpr e3
+isConstExpr (ECase _ e cs md)        = isConstExpr e && 
+                                       (and $ map (\(c,v) -> isConstExpr c && isConstExpr v) cs) &&
+                                       case md of
+                                            Just m -> isConstExpr m
+                                            _      -> True
+isConstExpr (ECond _ cs md)          = (and $ map (\(c,v) -> isConstExpr c && isConstExpr v) cs) &&
+                                       case md of
+                                            Just m -> isConstExpr m
+                                            _      -> True
+isConstExpr (ESlice _ e (l,h))       = isConstExpr e && isConstExpr l && isConstExpr h
+isConstExpr (EStruct _ _ (Left fs))  = and $ map (isConstExpr . snd) fs
+isConstExpr (EStruct _ _ (Right fs)) = and $ map isConstExpr fs
+isConstExpr (ENonDet _)              = False
 
+maxType :: (?spec::Spec, ?scope::Scope, WithType a) => [a] -> Type
+maxType xs = foldl' (\t x -> maxType2 t (typ x))
+                    (typ $ head xs) (tail xs)
 
-maxType :: (?spec::Spec, WithType a) => [a] -> Type
-maxType = error "maxType not implemented"
+maxType2 :: (?spec::Spec,?scope::Scope) => Type -> Type -> Type
+maxType2 t1 t2 = let (t1',s1) = typ' t1
+                     (t2',s2) = typ' t2
+                 in case (t1', t2') of
+                      (BoolSpec _    , BoolSpec _)     -> t1
+                      (SIntSpec p i1 , SIntSpec _ i2)  -> (SIntSpec p (max i1 i2),s1)
+                      (UIntSpec p i1 , UIntSpec _ i2)  -> (UIntSpec p (max i1 i2),s1)
+                      (FlexTypeSpec _, _)              -> t2
+                      (_             , FlexTypeSpec _) -> t1
+                      _                                -> t1
 
 -- Assumes that expression has been validated first
 instance (?spec::Spec,?scope::Scope) => WithType Expr where
@@ -147,7 +183,7 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
                              | op == BinMinus = (SIntSpec p (max (typeWidth e1) (typeWidth e2)),?scope)
                              | op == Mod = typ e1
     typ (ETernOp _ _ e2 e3)     = maxType [e2, e3]
-    typ (ECase _ _ cs md)       = maxType $ (map snd cs) ++ (maybeToList md)
+    typ (ECase _ _ cs md)       = maxType $ (map snd cs) ++ maybeToList md
     typ (ECond _ cs md)         = maxType $ (map snd cs) ++ maybeToList md
     typ (ESlice p e (l,h))      = (UIntSpec p (fromInteger (evalInt h - evalInt l + 1)), ?scope)
     typ (EStruct p tn _)        = (UserTypeSpec p tn, ?scope)
@@ -263,7 +299,7 @@ validateExpr' (ETernOp p e1 e2 e3) = do
     validateExpr' e2
     validateExpr' e3
     assert (isBool e1) (pos e1) $ "First operand " ++ show e1 ++ " of ?: is of non-boolean type"
-    assert (typeMatch e1 e2) p $ "Arguments of ternary operator have incompatible types: " ++
+    assert (typeMatch e2 e3) p $ "Arguments of ternary operator have incompatible types: " ++
                                  show e1 ++ " has type " ++ show (tspec e1) ++ ", " ++
                                  show e2 ++ " has type " ++ show (tspec e2)
 
@@ -272,6 +308,7 @@ validateExpr' (ETernOp p e1 e2 e3) = do
 --    - value expressions and default expression must all have matching types
 validateExpr' (ECase p e cs md) = do
     validateExpr' e
+    assert (length cs > 0) p $ "Empty case statement"
     mapM (\(e1,e2) -> do {validateExpr' e1; validateExpr' e2}) cs
     case md of
          Just d  -> validateExpr' d
@@ -279,20 +316,19 @@ validateExpr' (ECase p e cs md) = do
     mapM (\(e1,_) -> assert (typeComparable e e1) (pos e1) $ 
                      "Expression " ++ show e1 ++ " has type "  ++ (show $ tspec e1) ++ 
                      ", which does not match the type " ++ (show $ tspec e) ++ " of the key expression " ++ show e) cs
-    case cs of
-         []     -> return ()
-         _      -> do let e1 = fst $ head cs
-                      mapM (\(_,e2) -> assert (typeMatch e1 e2) (pos e2) $ 
-                                              "Clauses of a case expression return values of incompatible types:\n  " ++ 
-                                              show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ tspec e1) ++ "\n  " ++
-                                              show e2 ++ "(" ++ spos e2 ++ ") has type " ++ (show $ tspec e2))
-                           ((tail cs) ++ (map (undefined,) $ maybeToList md))
-                      return ()
+    let e1 = fst $ head cs
+    mapM (\(_,e2) -> assert (typeMatch e1 e2) (pos e2) $ 
+                            "Clauses of a case expression return values of incompatible types:\n  " ++ 
+                            show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ tspec e1) ++ "\n  " ++
+                            show e2 ++ "(" ++ spos e2 ++ ") has type " ++ (show $ tspec e2))
+         ((tail cs) ++ (map (undefined,) $ maybeToList md))
+    return ()
                       
 -- * cond: 
 --    - condition expressions are valid boolean expressions
 --    - value expressions have compatible types
 validateExpr' (ECond p cs md) = do
+    assert (length cs > 0) p $ "Empty case statement"
     mapM (\(e1,e2) -> do validateExpr' e1
                          validateExpr' e2
                          assert (isBool e1) (pos e1) $ "Expression " ++ show e1 ++ " is of non-boolean type")
@@ -300,15 +336,13 @@ validateExpr' (ECond p cs md) = do
     case md of
          Just d  -> validateExpr' d
          Nothing -> return ()
-    case cs of
-         []     -> return ()
-         _      -> do let e1 = fst $ head cs
-                      mapM (\(_,e2) -> assert (typeMatch e1 e2) (pos e2) $ 
-                                              "Clauses of a conditional expression return values of incompatible types:\n  " ++ 
-                                              show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ tspec e1) ++ "\n  " ++
-                                              show e2 ++ "(" ++ spos e2 ++ ") has type " ++ (show $ tspec e2))
-                           ((tail cs) ++ (map (undefined,) $ maybeToList md))
-                      return ()
+    let e1 = fst $ head cs
+    mapM (\(_,e2) -> assert (typeMatch e1 e2) (pos e2) $ 
+                            "Clauses of a conditional expression return values of incompatible types:\n  " ++ 
+                            show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ tspec e1) ++ "\n  " ++
+                            show e2 ++ "(" ++ spos e2 ++ ") has type " ++ (show $ tspec e2))
+         ((tail cs) ++ (map (undefined,) $ maybeToList md))
+    return ()
     
 -- * slice: 
 --    - applied to an integer (unsigned?) value; 

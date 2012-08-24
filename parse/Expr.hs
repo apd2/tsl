@@ -163,11 +163,11 @@ instance PP Expr where
     pp (EBinOp _ op e1 e2)       = parens $ pp e1 <+> pp op <+> pp e2
     pp (ETernOp _ c e1 e2)       = parens $ pp c <+> char '?' <+> pp e2 <+> colon <+> pp e2
     pp (ECase _ e cs def)        = text "case" <+> (parens $ pp e) <+> (braces' $ ppcs $+$ ppdef)
-                                       where ppcs = vcat $ map (\(c,e') -> pp c <> colon <+> pp e' <> semi) cs
-                                             ppdef = text "default" <> colon <+> pp def <> semi
+                                   where ppcs = vcat $ map (\(c,e') -> pp c <> colon <+> pp e' <> semi) cs
+                                         ppdef = text "default" <> colon <+> pp def <> semi
     pp (ECond _ cs def)          = text "cond" <+> (braces' $ ppcs $+$ ppdef)
-                                       where ppcs = vcat $ map (\(c,e') -> pp c <> colon <+> pp e' <> semi) cs
-                                             ppdef = text "default" <> colon <+> pp def <> semi
+                                   where ppcs = vcat $ map (\(c,e') -> pp c <> colon <+> pp e' <> semi) cs
+                                         ppdef = text "default" <> colon <+> pp def <> semi
     pp (ESlice _ e s)            = pp e <> pp s
     pp (EStruct _ t (Left fs))   = pp t <+> (braces $ hcat $ punctuate comma $ 
                                              map (\(n,e) -> char '.' <> pp n <+> char '=' <+> pp e) fs)
