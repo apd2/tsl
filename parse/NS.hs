@@ -1,9 +1,9 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, MultiParamTypeClasses, UndecidableInstances, TupleSections, TypeSynonymInstances, FlexibleInstances #-}
 
 module NS(Scope(..),
+          WithScope(..),
           Type,
           WithType(..),
-          WithScope(..),
           lookupTemplate, checkTemplate, getTemplate, 
           lookupTypeDecl, checkTypeDecl, getTypeDecl,
           lookupTerm, checkTerm, getTerm,
@@ -13,6 +13,7 @@ module NS(Scope(..),
 import Control.Monad.Error
 import Data.List
 import Data.Maybe
+import qualified Data.Map as M
 
 import Util hiding(name)
 import TSLUtil

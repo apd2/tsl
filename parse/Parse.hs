@@ -163,7 +163,7 @@ userType   = UserTypeSpec nopos <$> staticsym
 enumType   = EnumSpec     nopos <$  reserved "enum" <*> (braces $ commaSep1 enum)
 structType = StructSpec   nopos <$  reserved "struct" <*> (braces $ many1 $ withPos $ Field nopos <$> typeSpec <*> (ident <* semi))
 
-enum = withPos $ Enumerator nopos <$> ident <*> optionMaybe (reservedOp "=" *> expr)
+enum = withPos $ Enumerator nopos <$> ident
 
 -------------------------------------------------------------------------
 -- Top-level scope

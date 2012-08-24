@@ -22,17 +22,6 @@ import Spec
 import NS
 --import ExprOps
 
--- Flatten out all type references
---flattenType :: (?spec::Spec, WithType a) => a -> Type
---flattenType s x = 
---    case typ x of
---         (StructSpec p fs , s) -> (StructSpec p $ map (\f -> Field {pos f, flattenType (tspec f,s), name f}) fs, s)
---         (PtrSpec p t     , s) -> (PtrSpec    p $ (fst $flattenType (t,s))                                     , s)
---         (ArraySpec p t l , s) -> (ArraySpec  p (fst $ (flattenType (t,s))) l                                  , s)
---         (UserTypeSpec p n, s) -> (d,s') = getTypeDecl s n
---                                  in flattenType (tspec d,s')
---         t                     -> t
-
 typ' :: (?spec::Spec, WithType a) => a -> Type
 typ' x = case typ x of
               (UserTypeSpec _ n,s) -> let (d,s') = getTypeDecl s n

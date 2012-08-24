@@ -1,9 +1,9 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances #-}
 
-module TypeSpec(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec,TemplateTypeSpec), 
+module TypeSpec(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec,TemplateTypeSpec, FlexTypeSpec), 
                 WithTypeSpec(..),
                 TypeDecl(TypeDecl), 
-                Enumerator(Enumerator,enumVal),
+                Enumerator(Enumerator),
                 Field(Field)) where
 
 import Text.PrettyPrint
@@ -16,12 +16,10 @@ import Expr
 
 -- Type spec
 data Enumerator = Enumerator { epos    :: Pos
-                             , ename   :: Ident
-                             , enumVal :: Maybe ConstExpr}
+                             , ename   :: Ident}
 
 instance PP Enumerator where
-    pp (Enumerator _ n Nothing)  = pp n
-    pp (Enumerator _ n (Just e)) = pp n <+> char '=' <+> pp e
+    pp (Enumerator _ n)  = pp n
 
 
 instance WithPos Enumerator where

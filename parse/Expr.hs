@@ -2,6 +2,7 @@
 
 module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,ENonDet),
             ConstExpr, 
+            LExpr,
             MethodRef(MethodRef),
             Radix(..),
             UOp(..),
@@ -182,4 +183,4 @@ instance WithPos Expr where
 
 type ConstExpr = Expr
 
-
+type LExpr = Expr

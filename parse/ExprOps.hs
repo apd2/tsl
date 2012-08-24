@@ -4,7 +4,11 @@ module ExprOps(evalInt) where
 
 import Control.Monad.Error
 import Data.Maybe
+import Data.Bits
+import Data.List
+import qualified Data.Map as M
 
+import Util hiding (name)
 import TSLUtil
 import Pos
 import Name
@@ -14,37 +18,106 @@ import TypeSpecOps
 import Expr
 import Spec
 import Method
+import Const
 import NS
+import Val
 
 -- Eval constant expression
-eval :: (?spec::Spec) => Scope -> ConstExpr -> Integer
-eval s (ETerm _ n) = case getTerm s n of
-                        ObjConst s' c -> eval s' (constVal c)
-                        ObjEnum t e   -> 
-          ELit    {epos::Pos, width::Int, signed::Bool, rad::Radix, ival::Integer}
-          EBool   {epos::Pos, bval::Bool}
-          EApply  {epos::Pos, mref::MethodRef, args::[Expr]}
-          EField  {epos::Pos, struct::Expr, field::Ident}
-          EPField {epos::Pos, struct::Expr, field::Ident}
-          EIndex  {epos::Pos, arr::Expr, idx::Expr}
-          EUnOp   {epos::Pos, uop::UOp, arg1::Expr}
-          EBinOp  {epos::Pos, bop::BOp, arg1::Expr, arg2::Expr}
-          ETernOp {epos::Pos, arg1::Expr, arg2::Expr, arg3::Expr}
-          ECase   {epos::Pos, caseexpr::Expr, cases::[(Expr, Expr)], def::(Maybe Expr)}
-          ECond   {epos::Pos, cases::[(Expr, Expr)], def::(Maybe Expr)}
-          ESlice  {epos::Pos, slexpr::Expr, slice::Slice}
-          | EStruct {epos::Pos, typename::StaticSym, fields::(Either [(Ident, Expr)] [Expr])} -- either named or anonymous list of fields
-          | ENonDet {epos::Pos}
+eval :: (?spec::Spec,?scope::Scope) => ConstExpr -> TVal
+eval e = let t = typ e
+         in TVal t (eval' e t)
+
+eval' :: (?spec::Spec, ?scope::Scope) => ConstExpr -> Type -> Val
+eval' (ETerm _ n) t           = case getTerm ?scope n of
+                                     ObjConst s' c -> let ?scope = s' 
+                                                      in eval' (constVal c) t
+                                     ObjEnum _ e   -> EnumVal $ name e
+eval' (ELit _ w _ _ v) _      = IntVal v
+eval' (EBool _ b) _           = BoolVal b
+eval' (EField _ e f) _        = let StructVal v = val $ eval e
+                                in val $ v M.! f
+eval' (EIndex _ a i) _        = let ArrayVal av = val $ eval a
+                                    iv          = evalInt i
+                                in val $ av !! (fromInteger iv)
+eval' (EUnOp _ Not e) t       = BoolVal $ not $ evalBool e
+eval' (EUnOp _ BNeg e) t      = IntVal $ foldl' (\v idx -> complementBit v idx) (evalInt e) [0..typeWidth t - 1]
+eval' (EUnOp _ AddrOf e) t    = PtrVal e
+eval' (EBinOp  _ Eq e1 e2) t  = BoolVal $ eval e1 == eval e2
+eval' (EBinOp  _ Neq e1 e2) t = BoolVal $ eval e1 /= eval e2
+eval' (EBinOp  _ Lt e1 e2) t  = BoolVal $ eval e1 <  eval e2
+eval' (EBinOp  _ Gt e1 e2) t  = BoolVal $ eval e1 >  eval e2
+eval' (EBinOp  _ Lte e1 e2) t = BoolVal $ eval e1 <= eval e2
+eval' (EBinOp  _ Gte e1 e2) t = BoolVal $ eval e1 >= eval e2
+eval' (EBinOp  _ op e1 e2) t | elem op [And,Or,Imp] = 
+                                let b1 = evalBool e1
+                                    b2 = evalBool e2
+                                in BoolVal $ case op of
+                                                  And -> b1 && b2
+                                                  Or  -> b1 || b2
+                                                  Imp -> (not b1) || b2
+eval' (EBinOp  _ op e1 e2) t | elem op [BAnd,BOr,BXor] = 
+                                let i1 = evalInt e1
+                                    i2 = evalInt e2
+                                    f = case op of
+                                             BAnd -> (&&)
+                                             BOr  -> (||)
+                                             BXor -> (\b1 b2 -> (b1 && not b2) || (b2 && not b1))
+                                in IntVal $
+                                   foldl' (\v idx -> case f (testBit i1 idx) (testBit i2 idx) of
+                                                          True  -> setBit v idx
+                                                          False -> v) 
+                                          0 [0..typeWidth t - 1]
+eval' (EBinOp _ op e1 e2) t | elem op [Plus,BinMinus,Mod,Mul] = 
+                               let i1 = evalInt e1
+                                   i2 = evalInt e2
+                               in -- perform requested operation and truncate all bits beyond result width
+                                  IntVal $
+                                  case op of
+                                       Plus     -> i1 + i2
+                                       BinMinus -> i1 - i2
+                                       Mod      -> mod i1 i2
+                                       Mul      -> i1 * i2
+                                  .&.
+                                  (sum $ map bit [0..typeWidth t - 1])
+eval' (ETernOp _ e1 e2 e3) _  = if evalBool e1
+                                   then val $ eval e2
+                                   else val $ eval e3
+eval' (ECase _ e cs md) _     = case find (\(c,v) -> eval c == eval e) cs of
+                                     Just (c,v) -> val $ eval v
+                                     Nothing    -> val $ eval $ fromJustMsg ("Non-exhaustive case-expression") md
+eval' (ECond _ cs md) _       = case find (evalBool . fst) cs of
+                                     Just (c,v) -> val $ eval v
+                                     Nothing    -> val $ eval $ fromJustMsg ("Non-exhaustive cond-expression") md
+eval' (ESlice _ e (l,h)) _    = let v  = evalInt e
+                                    l' = fromInteger $ evalInt l
+                                    h' = fromInteger $ evalInt h
+                                in IntVal $ 
+                                   foldl' (\a idx -> case testBit v idx of
+                                                          True  -> a + bit (idx - l')
+                                                          False -> a)
+                                          0 [l'..h']
+eval' (EStruct _ n (Left fs)) _  = StructVal $ M.fromList $ map (mapSnd eval) fs
+eval' (EStruct _ n (Right fs)) t = let StructSpec _ fs' = tspec $ typ' t
+                                       fnames = map name fs'
+                                   in StructVal $ M.fromList $ map (mapSnd eval) (zip fnames fs)
+eval' (ENonDet _) _           = NondetVal
 
 
 evalInt :: (?spec::Spec, ?scope::Scope) => ConstExpr -> Integer
-evalInt = error "evalInt not implemented"
+evalInt e = let IntVal i = val $ eval e
+            in i
+
+evalBool :: (?spec::Spec, ?scope::Scope) => ConstExpr -> Bool
+evalBool e = let BoolVal b = val $ eval e
+             in b
 
 isLExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isLExpr e = error "isLExpr not implemented"
 
+-- case/cond must be exhaustive
 isConstExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isConstExpr e = error "isConstExpr not implemented"
+
 
 maxType :: (?spec::Spec, WithType a) => [a] -> Type
 maxType = error "maxType not implemented"
@@ -66,7 +139,6 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
     typ (EUnOp   _ BNeg e)      = typ e
     typ (EUnOp   _ Deref e)     = (t,s) where (PtrSpec _ t,s) = typ' e
     typ (EUnOp   p AddrOf e)    = (PtrSpec p t,s) where (t,s) = typ' e
-
     typ (EBinOp  p op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] = (BoolSpec p,?scope)
                              | elem op [BAnd,BOr,BXor] = typ e1
                              | elem op [Plus,Mul] = case (tspec e1, tspec e2) of
@@ -84,7 +156,6 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
 
 instance (?spec::Spec,?scope::Scope) => WithTypeSpec Expr where
     tspec = fst . typ
-
 
 
 validateExpr :: (?spec::Spec, MonadError String me) => Scope -> Expr -> me ()
