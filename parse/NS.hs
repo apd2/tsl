@@ -2,7 +2,7 @@
 
 module NS(Scope(..),
           WithScope(..),
-          Type,
+          Type(Type),
           WithType(..),
           lookupTemplate, checkTemplate, getTemplate, 
           lookupTypeDecl, checkTypeDecl, getTypeDecl,
@@ -14,8 +14,10 @@ import Control.Monad.Error
 import Data.List
 import Data.Maybe
 import qualified Data.Map as M
+import Text.PrettyPrint
 
 import Util hiding(name)
+import PP
 import TSLUtil
 import Pos
 import Name
@@ -33,19 +35,38 @@ data Scope = ScopeTop
            | ScopeMethod   {scopeTm::Template, scopeMeth::Method}
            | ScopeProcess  {scopeTm::Template, scopeProc::Process}
 
+instance Eq Scope where
+    (==) ScopeTop             ScopeTop             = True
+    (==) (ScopeTemplate t1)   (ScopeTemplate t2)   = name t1 == name t2
+    (==) (ScopeMethod t1 m1)  (ScopeMethod t2 m2)  = name t1 == name t2 && name m1 == name m2
+    (==) (ScopeProcess t1 p1) (ScopeProcess t2 p2) = name t1 == name t2 && name p1 == name p2
+    (==) _                    _                    = False
+
 class WithScope a where
     scope :: a -> Scope
 
-type Type = (TypeSpec, Scope)
+data Type = Type Scope TypeSpec
 
 instance WithScope Type where
-    scope = snd
+    scope (Type s t) = s
 
 instance WithTypeSpec Type where
-    tspec = fst
+    tspec (Type s t) = t
 
-instance Show Type where
-    show = show . fst
+instance (?spec::Spec) => PP Type where
+    pp t = case tspec t of
+                UserTypeSpec _ n    -> let (d,s) = getTypeDecl (scope t) n
+                                       in case s of
+                                               ScopeTop         -> text $ sname d
+                                               ScopeTemplate tm -> text (sname tm) <> text "::" <> text (sname d)
+                StructSpec _   fs   -> text "struct" <+> 
+                                       (braces $ nest' $ vcat $ map ((<> semi) . (\f -> pp (Type (scope t) (tspec f)) <+> pp (name f))) fs)
+                PtrSpec _      pt   -> pp (Type (scope t) pt) <> char '*'
+                ArraySpec _    at l -> pp (Type (scope t) at) <> (brackets $ pp l)
+                _                   -> pp $ tspec t
+
+instance (?spec::Spec) => Show Type where
+    show = render . pp
 
 class WithType a where
     typ :: a -> Type
@@ -96,7 +117,7 @@ instance WithScope Obj where
     scope (ObjVar s _)      = s
     scope (ObjGVar t _)     = ScopeTemplate t
     scope (ObjArg s _)      = s
-    scope (ObjType (_,s))   = s
+    scope (ObjType t)       = scope t
     scope (ObjTypeDecl s _) = s
     scope (ObjConst s _)    = s
     scope (ObjEnum t _)     = scope t
@@ -118,30 +139,30 @@ instance WithName Obj where
 
 instance (?spec::Spec) => WithType Obj where
     typ (ObjTemplate   t) = error $ "requesting type of ObjTemplate"
-    typ (ObjPort     s p) = (TemplateTypeSpec (pos $ getTemplate $ portTemplate p) $ portTemplate p, ScopeTop)
-    typ (ObjInstance s i) = (TemplateTypeSpec (pos $ getTemplate $ instTemplate i) $ instTemplate i, ScopeTop)
+    typ (ObjPort     s p) = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ portTemplate p) $ portTemplate p
+    typ (ObjInstance s i) = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ instTemplate i) $ instTemplate i
     typ (ObjProcess  _ p) = error $ "requesting type of ObjProcess"
     typ (ObjMethod   _ m) = error $ "requesting type of ObjMethod"
-    typ (ObjVar      s v) = (tspec v,s)
-    typ (ObjGVar     t v) = (tspec v,ScopeTemplate t)
-    typ (ObjArg      s a) = (tspec a,s)
+    typ (ObjVar      s v) = Type s $ tspec v
+    typ (ObjGVar     t v) = Type (ScopeTemplate t) (tspec v)
+    typ (ObjArg      s a) = Type s $ tspec a
     typ (ObjType       t) = error $ "requesting type of ObjType"
     typ (ObjTypeDecl _ d) = error $ "requesting type of ObjTypeDecl"
-    typ (ObjConst    s c) = (tspec c,s)
-    typ (ObjEnum     t e) = (tspec t,scope t)
+    typ (ObjConst    s c) = Type s $ tspec c
+    typ (ObjEnum     t e) = t
 
 instance (?spec::Spec) => WithTypeSpec Obj where
-    tspec = fst . typ
+    tspec = tspec . typ
 
 
 objLookup :: (?spec::Spec) => Obj -> Ident -> Maybe Obj
 objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c]
     where s = ScopeTop
-          d = fmap (ObjTypeDecl s) $ find ((== n) . name) (specType ?spec)
-          c = fmap (ObjConst    s) $ find ((== n) . name) (specConst ?spec)
-          t = fmap ObjTemplate     $ find ((== n) . name) (specTemplate ?spec)
+          d = fmap (ObjTypeDecl s)   $ find ((== n) . name) (specType ?spec)
+          c = fmap (ObjConst    s)   $ find ((== n) . name) (specConst ?spec)
+          t = fmap ObjTemplate       $ find ((== n) . name) (specTemplate ?spec)
           e = fmap (uncurry ObjEnum) $ find ((== n) . name . snd) (concat $ map (\d -> case tspec d of
-                                                                                            EnumSpec _ es -> map ((tspec d,s),) es
+                                                                                            EnumSpec _ es -> map (Type s (tspec d),) es
                                                                                             _             -> []) $ 
                                                                                 specType ?spec)
 
@@ -156,7 +177,7 @@ objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,pr,m,d,c,e,par]
           d  = fmap (ObjTypeDecl s) $ find ((== n) . name) (tmTypeDecl t)
           c  = fmap (ObjConst    s) $ find ((== n) . name) (tmConst t)
           e  = fmap (uncurry ObjEnum) $ find ((== n) . name . snd) (concat $ map (\d -> case tspec d of
-                                                                                             EnumSpec _ es -> map ((tspec d,s),) es
+                                                                                             EnumSpec _ es -> map (Type s (tspec d),) es
                                                                                              _             -> []) $ 
                                                                                  tmTypeDecl t)
           -- search parent templates
@@ -179,14 +200,14 @@ objLookup o@(ObjGVar t v)     n = objLookup o n
 objLookup o@(ObjArg s a)      n = objLookup o n
 objLookup o@(ObjTypeDecl s t) n = objLookup o n
 
-objLookup (ObjType (StructSpec _ fs,s)) n = fmap (ObjType . (,s) . tspec) $ find ((==n) . name) fs
+objLookup (ObjType (Type s (StructSpec _ fs))) n = fmap (ObjType . Type s . tspec) $ find ((==n) . name) fs
 
-objLookup (ObjType (TemplateTypeSpec _ tn,s)) n = case objLookup ObjSpec tn of
-                                                       Just o@(ObjTemplate _) -> objLookup o n
-                                                       Nothing                -> Nothing
-objLookup (ObjType (UserTypeSpec _ tn,s)) n = case lookupTypeDecl s tn of
-                                                   Just (d,s') -> objLookup (ObjTypeDecl s' d) n
-                                                   Nothing     -> Nothing
+objLookup (ObjType (Type s (TemplateTypeSpec _ tn))) n = case objLookup ObjSpec tn of
+                                                              Just o@(ObjTemplate _) -> objLookup o n
+                                                              Nothing                -> Nothing
+objLookup (ObjType (Type s (UserTypeSpec _ tn))) n = case lookupTypeDecl s tn of
+                                                          Just (d,s') -> objLookup (ObjTypeDecl s' d) n
+                                                          Nothing     -> Nothing
 
 objGet :: (?spec::Spec) => Obj -> Ident -> Obj
 objGet o n = fromJustMsg ("objLookup failed: " ++ show n) $ objLookup o n

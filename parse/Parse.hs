@@ -328,7 +328,7 @@ statement =  withPos $
          <?> "statement")
 
 svarDecl = SVarDecl nopos <$> varDecl
-sreturn  = SReturn nopos <$ reserved "return" <*> expr
+sreturn  = SReturn nopos <$ reserved "return" <*> (optionMaybe expr)
 sseq     = SSeq nopos <$> (braces $ many $ statement <* semi)
 spar     = SPar nopos <$ reserved "fork" <*> (braces $ many $ statement <* semi)
 sforever = SForever nopos <$ reserved "forever" <*> statement

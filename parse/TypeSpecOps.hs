@@ -1,7 +1,9 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
 module TypeSpecOps(typ', 
+                   typeIso,
                    typeMatch,
+                   checkTypeMatch,
                    typeComparable,
                    typeWidth,
                    isInt, isBool, isPtr, isArray, isStruct,
@@ -20,51 +22,122 @@ import TypeSpec
 import Template
 import Spec
 import NS
---import ExprOps
+import {-# SOURCE #-} ExprOps
+
 
 typ' :: (?spec::Spec, WithType a) => a -> Type
-typ' x = case typ x of
-              (UserTypeSpec _ n,s) -> let (d,s') = getTypeDecl s n
-                                      in typ' (tspec d,s')
-              t                    -> t
+typ' x = case tspec $ typ x of
+              UserTypeSpec _ n -> let (d,s') = getTypeDecl (scope $ typ x) n
+                                  in typ' (Type s' $ tspec d)
+              t                -> typ x
 
 isInt :: (?spec::Spec, WithType a) => a -> Bool
-isInt x = case fst $ typ' x of
+isInt x = case tspec $ typ' x of
                  SIntSpec _ _ -> True
                  UIntSpec _ _ -> True
                  _            -> False
 
 isBool :: (?spec::Spec, WithType a) => a -> Bool
-isBool x = case fst $ typ' x of
+isBool x = case tspec $ typ' x of
                 BoolSpec _ -> True
                 _          -> False
 
 isPtr :: (?spec::Spec, WithType a) => a -> Bool
-isPtr x = case fst $ typ' x of
+isPtr x = case tspec $ typ' x of
                PtrSpec _ _ -> True
                _           -> False
 
 isArray :: (?spec::Spec, WithType a) => a -> Bool
-isArray x = case fst $ typ' x of
+isArray x = case tspec $ typ' x of
                ArraySpec _ _ _ -> True
                _               -> False
 
 isStruct :: (?spec::Spec, WithType a) => a -> Bool
-isStruct x = case fst $ typ' x of
+isStruct x = case tspec $ typ' x of
                StructSpec _ _ -> True
                _              -> False
 
+-------------------------------------------------
+-- Various equivalence relations over types
+-------------------------------------------------
 
--- Types can substitute each other in an expression.
+-- Type isomorphism: types are equivalent module UserTypeSpec expansion
+typeIso :: (?spec::Spec, WithType a, WithType b) => a -> b -> Bool
+typeIso x y = 
+    let Type sx tx = typ' x
+        Type sy ty = typ' y
+    in case (tx, ty) of
+            (BoolSpec _         , BoolSpec _)         -> True
+            (SIntSpec _ wx      , SIntSpec _ wy)      -> wx == wy
+            (UIntSpec _ wx      , UIntSpec _ wy)      -> wx == wy
+            (StructSpec _ fsx   , StructSpec _ fsy)   -> length fsx == length fsy &&
+                                                         (and $ map (\(fx,fy) -> name fx == name fy && 
+                                                                                 typeIso (Type sx $ tspec fx) (Type sy $ tspec fy))
+                                                                    (zip fsx fsy))
+            (EnumSpec _ esx     , EnumSpec _ esy)     -> sx == sy && 
+                                                         length esx == length esy &&
+                                                         (and $ map (\(ex,ey) -> name ex == name ey) (zip esx esy))
+            (PtrSpec _ ptx      , PtrSpec _ pty)      -> typeIso (Type sx ptx) (Type sy pty)
+            (ArraySpec _  atx lx, ArraySpec _ aty ly) -> typeIso (Type sx atx) (Type sy aty) &&
+                                                         (let ?scope = sx in evalInt lx) == (let ?scope = sy in evalInt ly)
+            (_                  , _)                  -> False
+
+
+-- Instances of types can be assigned to each other
 typeMatch :: (?spec::Spec, WithType a, WithType b) => a -> b -> Bool
-typeMatch x y = error "Not implemented: typeMatch"
+typeMatch x y = 
+    let Type sx tx = typ' x
+        Type sy ty = typ' y
+    in case (tx, ty) of
+            (BoolSpec _         , BoolSpec _)         -> True
+            (SIntSpec _ _       , SIntSpec _ _)       -> True
+            (UIntSpec _ _       , UIntSpec _ _)       -> True
+            (StructSpec _ fsx   , StructSpec _ fsy)   -> length fsx == length fsy &&
+                                                         (and $ map (\(fx,fy) -> name fx == name fy && 
+                                                                                 typeMatch (Type sx $ tspec fx) (Type sy $ tspec fy))
+                                                                    (zip fsx fsy))
+            (EnumSpec _ esx     , EnumSpec _ esy)     -> sx == sy && 
+                                                         length esx == length esy &&
+                                                         (and $ map (\(ex,ey) -> name ex == name ey) (zip esx esy))
+            (PtrSpec _ ptx      , PtrSpec _ pty)      -> typeIso (Type sx ptx) (Type sy pty)
+            (ArraySpec _  atx lx, ArraySpec _ aty ly) -> typeMatch (Type sx atx) (Type sy aty) &&
+                                                         (let ?scope = sx in evalInt lx) == (let ?scope = sy in evalInt ly)
+            (_                  , _)                  -> False
+
+
+checkTypeMatch :: (?spec::Spec, WithType a, WithType b, WithPos b, Show b, MonadError String me) => a -> b -> me ()
+checkTypeMatch x y = do
+    assert (typeMatch x y) (pos y) $
+           "Type mismatch: expected type: " ++ (show $ typ x) ++ ", actual type " ++ (show $ typ y) ++ " in " ++ show y
+
 
 -- Objects of these types can be compared using == and !=
 typeComparable :: (?spec::Spec, WithType a, WithType b) => a -> b -> Bool
-typeComparable x y = error "Not implemented: typeComparable"
+typeComparable x y =     
+    let Type sx tx = typ' x
+        Type sy ty = typ' y
+    in case (tx, ty) of
+            (BoolSpec _         , BoolSpec _)         -> True
+            (SIntSpec _ _       , SIntSpec _ _)       -> True
+            (UIntSpec _ _       , UIntSpec _ _)       -> True
+            (UIntSpec _ _       , SIntSpec _ _)       -> True
+            (SIntSpec _ _       , UIntSpec _ _)       -> True
+            (StructSpec _ fsx   , StructSpec _ fsy)   -> length fsx == length fsy &&
+                                                         (and $ map (\(fx,fy) -> name fx == name fy && 
+                                                                                 typeIso (Type sx $ tspec fx) (Type sy $ tspec fy))
+                                                                    (zip fsx fsy))
+            (EnumSpec _ esx     , EnumSpec _ esy)     -> sx == sy && 
+                                                         length esx == length esy &&
+                                                         (and $ map (\(ex,ey) -> name ex == name ey) (zip esx esy))
+            (PtrSpec _ ptx      , PtrSpec _ pty)      -> typeIso (Type sx ptx) (Type sy pty)
+            (ArraySpec _  atx lx, ArraySpec _ aty ly) -> typeMatch (Type sx atx) (Type sy aty) &&
+                                                         (let ?scope = sx in evalInt lx) == (let ?scope = sy in evalInt ly)
+            (_                  , _)                  -> False
+
+
 
 typeWidth :: (?spec::Spec, WithType a) => a -> Int
-typeWidth x = case fst $ typ' x of
+typeWidth x = case tspec $ typ' x of
                    SIntSpec _ w -> w
                    UIntSpec _ w -> w
                    _            -> error $ "typeWidth: non-integral type"
@@ -97,15 +170,15 @@ gTypeName (d,ScopeTop)        = [name d]
 gTypeName (d,ScopeTemplate t) = [name t,name d]
 
 tdeclDeps :: (?spec::Spec) => GStaticSym -> [GStaticSym]
-tdeclDeps n = (\(d,s) -> typeDeps (tspec d,s)) $ getTypeDecl ScopeTop n
+tdeclDeps n = (\(d,s) -> typeDeps (Type s $ tspec d)) $ getTypeDecl ScopeTop n
 
 typeDeps :: (?spec::Spec) => Type -> [GStaticSym]
-typeDeps (StructSpec _ fs, s) = concat $ 
+typeDeps (Type s (StructSpec _ fs)) = concat $ 
     map ((\t -> case t of
                      UserTypeSpec _ n -> [gTypeName $ getTypeDecl s n]
-                     _                -> typeDeps (t,s)) . tspec)
+                     _                -> typeDeps (Type s t)) . tspec)
         fs
-typeDeps (UserTypeSpec _ n,s) = [gTypeName $ getTypeDecl s n]
+typeDeps (Type s (UserTypeSpec _ n)) = [gTypeName $ getTypeDecl s n]
 typeDeps _                    = []
 
 

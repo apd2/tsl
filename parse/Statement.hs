@@ -14,7 +14,7 @@ import Var
 
 -- Statements
 data Statement = SVarDecl {stpos::Pos, svar::Var}
-               | SReturn  {stpos::Pos, retval::Expr}
+               | SReturn  {stpos::Pos, retval::(Maybe Expr)}
                | SSeq     {stpos::Pos, statements::[Statement]}
                | SPar     {stpos::Pos, statements::[Statement]}
                | SForever {stpos::Pos, body::Statement}

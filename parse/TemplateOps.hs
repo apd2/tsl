@@ -117,7 +117,7 @@ tmLocalDecls t = (map (ObjPort t)                     (tmPort t))     ++
                  (map (ObjProcess t)                  (tmProcess t))  ++
                  (map (ObjMethod t)                   (tmMethod t))   ++
                  (concat $ map (\d -> case tspec d of
-                                           EnumSpec _ es -> map (ObjEnum (tspec d, ScopeTemplate t)) es
+                                           EnumSpec _ es -> map (ObjEnum (Type (ScopeTemplate t) $ tspec d)) es
                                            _             -> []) (tmTypeDecl t))
 
 

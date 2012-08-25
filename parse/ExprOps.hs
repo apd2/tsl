@@ -1,6 +1,8 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
-module ExprOps(evalInt) where
+module ExprOps(evalInt,
+               validateExpr, validateExpr',
+               validateCall) where
 
 import Control.Monad.Error
 import Data.Maybe
@@ -111,8 +113,17 @@ evalBool :: (?spec::Spec, ?scope::Scope) => ConstExpr -> Bool
 evalBool e = let BoolVal b = val $ eval e
              in b
 
+-- L-expression: variable, field, array element,
 isLExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
-isLExpr e = error "isLExpr not implemented"
+isLExpr (ETerm _ n)     = case getTerm ?scope n of
+                               ObjConst _ _ -> False
+                               ObjEnum _ _  -> False
+                               _            -> True
+isLExpr (EField _ e _)  = isLExpr e
+isLExpr (EPField _ e _) = True
+isLExpr (EIndex  _ e _) = isLExpr e
+isLExpr (ESlice _ e _)  = isLExpr e
+isLExpr _               = False
 
 -- case/cond must be exhaustive
 isConstExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
@@ -148,12 +159,12 @@ maxType xs = foldl' (\t x -> maxType2 t (typ x))
                     (typ $ head xs) (tail xs)
 
 maxType2 :: (?spec::Spec,?scope::Scope) => Type -> Type -> Type
-maxType2 t1 t2 = let (t1',s1) = typ' t1
-                     (t2',s2) = typ' t2
+maxType2 t1 t2 = let Type s1 t1' = typ' t1
+                     Type s2 t2' = typ' t2
                  in case (t1', t2') of
                       (BoolSpec _    , BoolSpec _)     -> t1
-                      (SIntSpec p i1 , SIntSpec _ i2)  -> (SIntSpec p (max i1 i2),s1)
-                      (UIntSpec p i1 , UIntSpec _ i2)  -> (UIntSpec p (max i1 i2),s1)
+                      (SIntSpec p i1 , SIntSpec _ i2)  -> Type s1 $ SIntSpec p (max i1 i2)
+                      (UIntSpec p i1 , UIntSpec _ i2)  -> Type s1 $ UIntSpec p (max i1 i2)
                       (FlexTypeSpec _, _)              -> t2
                       (_             , FlexTypeSpec _) -> t1
                       _                                -> t1
@@ -161,37 +172,37 @@ maxType2 t1 t2 = let (t1',s1) = typ' t1
 -- Assumes that expression has been validated first
 instance (?spec::Spec,?scope::Scope) => WithType Expr where
     typ (ETerm   _ n)           = typ $ getTerm ?scope n
-    typ (ELit    p w True _ _)  = (SIntSpec p w,?scope)
-    typ (ELit    p w False _ _) = (UIntSpec p w,?scope)
-    typ (EBool   p _)           = (BoolSpec p  ,?scope)
-    typ (EApply  _ mref _)      = (fromJust $ methRettyp m,s) where (m,s) = getMethod ?scope mref
+    typ (ELit    p w True _ _)  = Type ?scope $ SIntSpec p w
+    typ (ELit    p w False _ _) = Type ?scope $ UIntSpec p w
+    typ (EBool   p _)           = Type ?scope $ BoolSpec p
+    typ (EApply  _ mref _)      = Type s $ fromJust $ methRettyp m where (m,s) = getMethod ?scope mref
     typ (EField  _ e f)         = typ $ objGet (ObjType $ typ e) f 
-    typ (EPField _ e f)         = typ $ objGet (ObjType (t,s)) f where (PtrSpec _ t,s) = typ' e
-    typ (EIndex  _ e i)         = (t,s) where (ArraySpec _ t _,s) = typ' e
+    typ (EPField _ e f)         = typ $ objGet (ObjType $ Type s t) f where Type s (PtrSpec _ t) = typ' e
+    typ (EIndex  _ e i)         = Type s t where Type s (ArraySpec _ t _) = typ' e
     typ (EUnOp   _ UMinus e)    = case typ' e of
-                                       t@(SIntSpec p w, s) -> t
-                                       (UIntSpec p w, s)   -> (SIntSpec p w, s)
-    typ (EUnOp   p Not e)       = (BoolSpec p,?scope)
+                                       t@(Type s (SIntSpec p w)) -> t
+                                       Type s (UIntSpec p w)     -> Type s $ SIntSpec p w
+    typ (EUnOp   p Not e)       = Type ?scope $ BoolSpec p
     typ (EUnOp   _ BNeg e)      = typ e
-    typ (EUnOp   _ Deref e)     = (t,s) where (PtrSpec _ t,s) = typ' e
-    typ (EUnOp   p AddrOf e)    = (PtrSpec p t,s) where (t,s) = typ' e
-    typ (EBinOp  p op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] = (BoolSpec p,?scope)
+    typ (EUnOp   _ Deref e)     = Type s t where Type s (PtrSpec _ t) = typ' e
+    typ (EUnOp   p AddrOf e)    = Type s (PtrSpec p t) where Type s t = typ' e
+    typ (EBinOp  p op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] = Type ?scope $ BoolSpec p
                              | elem op [BAnd,BOr,BXor] = typ e1
                              | elem op [Plus,Mul] = case (tspec e1, tspec e2) of
-                                                         ((UIntSpec _ w1), (UIntSpec _ w2)) -> (UIntSpec p (max w1 w2),?scope)
-                                                         _                                  -> (SIntSpec p (max (typeWidth e1) (typeWidth e2)),?scope)
-                             | op == BinMinus = (SIntSpec p (max (typeWidth e1) (typeWidth e2)),?scope)
+                                                         ((UIntSpec _ w1), (UIntSpec _ w2)) -> Type ?scope $ UIntSpec p (max w1 w2)
+                                                         _                                  -> Type ?scope $ SIntSpec p (max (typeWidth e1) (typeWidth e2))
+                             | op == BinMinus = Type ?scope (SIntSpec p (max (typeWidth e1) (typeWidth e2)))
                              | op == Mod = typ e1
     typ (ETernOp _ _ e2 e3)     = maxType [e2, e3]
     typ (ECase _ _ cs md)       = maxType $ (map snd cs) ++ maybeToList md
     typ (ECond _ cs md)         = maxType $ (map snd cs) ++ maybeToList md
-    typ (ESlice p e (l,h))      = (UIntSpec p (fromInteger (evalInt h - evalInt l + 1)), ?scope)
-    typ (EStruct p tn _)        = (UserTypeSpec p tn, ?scope)
-    typ (ENonDet p)             = (FlexTypeSpec p, ?scope)
+    typ (ESlice p e (l,h))      = Type ?scope $ UIntSpec p (fromInteger (evalInt h - evalInt l + 1))
+    typ (EStruct p tn _)        = Type ?scope $ UserTypeSpec p tn
+    typ (ENonDet p)             = Type ?scope $ FlexTypeSpec p
 
 
 instance (?spec::Spec,?scope::Scope) => WithTypeSpec Expr where
-    tspec = fst . typ
+    tspec = tspec . typ
 
 
 validateExpr :: (?spec::Spec, MonadError String me) => Scope -> Expr -> me ()
@@ -209,22 +220,15 @@ validateExpr' (EBool _ _)        = return ()
 --   - method name refers to a visible method (local or exported)
 --   - the number and types of arguments match
 validateExpr' (EApply p mref as) = do
-    (m, ScopeTemplate t) <- checkMethod ?scope mref
+    validateCall p mref as
+    let (m, _) = getMethod ?scope mref
     assert (isJust $ methRettyp m) p $ "Method " ++ sname m ++ " has void return type and cannot be used in expression"
-    assert ((length $ methArg m) == length as) p $
-           "Method " ++ sname m ++ " takes " ++ show (length $ methArg m) ++ 
-           " arguments, but is invoked with " ++ show (length as) ++ " arguments"
-    mapM (\(marg,a) -> do validateExpr' a
-                          assert (typeMatch marg a) (pos a) $
-                                 "Argument type " ++ show (tspec a) ++ " does not match expected type " ++ show (tspec marg))
-         (zip (map (ObjArg (ScopeMethod t m)) (methArg m)) as)
-    return ()
 
 -- * field selection refers to a valid struct field, or a valid and externally 
 --   visible template variable, port or instance
 validateExpr' (EField p e f) = do
     validateExpr' e
-    case fst $ typ' e of
+    case tspec $ typ' e of
          StructSpec _ fs      -> assert (any ((==f) . name) fs) (pos f) $ "Unknown field name " ++ show f
          TemplateTypeSpec _ t -> case objLookup (ObjTemplate (getTemplate t)) f of
                                       Nothing                -> err (pos f) $ "Unknown identifier " ++ show f
@@ -238,10 +242,10 @@ validateExpr' (EField p e f) = do
 validateExpr' (EPField p e f) = do
     validateExpr' e
     case typ' e of
-         (PtrSpec _ t,s) -> case typ' (t,s) of
-                                 (StructSpec _ fs, _) -> assert (any ((==f) . name) fs) (pos f) $ "Unknown field name " ++ show f
-                                 _                    -> err (pos f) $ "Expression " ++ show e ++ " is not a struct pointer"
-         _                                            -> err (pos f) $ "Expression " ++ show e ++ " is not a pointer"
+         (Type s (PtrSpec _ t)) -> case tspec $ typ' $ Type s t of
+                                        StructSpec _ fs -> assert (any ((==f) . name) fs) (pos f) $ "Unknown field name " ++ show f
+                                        _               -> err (pos f) $ "Expression " ++ show e ++ " is not a struct pointer"
+         _                      -> err (pos f) $ "Expression " ++ show e ++ " is not a pointer"
 
 
 -- * index[]: applied to an array type expression; index value is a valid 
@@ -367,7 +371,7 @@ validateExpr' (ESlice p e (l,h)) = do
 --    - correct number and types of fields
 validateExpr' (EStruct p n es) = do
     (d,s) <- checkTypeDecl ?scope n
-    let t = (tspec d,s)
+    let t = Type s $ tspec d
     assert (isStruct t) (pos n) $ show n ++ " is not a struct type"
     let (StructSpec _ fs) = tspec d
         nes = case es of 
@@ -378,13 +382,26 @@ validateExpr' (EStruct p n es) = do
          Left  es -> mapM (\(((n,e),f),id) -> do assert (n == name f) (pos n) $ 
                                                         "Incorrect field name: field " ++ show id ++ " of struct " ++ sname d ++ " has name " ++ show n
                                                  validateExpr' e
-                                                 assert (typeComparable e (tspec f,s)) (pos e) $ 
+                                                 assert (typeComparable e $ Type s $ tspec f) (pos e) $ 
                                                         "Could not match expected type " ++ (show $ tspec f) ++ " with actual type " ++ (show $ tspec e) ++ " in expression " ++ show e)
                           (zip (zip es fs) [1..])
          Right es -> mapM (\((e,f),id) -> do validateExpr' e
-                                             assert (typeComparable e (tspec f,s)) (pos e) $ 
+                                             assert (typeComparable e $ Type s $ tspec f) (pos e) $ 
                                                     "Could not match expected type " ++ (show $ tspec f) ++ " with actual type " ++ (show $ tspec e) ++ " in expression " ++ show e)
                           (zip (zip es fs) [1..])
     return ()
 
 validateExpr' (ENonDet _) = return ()
+
+-- Common code to validate method calls in statement and expression contexts
+validateCall :: (?spec::Spec, ?scope::Scope, MonadError String me) => Pos -> MethodRef -> [Expr] -> me ()
+validateCall p mref as = do
+    (m, ScopeTemplate t) <- checkMethod ?scope mref
+    assert ((length $ methArg m) == length as) p $
+           "Method " ++ sname m ++ " takes " ++ show (length $ methArg m) ++ 
+           " arguments, but is invoked with " ++ show (length as) ++ " arguments"
+    mapM (\(marg,a) -> do validateExpr' a
+                          checkTypeMatch marg a)
+         (zip (map (ObjArg (ScopeMethod t m)) (methArg m)) as)
+    return ()
+
