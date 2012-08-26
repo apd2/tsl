@@ -22,27 +22,13 @@ validateStat :: (?spec::Spec, MonadError String me) => Scope -> Statement -> me 
 validateStat s e = let ?scope = s 
                    in validateStat' False e
 
-
 -- Validating statements
 -- * all loops
 --   - there is no path through the loop body that does not break out of the loop and
 --     does not contain some form of pause
--- * pause - only allowed inside an uncontrollable or invisible task or a process
--- * stop - only allowed inside an uncontrollable or invisible task or a process
--- * break - only allowed inside a loop
 -- * method invocations
---   - method name refers to a visible method (local or exported)
 --   - if the method is a task, then the current context must be a process or task
---   - the number and types of arguments match
 --   - no recursion
--- * assert, assume arguments must be valid, side effect-free boolean expressions 
--- * assign: LHS is a valid l-value expression (in particular, it cannot be a continous 
---   assignment variable); RHS is a valid expression of a matching type
--- * if-then-else.  The conditional expression is of type bool
--- * case: the key expression and case clauses have matching types
--- * magic block: 
---   - only allowed in uncontrollable tasks
---   - valid goal name or boolean goal expression
 
 -- The first argument indicates that the statement belongs to a loop
 validateStat' :: (?spec::Spec, ?scope::Scope, MonadError String me) => Bool -> Statement -> me ()
@@ -117,12 +103,50 @@ validateStat' l (SBreak p) = assert l p $ "break outside a loop"
 validateStat' _ (SInvoke p m as) = validateCall p m as
 validateStat' _ (SAssert _ e) = do
     validateExpr' e
---               | SAssume  {stpos::Pos, cond::Expr}
---               | SAssign  {stpos::Pos, lhs::Expr, rhs::Expr}
---               | SITE     {stpos::Pos, cond::Expr, sthen::Statement, selse::(Maybe Statement)}     -- if () then {..} [else {..}]
---               | SCase    {stpos::Pos, caseexpr::Expr, cases::[(Expr, Statement)], def::(Maybe Statement)}
---               | SMagic   {stpos::Pos, magiccond::(Either Ident Expr)}
---
+    assert (isBool e) (pos e) $ "Assertion must be a boolean expression"
+    assert (exprNoSideEffects e) (pos e) $ "Assertion must be side-effect free"
+
+validateStat' _ (SAssume _ e) = do
+    validateExpr' e
+    assert (isBool e) (pos e) $ "Assumption must be a boolean expression"
+    assert (exprNoSideEffects e) (pos e) $ "Assumption must be side-effect free"
+
+validateStat' _ (SAssign _ lhs rhs) = do
+    validateExpr' lhs
+    validateExpr' rhs
+    assert (isLExpr lhs) (pos lhs) $ "Left-hand side of assignment is not an L-value"
+    checkTypeMatch lhs rhs
+
+validateStat' l (SITE _ i t e) = do
+    validateExpr' i
+    assert (isBool i) (pos i) $ "Condition of an if-statement must be a boolean expression"
+    validateStat' l t
+    case e of 
+         Just s  -> validateStat' l s
+         Nothing ->  return ()
+
+validateStat' l (SCase p c cs md) = do
+    validateExpr' c
+    assert (length cs > 0) p $ "Empty case statement"
+    mapM (\(e,s) -> do {validateExpr' e; validateStat' l s}) cs
+    case md of
+         Just d  -> validateStat' l d
+         Nothing -> return ()
+    mapM (\(e1,_) -> assert (typeComparable c e1) (pos e1) $ 
+                     "Expression " ++ show e1 ++ " has type "  ++ (show $ tspec e1) ++ 
+                     ", which does not match the type " ++ (show $ tspec c) ++ " of the key expression " ++ show c) cs
+    return ()
+
+validateStat' l (SMagic p g) = do
+    case ?scope of
+         ScopeMethod t m -> case methCat m of
+                                 Task Uncontrollable -> return ()
+                                 _                   -> err p "Magic blocks only allowed in uncontrollable tasks"
+         _               -> err p "Magic blocks only allowed in uncontrollable tasks"
+    case g of
+         Left n  -> do {checkGoal ?scope n; return()}
+         Right e -> do validateExpr' e
+                       assert (isBool e) (pos e) $ "Objective must be a boolean expression"
 
 checkLoopBody :: (?spec::Spec, ?scope::Scope, MonadError String me) => Statement -> me ()
 checkLoopBody s = do

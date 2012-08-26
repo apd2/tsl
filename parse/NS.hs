@@ -6,8 +6,9 @@ module NS(Scope(..),
           WithType(..),
           lookupTemplate, checkTemplate, getTemplate, 
           lookupTypeDecl, checkTypeDecl, getTypeDecl,
-          lookupTerm, checkTerm, getTerm,
-          lookupMethod, checkMethod, getMethod,
+          lookupTerm    , checkTerm    , getTerm,
+          lookupMethod  , checkMethod  , getMethod,
+          lookupGoal    , checkGoal    , getGoal,
           Obj(..), objLookup, objGet) where
 
 import Control.Monad.Error
@@ -321,6 +322,18 @@ checkMethod s m = case lookupMethod s m of
 getMethod :: (?spec::Spec) => Scope -> MethodRef -> (Method, Scope)
 getMethod s m = fromJustMsg "getMethod: method not found" $ lookupMethod s m
 
+-- Goal lookup
+lookupGoal :: (?spec::Spec) => Scope -> Ident -> Maybe Goal
+lookupGoal s n = find ((==n) . name) (tmGoal t)
+    where t = case s of
+                  ScopeTemplate tm   -> tm
+                  ScopeMethod   tm _ -> tm
+                  ScopeProcess  tm _ -> tm
 
---scopeUniqName :: (?spec::Spec, MonadError String me) => Scope -> Ident -> me ()
---scopeUniqName = undefined
+checkGoal :: (?spec::Spec, MonadError String me) => Scope -> Ident -> me Goal
+checkGoal s n = case lookupGoal s n of
+                     Just g  -> return g
+                     Nothing -> err (pos n) $ "Unknown goal " ++ show n
+
+getGoal :: (?spec::Spec) => Scope -> Ident -> Goal
+getGoal s n = fromJustMsg "getGoal: goal not found" $ lookupGoal s n

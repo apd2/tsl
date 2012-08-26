@@ -1,7 +1,8 @@
 {-# LANGUAGE FlexibleContexts, ImplicitParams, TupleSections #-}
 
 module TemplateOps(tmNamespace, 
-                   tmParents) where
+                   tmParents,
+                   isContGVar) where
 
 import Data.List
 import Data.Maybe
@@ -20,6 +21,10 @@ import Template
 import Spec
 import SpecOps
 import NS
+
+-- Check if variable is one of continuous assignment variables
+isContGVar :: Template -> GVar -> Bool
+isContGVar t v = error "isContGVar not implemented"
 
 tmParents :: (?spec::Spec) => Template -> [Template]
 tmParents t = map (getTemplate . drvTemplate) (tmDerive t)

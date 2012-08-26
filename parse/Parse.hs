@@ -219,7 +219,7 @@ data TemplateItem = TDerive        Derive
                   | TAssign        ContAssign
 
 mkTemplate :: Ident -> [Port] -> [TemplateItem] -> Template
-mkTemplate n ps is = Template nopos n ps drvs consts types vars insts inits procs meths
+mkTemplate n ps is = Template nopos n ps drvs consts types vars insts inits procs meths goals
     where drvs = mapMaybe (\i -> case i of 
                                       TDerive d -> Just d
                                       _ -> Nothing) is
@@ -244,6 +244,10 @@ mkTemplate n ps is = Template nopos n ps drvs consts types vars insts inits proc
           meths = mapMaybe (\i -> case i of 
                                       TMethod m -> Just m
                                       _ -> Nothing) is
+          goals =  mapMaybe (\i -> case i of 
+                                      TGoalDecl g -> Just g
+                                      _ -> Nothing) is
+
 
 
 templateImport = withPos $ Port nopos <$> ident <*> ident

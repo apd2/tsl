@@ -1,6 +1,8 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
-module ExprOps(evalInt,
+module ExprOps(isLExpr,
+               evalInt,
+               exprNoSideEffects,
                validateExpr, validateExpr',
                validateCall) where
 
@@ -15,6 +17,7 @@ import TSLUtil
 import Pos
 import Name
 import Template
+import TemplateOps
 import TypeSpec
 import TypeSpecOps
 import Expr
@@ -115,15 +118,20 @@ evalBool e = let BoolVal b = val $ eval e
 
 -- L-expression: variable, field, array element,
 isLExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
-isLExpr (ETerm _ n)     = case getTerm ?scope n of
-                               ObjConst _ _ -> False
-                               ObjEnum _ _  -> False
-                               _            -> True
-isLExpr (EField _ e _)  = isLExpr e
-isLExpr (EPField _ e _) = True
-isLExpr (EIndex  _ e _) = isLExpr e
-isLExpr (ESlice _ e _)  = isLExpr e
-isLExpr _               = False
+isLExpr (ETerm _ n)           = case getTerm ?scope n of
+                                     ObjConst _ _ -> False
+                                     ObjEnum  _ _ -> False
+                                     ObjGVar  t v -> not $ isContGVar t v
+                                     _            -> True
+isLExpr (EField  _       e f) = isLExpr e &&
+                                case objGet (ObjType $ typ e) f of
+                                     ObjGVar t v -> not $ isContGVar t v
+                                     _           -> True
+isLExpr (EPField _       e _) = True
+isLExpr (EIndex  _       e _) = isLExpr e
+isLExpr (ESlice  _       e _) = isLExpr e
+isLExpr (EUnOp   _ Deref e  ) = True
+isLExpr _                     = False
 
 -- case/cond must be exhaustive
 isConstExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
@@ -153,6 +161,29 @@ isConstExpr (ESlice _ e (l,h))       = isConstExpr e && isConstExpr l && isConst
 isConstExpr (EStruct _ _ (Left fs))  = and $ map (isConstExpr . snd) fs
 isConstExpr (EStruct _ _ (Right fs)) = and $ map isConstExpr fs
 isConstExpr (ENonDet _)              = False
+
+-- Side-effect free expression
+exprNoSideEffects :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+exprNoSideEffects (EApply _ m as)          = (and $ map exprNoSideEffects as) &&
+                                             case methCat $ fst $ getMethod ?scope m of
+                                                  Function -> True
+                                                  _        -> False
+exprNoSideEffects (EField _ e _)           = exprNoSideEffects e
+exprNoSideEffects (EPField _ e _)          = exprNoSideEffects e
+exprNoSideEffects (EIndex _ a i)           = exprNoSideEffects a && exprNoSideEffects i
+exprNoSideEffects (EUnOp _ _ e)            = exprNoSideEffects e
+exprNoSideEffects (EBinOp _ _ e1 e2)       = exprNoSideEffects e1 && exprNoSideEffects e2
+exprNoSideEffects (ETernOp _ e1 e2 e3)     = exprNoSideEffects e1 && exprNoSideEffects e2 && exprNoSideEffects e3
+exprNoSideEffects (ECase _ c cs md)        = exprNoSideEffects c &&
+                                             (and $ map (\(e1,e2) -> exprNoSideEffects e1 && exprNoSideEffects e2) cs) &&
+                                             (and $ map exprNoSideEffects $ maybeToList md)
+exprNoSideEffects (ECond _ cs md)          = (and $ map (\(e1,e2) -> exprNoSideEffects e1 && exprNoSideEffects e2) cs) &&
+                                             (and $ map exprNoSideEffects $ maybeToList md)
+exprNoSideEffects (ESlice _ e (l,h))       = exprNoSideEffects e && exprNoSideEffects l && exprNoSideEffects h
+exprNoSideEffects (EStruct _ _ (Left fs))  = and $ map (exprNoSideEffects . snd) fs 
+exprNoSideEffects (EStruct _ _ (Right fs)) = and $ map exprNoSideEffects fs 
+exprNoSideEffects _ = True
+
 
 maxType :: (?spec::Spec, ?scope::Scope, WithType a) => [a] -> Type
 maxType xs = foldl' (\t x -> maxType2 t (typ x))
@@ -312,7 +343,7 @@ validateExpr' (ETernOp p e1 e2 e3) = do
 --    - value expressions and default expression must all have matching types
 validateExpr' (ECase p e cs md) = do
     validateExpr' e
-    assert (length cs > 0) p $ "Empty case statement"
+    assert (length cs > 0) p $ "Empty case expression"
     mapM (\(e1,e2) -> do {validateExpr' e1; validateExpr' e2}) cs
     case md of
          Just d  -> validateExpr' d
@@ -332,7 +363,7 @@ validateExpr' (ECase p e cs md) = do
 --    - condition expressions are valid boolean expressions
 --    - value expressions have compatible types
 validateExpr' (ECond p cs md) = do
-    assert (length cs > 0) p $ "Empty case statement"
+    assert (length cs > 0) p $ "Empty case expression"
     mapM (\(e1,e2) -> do validateExpr' e1
                          validateExpr' e2
                          assert (isBool e1) (pos e1) $ "Expression " ++ show e1 ++ " is of non-boolean type")
@@ -404,4 +435,3 @@ validateCall p mref as = do
                           checkTypeMatch marg a)
          (zip (map (ObjArg (ScopeMethod t m)) (methArg m)) as)
     return ()
-

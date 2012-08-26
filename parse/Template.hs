@@ -1,4 +1,4 @@
-module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst), 
+module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst, tmGoal), 
                 Port(Port,portTemplate), 
                 Instance(Instance, instPort, instTemplate),
                 GVar(GVar,gvarExport),
@@ -136,7 +136,8 @@ data Template = Template { tpos       :: Pos
                          , tmInst     :: [Instance]
                          , tmInit     :: [Init]
                          , tmProcess  :: [Process]
-                         , tmMethod   :: [Method]}
+                         , tmMethod   :: [Method]
+                         , tmGoal     :: [Goal]}
 
 instance PP Template where
     pp t = text "template" <+> (pp $ name t) <+> (ppports $ tmPort t) $+$ 
@@ -148,6 +149,7 @@ instance PP Template where
                                ppitems (tmInit t)     $+$
                                ppitems (tmProcess t)  $+$
                                ppitems (tmMethod t)   $+$
+                               ppitems (tmGoal t)     $+$
            text "endtemplate"
         where ppports [] = text ""
               ppports ports = parens $ hsep $ punctuate comma $ map pp ports
