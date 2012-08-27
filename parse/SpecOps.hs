@@ -35,6 +35,7 @@ import ConstOps
 --
 -- Second pass: We are now ready to validate components of the specification containing expressions:
 -- * Validate method declarations
+-- * Validate template instances (only concrete templates can be instantiated)
 -- * Validate call graph (no recursion, all possible stacks are valid (only invoke methods allowed in this context))
 -- * Validate process declarations
 -- * Validate initial assignment expressions in constant declarations
@@ -43,7 +44,7 @@ import ConstOps
 -- * Validate process and method bodies
 -- * Validate RHS of continous assignments; check acyclicity of cont assignments
 -- * Validate goals
--- From now on, check that
+
 validateSpec :: (MonadError String me) => Spec -> me ()
 validateSpec s = do
     let ?spec = s
@@ -64,11 +65,9 @@ validateSpec s = do
 
     -- Second pass
     mapM validateTmMethods     (specTemplate s)
+    mapM validateTmInstances2  (specTemplate s)
     return ()
 
--- Validating instance:
--- * only concrete templates can be instantiated
---
 -- Checks that require CFG analysis
 -- * All loops contain pause
 -- * All exits from non-void methods end with a return statement

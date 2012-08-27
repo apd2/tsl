@@ -13,7 +13,8 @@ module TemplateOps(tmNamespace,
                    validateTmConsts,
                    validateTmGVars,
                    validateTmGVars2,
-                   validateTmContAssigns) where
+                   validateTmContAssigns,
+                   validateTmMethods) where
 
 import Data.List
 import Data.Maybe
@@ -34,6 +35,7 @@ import Spec
 import ConstOps
 import Var
 import VarOps
+import {-# SOURCE #-} MethodOps
 import {-# SOURCE #-} ExprOps
 import NS
 
@@ -78,6 +80,8 @@ validateDrvInst tm tname ports posit = do
 -- Validate template instances
 -- * Every instance refers to a valid template and takes
 --   correct number and types of arguments
+-- Second pass: 
+-- * only concrete templates can be instantiated
 -----------------------------------------------------------
 
 -- Validate template instantiation statement
@@ -86,6 +90,15 @@ validateInstance tm i = validateDrvInst tm (instTemplate i) (instPort i) (pos i)
 
 validateTmInstances :: (?spec::Spec,MonadError String me) => Template -> me ()
 validateTmInstances tm = do {mapM (validateInstance tm) (tmInst tm); return()}
+
+validateInstance2 :: (?spec::Spec, MonadError String me) => Template -> Instance -> me ()
+validateInstance2 tm i = 
+    assert (isConcreteTemplate $ getTemplate $ instTemplate i) (pos i) $
+           "Cannot instantiate pure template " ++ (show $ instTemplate i)
+
+validateTmInstances2 :: (?spec::Spec,MonadError String me) => Template -> me ()
+validateTmInstances2 tm = do {mapM (validateTmInstances2 tm) (tmInst tm); return()}
+
 
 -----------------------------------------------------------
 -- Validate template port
@@ -215,6 +228,8 @@ validateTmGVars2 tm = do {mapM (validateGVar2 tm) (tmVar tm); return()}
 -- Validate method declarations
 ------------------------------------------------------------------------------
 
+validateTmMethods :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmMethods tm = do {mapM (validateMeth tm) (tmMethod tm); return ()}
 
 ------------------------------------------------------------------------------
 -- Validate template namespace

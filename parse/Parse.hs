@@ -117,8 +117,6 @@ charLit    = T.charLiteral lexer
 ----------------------------------------------------------------
 -- Common declarations that occur in different syntactic scopes
 ----------------------------------------------------------------
-nopos::Pos = (initialPos "",initialPos "")
-
 withPos x = (\s x e -> atPos x (s,e)) <$> getPosition <*> x <*> getPosition
 
 quote :: String -> String

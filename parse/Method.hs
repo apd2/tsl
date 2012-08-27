@@ -5,7 +5,8 @@ module Method(TaskCat(..),
               ArgDir(..), 
               Arg(Arg,argDir), 
               Method(Method,methCat, methArg, methRettyp),
-              methVar) where
+              methVar,
+              methBody) where
 
 import Text.PrettyPrint
 import Data.Maybe
@@ -79,6 +80,7 @@ data Method = Method { mpos       :: Pos
                      , methArg    :: [Arg]
                      , methBody   :: Either (Maybe Statement, Maybe Statement) Statement}
 
+-- use methFullVar for complete list of local vars
 methVar :: Method -> [Var]
 methVar m = case methBody m of
                  Left (b,a) -> concat $ map stmtVar $ (maybeToList b) ++ (maybeToList a)

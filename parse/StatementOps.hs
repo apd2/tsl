@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module StatementOps() where
+module StatementOps(validateStat,
+                    validateStat') where
 
 import Control.Monad.Error
 import Data.Maybe

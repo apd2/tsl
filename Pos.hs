@@ -1,6 +1,7 @@
 module Pos(Pos, 
            WithPos(..),
-           spos) where
+           spos,
+           nopos) where
 
 import Text.Parsec.Pos
 
@@ -12,3 +13,6 @@ class WithPos a where
 
 spos :: (WithPos a) => a -> String
 spos x = show $ pos x
+
+nopos::Pos 
+nopos = (initialPos "",initialPos "")

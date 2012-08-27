@@ -26,6 +26,7 @@ import Name
 import Template
 import Process
 import Method
+import {-# SOURCE #-} MethodOps
 import Var
 import Const
 import TypeSpec
@@ -200,7 +201,7 @@ objLookup (ObjInstance _ i) n = case objLookup ObjSpec (instTemplate i) of
 objLookup (ObjProcess t p)  n = fmap (ObjVar (ScopeProcess t p)) $ find ((== n) . name) (procVar p)
 
 objLookup (ObjMethod t m)   n = listToMaybe $ catMaybes $ [v,a]
-    where v = fmap (ObjVar (ScopeMethod t m)) $ find ((== n) . name) (methVar m)
+    where v = fmap (\(t,m,v) -> ObjVar (ScopeMethod t m) v) $ find (\(_,_,v) -> name v == n) (methFullVar t m)
           a = fmap (ObjArg (ScopeMethod t m)) $ find ((== n) . name) (methArg m)
 
 objLookup o@(ObjVar s v)      n = objLookup o n

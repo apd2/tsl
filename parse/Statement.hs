@@ -1,7 +1,8 @@
 module Statement(Statement(SVarDecl,SReturn,SSeq,SPar,SForever,SDo,
                            SWhile,SFor,SChoice,SPause,SStop,SBreak,SInvoke,
                            SAssert,SAssume,SAssign,SITE,SCase,SMagic),
-                 stmtVar) where
+                 stmtVar,
+                 sSeq) where
 
 import Data.Maybe
 import Text.PrettyPrint
@@ -77,3 +78,7 @@ stmtVar (SChoice _ ss)          = concat $ map stmtVar ss
 stmtVar (SITE _ _ ts es)        = concat $ map stmtVar $ ts:(maybeToList es)
 stmtVar (SCase _ _ cs def)      = concat $ map stmtVar $ (snd $ unzip cs) ++ (maybeToList def)
 stmtVar _                       = []
+
+sSeq :: [Statement] -> Statement
+sSeq [s] = s
+sSeq ss = SSeq nopos ss
