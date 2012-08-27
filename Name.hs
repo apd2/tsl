@@ -47,3 +47,6 @@ class WithName a where
 
 sname :: (WithName a) => a -> String
 sname x = show $ name x
+
+instance WithName Ident where
+    name = id

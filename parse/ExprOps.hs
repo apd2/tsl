@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
 module ExprOps(isLExpr,
+               isConstExpr,
                evalInt,
                exprNoSideEffects,
                validateExpr, validateExpr',

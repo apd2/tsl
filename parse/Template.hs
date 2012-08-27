@@ -1,10 +1,10 @@
-module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst, tmGoal), 
+module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst, tmGoal, tmAssign), 
                 Port(Port,portTemplate), 
                 Instance(Instance, instPort, instTemplate),
-                GVar(GVar,gvarExport),
+                GVar(GVar,gvarExport, gvarVar),
                 Goal(Goal, goalCond),
                 Init(Init,initBody),
-                ContAssign(ContAssign,cassLHS,cassRHS),
+                ContAssign(ContAssign,cassVar,cassRHS),
                 Derive(Derive,drvTemplate, drvPort)) where
 
 import Text.PrettyPrint
@@ -95,11 +95,11 @@ instance WithName Goal where
 
 -- Continuous assignment
 data ContAssign = ContAssign { apos    :: Pos
-                             , cassLHS :: Expr
+                             , cassVar :: Ident
                              , cassRHS :: Expr}
 
 instance PP ContAssign where
-    pp (ContAssign _ l r) = text "assign" <+> pp l <+> char '=' <+> pp r
+    pp (ContAssign _ v r) = text "assign" <+> pp v <+> char '=' <+> pp r
 
 instance WithPos ContAssign where
     pos       = apos
@@ -108,22 +108,22 @@ instance WithPos ContAssign where
 -- Template-global variable
 data GVar = GVar { gvpos      :: Pos
                  , gvarExport :: Bool
-                 , gvvar      :: Var}
+                 , gvarVar    :: Var}
 
 instance PP GVar where
     pp v =  (if (gvarExport v) then text "export" else empty) 
         -- <+> (if (gvarVis v) then empty else text "invisible") 
-        <+> pp (gvvar v)
+        <+> pp (gvarVar v)
 
 instance WithPos GVar where
     pos       = gvpos
     atPos v p = v{gvpos = p}
 
 instance WithName GVar where
-    name = name . gvvar
+    name = name . gvarVar
 
 instance WithTypeSpec GVar where
-    tspec = tspec . gvvar
+    tspec = tspec . gvarVar
 
 -- Template
 data Template = Template { tpos       :: Pos
@@ -135,6 +135,7 @@ data Template = Template { tpos       :: Pos
                          , tmVar      :: [GVar]
                          , tmInst     :: [Instance]
                          , tmInit     :: [Init]
+                         , tmAssign   :: [ContAssign]
                          , tmProcess  :: [Process]
                          , tmMethod   :: [Method]
                          , tmGoal     :: [Goal]}
@@ -147,6 +148,7 @@ instance PP Template where
                                ppitems (tmConst t)    $+$
                                ppitems (tmVar t)      $+$
                                ppitems (tmInit t)     $+$
+                               ppitems (tmAssign t)   $+$
                                ppitems (tmProcess t)  $+$
                                ppitems (tmMethod t)   $+$
                                ppitems (tmGoal t)     $+$

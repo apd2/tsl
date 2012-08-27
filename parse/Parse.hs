@@ -219,7 +219,7 @@ data TemplateItem = TDerive        Derive
                   | TAssign        ContAssign
 
 mkTemplate :: Ident -> [Port] -> [TemplateItem] -> Template
-mkTemplate n ps is = Template nopos n ps drvs consts types vars insts inits procs meths goals
+mkTemplate n ps is = Template nopos n ps drvs consts types vars insts inits assigns procs meths goals
     where drvs = mapMaybe (\i -> case i of 
                                       TDerive d -> Just d
                                       _ -> Nothing) is
@@ -237,6 +237,9 @@ mkTemplate n ps is = Template nopos n ps drvs consts types vars insts inits proc
                                       _ -> Nothing) is
           inits = mapMaybe (\i -> case i of 
                                       TInitBlock init -> Just init
+                                      _ -> Nothing) is
+          assigns = mapMaybe (\i -> case i of 
+                                      TAssign a -> Just a
                                       _ -> Nothing) is
           procs = mapMaybe (\i -> case i of 
                                       TProcessDecl p -> Just p
@@ -291,7 +294,7 @@ tgoalDecl    = withPos $ Goal nopos <$  reserved "goal"
                                     <*> (ident <* reservedOp "=") 
                                     <*> expr
 tassign      = withPos $ ContAssign nopos <$  reserved "assign" 
-                                          <*> (expr <* reservedOp "=") 
+                                          <*> (ident <* reservedOp "=") 
                                           <*> expr 
 
 methCateg =  (Function <$ reserved "function")

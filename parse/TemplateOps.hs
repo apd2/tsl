@@ -2,7 +2,18 @@
 
 module TemplateOps(tmNamespace, 
                    tmParents,
-                   isContGVar) where
+                   isContGVar,
+                   cassGetVar,
+                   validateTmInstances,
+                   validateTmPorts,
+                   validateTmDerives,
+                   validateSpecDerives,
+                   validateTmNS,
+                   validateTmTypeDecls,
+                   validateTmConsts,
+                   validateTmGVars,
+                   validateTmGVars2,
+                   validateTmContAssigns) where
 
 import Data.List
 import Data.Maybe
@@ -17,14 +28,23 @@ import TSLUtil
 import Pos
 import Name
 import TypeSpec
+import TypeSpecOps
 import Template
 import Spec
-import SpecOps
+import ConstOps
+import Var
+import VarOps
+import {-# SOURCE #-} ExprOps
 import NS
 
 -- Check if variable is one of continuous assignment variables
 isContGVar :: Template -> GVar -> Bool
-isContGVar t v = error "isContGVar not implemented"
+isContGVar t v = isJust $ find ((== name v) . cassVar) (tmAssign t)
+
+cassGetVar :: (?spec::Spec) => Template -> ContAssign -> GVar
+cassGetVar t a = v
+   where (ObjGVar _ v) = fromJust $ objLookup (ObjTemplate t) (cassVar a)
+
 
 tmParents :: (?spec::Spec) => Template -> [Template]
 tmParents t = map (getTemplate . drvTemplate) (tmDerive t)
@@ -64,6 +84,8 @@ validateDrvInst tm tname ports posit = do
 validateInstance :: (?spec::Spec, MonadError String me) => Template -> Instance -> me ()
 validateInstance tm i = validateDrvInst tm (instTemplate i) (instPort i) (pos i)
 
+validateTmInstances :: (?spec::Spec,MonadError String me) => Template -> me ()
+validateTmInstances tm = do {mapM (validateInstance tm) (tmInst tm); return()}
 
 -----------------------------------------------------------
 -- Validate template port
@@ -72,6 +94,9 @@ validateInstance tm i = validateDrvInst tm (instTemplate i) (instPort i) (pos i)
 
 validatePort :: (?spec::Spec, MonadError String me) => Template -> Port -> me ()
 validatePort tm p = do {checkTemplate $ portTemplate p; return ()}
+
+validateTmPorts :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmPorts tm = do {mapM (validatePort tm) (tmPort tm); return()}
 
 
 -----------------------------------------------------------
@@ -94,8 +119,8 @@ drvGraph =
 
 -- Validate the derivation graph of a spec
 -- * no circular derivations
-validateDerives :: (?spec::Spec, MonadError String me) => me ()
-validateDerives = 
+validateSpecDerives :: (?spec::Spec, MonadError String me) => me ()
+validateSpecDerives = 
     case grCycle drvGraph of
          Nothing -> return ()
          Just c  -> err (pos $ snd $ head c) $ "Template derivation cycle: " ++ (intercalate "->" $ map (show . snd) c) 
@@ -104,6 +129,92 @@ validateDerives =
 -- Validate individual derive statement
 validateDerive :: (?spec::Spec, MonadError String me) => Template -> Derive -> me ()
 validateDerive tm d = validateDrvInst tm (drvTemplate d) (drvPort d) (pos d)
+
+validateTmDerives :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmDerives tm = do {mapM (validateDerive tm) (tmDerive tm); return()}
+
+
+------------------------------------------------------------------------------
+-- Validate continuous assignments:
+-- First pass:
+-- * LHS must be a global variable
+-- * LHSs must be unique
+-- Second pass:
+-- * RHS is a valid expressions of matching type
+-- * no circular dependencies between continuous assignments
+------------------------------------------------------------------------------
+
+validateTmContAssigns :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmContAssigns t = do
+    mapM (validateContAssign t) (tmAssign t)
+    uniqNames (\n -> "Global variable " ++ n ++ " is assigned more than once")
+              (map cassVar (tmAssign t))
+
+validateContAssign :: (?spec::Spec, MonadError String me) => Template -> ContAssign -> me ()
+validateContAssign t a = do
+    case objLookup (ObjTemplate t) (cassVar a) of
+         Just (ObjGVar _ _)  -> return ()
+         _                   -> err (pos $ cassVar a) $ (show $ cassVar a) ++ " is not a global variable name"
+
+validateContAssign2 :: (?spec::Spec, MonadError String me) => Template -> ContAssign -> me () 
+validateContAssign2 t a = do
+    let ?scope = ScopeTemplate t
+    validateExpr' (cassRHS a)
+    checkTypeMatch (Type ?scope $ tspec $ cassGetVar t a) (cassRHS a)
+
+
+------------------------------------------------------------------------------
+-- Validate goals
+------------------------------------------------------------------------------
+
+validateGoal :: (?spec::Spec, MonadError String me) => Template -> Goal -> me ()
+validateGoal t g = do
+    let ?scope = ScopeTemplate t
+    validateExpr' (goalCond g)
+    assert (isBool $ goalCond g) (pos $ goalCond g) $ "Goal must be a boolean expression"
+
+validateTmGoals :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmGoals t = do
+    mapM (validateGoal t) (tmGoal t)
+    return ()
+
+------------------------------------------------------------------------------
+-- Validate type decls
+------------------------------------------------------------------------------
+validateTmTypeDecls :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmTypeDecls tm = do {mapM (validateTypeSpec (ScopeTemplate tm) . tspec) (tmTypeDecl tm); return()}
+
+------------------------------------------------------------------------------
+-- Validate constant declarations
+------------------------------------------------------------------------------
+
+validateTmConsts :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmConsts tm = do {mapM (validateConst (ScopeTemplate tm)) (tmConst tm); return()}
+
+------------------------------------------------------------------------------
+-- Validate global variables
+-- * First pass: validate type specs
+-- * Second pass: validate initial assignment expressions; check that 
+--   continuous assignment variables do not have initial assignments
+------------------------------------------------------------------------------
+
+validateGVar2 :: (?spec::Spec, MonadError String me) => Template -> GVar -> me ()
+validateGVar2 tm v = do
+    validateVar2 (ScopeTemplate tm) (gvarVar v)
+    case varInit $ gvarVar v of
+         Just e  -> assert (not $ isContGVar tm v) (pos e) $ "Variables with continuous assignments cannot have initial values"
+         Nothing -> return ()
+
+validateTmGVars :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmGVars tm = do {mapM (validateVar (ScopeTemplate tm) . gvarVar) (tmVar tm); return()}
+
+validateTmGVars2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmGVars2 tm = do {mapM (validateGVar2 tm) (tmVar tm); return()}
+
+------------------------------------------------------------------------------
+-- Validate method declarations
+------------------------------------------------------------------------------
+
 
 ------------------------------------------------------------------------------
 -- Validate template namespace
@@ -121,6 +232,7 @@ tmLocalDecls t = (map (ObjPort t)                     (tmPort t))     ++
                  (map (ObjInstance t)                 (tmInst t))     ++
                  (map (ObjProcess t)                  (tmProcess t))  ++
                  (map (ObjMethod t)                   (tmMethod t))   ++
+                 (map (ObjGoal t)                     (tmGoal t))     ++
                  (concat $ map (\d -> case tspec d of
                                            EnumSpec _ es -> map (ObjEnum (Type (ScopeTemplate t) $ tspec d)) es
                                            _             -> []) (tmTypeDecl t))
@@ -147,11 +259,12 @@ validateTmNS t = do
          []       -> return ()
          (o,o'):_ -> err (pos o) $ "Identifier " ++ sname o ++ " conflicts with global declaration at " ++ spos o'
     checkTmOverrides t
+    validateTmDeriveNS t
 
 
 -- * derived template-level namespaces do not overlap
-validateTmDeriveNS :: (?spec::Spec, MonadError String me) => Scope -> Template -> me ()
-validateTmDeriveNS c t = do
+validateTmDeriveNS :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmDeriveNS t = do
     let nss = map (\d -> map (d,) $ tmLocalAndParentDecls $ getTemplate $ drvTemplate d) (tmDerive t)
     foldM (\names ns -> case intersectBy (\o1 o2 -> (name $ snd o1) == (name $ snd o2)) names ns of
                              []      -> return $ names++ns

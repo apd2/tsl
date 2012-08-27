@@ -9,7 +9,8 @@ module NS(Scope(..),
           lookupTerm    , checkTerm    , getTerm,
           lookupMethod  , checkMethod  , getMethod,
           lookupGoal    , checkGoal    , getGoal,
-          Obj(..), objLookup, objGet) where
+          Obj(..), objLookup, objGet,
+          specNamespace) where
 
 import Control.Monad.Error
 import Data.List
@@ -91,6 +92,7 @@ data Obj = ObjSpec
          | ObjTypeDecl Scope    TypeDecl
          | ObjConst    Scope    Const
          | ObjEnum     Type     Enumerator
+         | ObjGoal     Template Goal
 
 instance WithPos Obj where
     pos ObjSpec             = error $ "Requesting position of ObjSpec"
@@ -106,6 +108,7 @@ instance WithPos Obj where
     pos (ObjTypeDecl _ t)   = pos t
     pos (ObjConst    _ c)   = pos c
     pos (ObjEnum     _ e)   = pos e
+    pos (ObjGoal     _ g)   = pos g
     atPos _ = error $ "Not implemented: atPos Obj"
 
 instance WithScope Obj where
@@ -122,6 +125,7 @@ instance WithScope Obj where
     scope (ObjTypeDecl s _) = s
     scope (ObjConst s _)    = s
     scope (ObjEnum t _)     = scope t
+    scope (ObjGoal t _)     = ScopeTemplate t
     
 instance WithName Obj where
     name ObjSpec           = error $ "requesting name of ObjSpec"
@@ -137,6 +141,7 @@ instance WithName Obj where
     name (ObjTypeDecl _ t) = name t
     name (ObjConst    _ c) = name c
     name (ObjEnum     _ e) = name e
+    name (ObjGoal     _ g) = name g
 
 instance (?spec::Spec) => WithType Obj where
     typ (ObjTemplate   t) = error $ "requesting type of ObjTemplate"
@@ -151,6 +156,7 @@ instance (?spec::Spec) => WithType Obj where
     typ (ObjTypeDecl _ d) = error $ "requesting type of ObjTypeDecl"
     typ (ObjConst    s c) = Type s $ tspec c
     typ (ObjEnum     t e) = t
+    typ (ObjGoal     _ _) = error $ "requesting type of ObjGoal"
 
 instance (?spec::Spec) => WithTypeSpec Obj where
     tspec = tspec . typ
@@ -181,6 +187,7 @@ objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,pr,m,d,c,e,par]
                                                                                              EnumSpec _ es -> map (Type s (tspec d),) es
                                                                                              _             -> []) $ 
                                                                                  tmTypeDecl t)
+          g = fmap (ObjGoal      t) $ find ((== n) . name) (tmGoal t)
           -- search parent templates
           par = listToMaybe $ catMaybes $ map (\d -> objLookup (ObjTemplate $ getTemplate $ drvTemplate d) n) (tmDerive t)
 
@@ -209,6 +216,7 @@ objLookup (ObjType (Type s (TemplateTypeSpec _ tn))) n = case objLookup ObjSpec 
 objLookup (ObjType (Type s (UserTypeSpec _ tn))) n = case lookupTypeDecl s tn of
                                                           Just (d,s') -> objLookup (ObjTypeDecl s' d) n
                                                           Nothing     -> Nothing
+objLookup _                   _ = Nothing
 
 objGet :: (?spec::Spec) => Obj -> Ident -> Obj
 objGet o n = fromJustMsg ("objLookup failed: " ++ show n) $ objLookup o n
@@ -293,7 +301,11 @@ getTypeDecl s = fromJustMsg "getTypeDecl: type not found" . lookupTypeDecl s
 -- must refer to a constant or enum name.
 lookupTerm :: (?spec::Spec) => Scope -> StaticSym -> Maybe Obj
 
-lookupTerm s [n] = lookupIdent s n
+lookupTerm s [n] = 
+    case lookupIdent s n of
+         Just (ObjGoal _ _) -> Nothing
+         mt                 -> mt
+
 lookupTerm s ns = 
     case lookupGlobal ns of
          Just o@(ObjConst _ _) -> Just o
@@ -324,11 +336,9 @@ getMethod s m = fromJustMsg "getMethod: method not found" $ lookupMethod s m
 
 -- Goal lookup
 lookupGoal :: (?spec::Spec) => Scope -> Ident -> Maybe Goal
-lookupGoal s n = find ((==n) . name) (tmGoal t)
-    where t = case s of
-                  ScopeTemplate tm   -> tm
-                  ScopeMethod   tm _ -> tm
-                  ScopeProcess  tm _ -> tm
+lookupGoal s n = case lookupPath s [n] of
+                      Just (ObjGoal t g) -> Just g
+                      _                  -> Nothing
 
 checkGoal :: (?spec::Spec, MonadError String me) => Scope -> Ident -> me Goal
 checkGoal s n = case lookupGoal s n of
@@ -337,3 +347,12 @@ checkGoal s n = case lookupGoal s n of
 
 getGoal :: (?spec::Spec) => Scope -> Ident -> Goal
 getGoal s n = fromJustMsg "getGoal: goal not found" $ lookupGoal s n
+
+specNamespace :: (?spec::Spec) => [Obj]
+specNamespace = map ObjTemplate (specTemplate ?spec) ++ 
+                map (ObjTypeDecl ScopeTop) (specType ?spec) ++ 
+                map (ObjConst    ScopeTop) (specConst ?spec) ++ 
+                (concat $ map (\d -> case tspec d of
+                                          EnumSpec _ es -> map (ObjEnum (Type ScopeTop $ tspec d)) es
+                                          _             -> []) (specType ?spec))
+

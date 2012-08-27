@@ -7,7 +7,8 @@ module TypeSpecOps(typ',
                    typeComparable,
                    typeWidth,
                    isInt, isBool, isPtr, isArray, isStruct,
-                   validateTypeSpec) where
+                   validateTypeSpec,
+                   validateTypeDeps) where
 
 import Control.Monad.Error
 import Data.List
@@ -193,8 +194,8 @@ tdeclGraph =
                               g (tdeclDeps n))
               gnodes tnames
 
-validateTypeDecls :: (?spec::Spec, MonadError String me) => me ()
-validateTypeDecls = 
+validateTypeDeps :: (?spec::Spec, MonadError String me) => me ()
+validateTypeDeps = 
     case grCycle tdeclGraph of
          Nothing -> return ()
          Just c  -> err (pos $ snd $ head c) $ "Cyclic type aggregation: " ++ (intercalate "->" $ map (show . snd) c)

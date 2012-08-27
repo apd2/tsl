@@ -1,4 +1,31 @@
-module ConstOps() where
+{-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
+module ConstOps(validateConst,
+                validateConst2) where
+
+import Control.Monad.Error
+
+import TSLUtil
+import Pos
+import TypeSpec
+import TypeSpecOps
+import {-# SOURCE #-} ExprOps
 import Const
+import Spec
+import NS
 
+instance (?spec::Spec,?scope::Scope) => WithType Const where
+    typ = Type ?scope . tspec
+
+-- First pass: validate types
+validateConst :: (?spec::Spec, MonadError String me) => Scope -> Const -> me ()
+validateConst s c = validateTypeSpec s (tspec c)
+
+-- Second pass: validate value expressions
+validateConst2 :: (?spec::Spec, MonadError String me) => Scope -> Const -> me ()
+validateConst2 s c = do
+    let ?scope = s
+    let v = constVal c
+    validateExpr' v
+    checkTypeMatch c v
+    assert (isConstExpr v) (pos v) $ "Non-constant expression in constant declaration"

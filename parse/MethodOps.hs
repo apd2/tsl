@@ -34,7 +34,9 @@ methCheckOverride :: (?spec::Spec, MonadError String me) => Template -> Method -
 methCheckOverride t m = do
    case listToMaybe $ catMaybes $ map (\t' -> objLookup (ObjTemplate t') (name m)) (tmParents t) of
         Nothing             -> do mapM (validateTypeSpec (ScopeTemplate t) . tspec) (methArg m)
-                                  return ()
+                                  case methRettyp m of 
+                                       Just rt -> validateTypeSpec (ScopeTemplate t) rt
+                                       Nothing -> return () 
         Just (ObjMethod _ m') -> do
             assert (methCat m' == methCat m) (pos m) $ 
                    "Method " ++ sname m ++ " was declared as " ++ (show $ methCat m') ++ " at " ++ spos m' ++
@@ -60,3 +62,5 @@ validateMeth :: (?spec::Spec, MonadError String me) => Template -> Method -> me 
 validateMeth t m = do
     methCheckOverride t m
     validateMethNS t m
+    let ?scope = (ScopeMethod t m)
+    validateStat' (methBody m)

@@ -16,6 +16,7 @@ import Statement
 import TypeSpec
 import TypeSpecOps
 import Var
+import VarOps
 import Method
 
 validateStat :: (?spec::Spec, MonadError String me) => Scope -> Statement -> me ()
@@ -24,8 +25,6 @@ validateStat s e = let ?scope = s
 
 -- Validating statements
 -- * all loops
---   - there is no path through the loop body that does not break out of the loop and
---     does not contain some form of pause
 -- * method invocations
 --   - if the method is a task, then the current context must be a process or task
 --   - no recursion
@@ -33,11 +32,8 @@ validateStat s e = let ?scope = s
 -- The first argument indicates that the statement belongs to a loop
 validateStat' :: (?spec::Spec, ?scope::Scope, MonadError String me) => Bool -> Statement -> me ()
 validateStat' _ (SVarDecl p v) = do 
-    validateTypeSpec ?scope (tspec v)
-    case varInit v of
-         Just e -> do validateExpr' e
-                      checkTypeMatch (Type ?scope $ tspec v) e
-         _      -> return ()
+    validateVar ?scope v
+    validateVar2 ?scope v
 
 validateStat' _ (SReturn p me) = do
     case ?scope of
@@ -148,6 +144,9 @@ validateStat' l (SMagic p g) = do
          Right e -> do validateExpr' e
                        assert (isBool e) (pos e) $ "Objective must be a boolean expression"
 
+-- There is no path through the loop body that does not break out of the loop and
+-- does not contain some form of pause
 checkLoopBody :: (?spec::Spec, ?scope::Scope, MonadError String me) => Statement -> me ()
 checkLoopBody s = do
     validateStat' True s
+    return $ error "checkLoopBody not implemented"
