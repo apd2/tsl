@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
-module ExprOps(isLExpr,
+module ExprOps(mapExpr,
+               isLExpr,
                isConstExpr,
                evalInt,
                exprNoSideEffects,
@@ -27,6 +28,22 @@ import Method
 import Const
 import NS
 import Val
+
+-- Map function over subexpression of expression
+mapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Expr -> Expr
+mapExpr f s (EApply p m as)          = f s $ EApply p m (map (mapExpr f s) as)
+mapExpr f s (EField p st n)          = f s $ EField p (mapExpr f s st) n
+mapExpr f s (EPField p st n)         = f s $ EPField p (mapExpr f s st) n
+mapExpr f s (EIndex p arr i)         = f s $ EIndex p (mapExpr f s arr) (mapExpr f s i)
+mapExpr f s (EUnOp p op a)           = f s $ EUnOp p op (mapExpr f s a)
+mapExpr f s (EBinOp p op a1 a2)      = f s $ EBinOp p op (mapExpr f s a1) (mapExpr f s a2)
+mapExpr f s (ETernOp p a1 a2 a3)     = f s $ ETernOp p (mapExpr f s a1) (mapExpr f s a2) (mapExpr f s a3)
+mapExpr f s (ECase p c cs md)        = f s $ ECase p (mapExpr f s c) (map (\(e1,e2) -> (mapExpr f s e1, mapExpr f s e2)) cs) (fmap (mapExpr f s) md)
+mapExpr f s (ECond p cs md)          = f s $ ECond p (map (\(e1,e2) -> (mapExpr f s e1, mapExpr f s e2)) cs) (fmap (mapExpr f s) md)
+mapExpr f s (ESlice p e (l,h))       = f s $ ESlice p (mapExpr f s e) (mapExpr f s l, mapExpr f s h)
+mapExpr f s (EStruct p n (Left fs))  = f s $ EStruct p n (Left $ map (mapSnd $ mapExpr f s) fs)
+mapExpr f s (EStruct p n (Right fs)) = f s $ EStruct p n (Right $ map (mapExpr f s) fs)
+mapExpr f s e                        = f s e
 
 -- Eval constant expression
 eval :: (?spec::Spec,?scope::Scope) => ConstExpr -> TVal

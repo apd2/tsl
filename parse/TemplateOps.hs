@@ -108,9 +108,6 @@ tmAllInst t = concatMap (\o -> case o of
 tmAllInit :: (?spec::Spec) => Template -> [Init]
 tmAllInit t = tmInit t ++ (concat $ map tmAllInit (tmParents t))
 
---tmAllAssign :: (?spec::Spec) => Template -> [ContAssign]
---tmAllAssign t = tmAssign t ++ (concat $ map tmAllAssign (tmParents t))
-
 tmAllProcess :: (?spec::Spec) => Template -> [Process]
 tmAllProcess t = concatMap (\o -> case o of
                                     ObjProcess _ p -> [p]
@@ -152,5 +149,3 @@ tmMergeParents tm = Template (pos tm)
                              (tmAllProcess tm)
                              (tmAllMethod tm)
                              (tmAllGoal tm)
-
-

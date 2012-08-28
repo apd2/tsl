@@ -1,6 +1,8 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module TypeSpecOps(typ', 
+module TypeSpecOps(mapTSpec,
+                   tspecMapExpr,
+                   typ', 
                    typeIso,
                    typeMatch,
                    checkTypeMatch,
@@ -24,9 +26,22 @@ import TypeSpec
 import Template
 import Spec
 import NS
+import Expr
 import {-# SOURCE #-} ExprOps
 
+-- Map function over TypeSpec
+mapTSpec :: (?spec::Spec) => (Scope -> TypeSpec -> TypeSpec) -> Scope -> TypeSpec -> TypeSpec
+mapTSpec f s (StructSpec p fs)    = f s $ StructSpec p (map (\fl -> Field (pos fl) (mapTSpec f s $ tspec fl) (name fl)) fs)
+mapTSpec f s (PtrSpec p t)        = f s $ PtrSpec p (mapTSpec f s t)
+mapTSpec f s (ArraySpec p t l)    = f s $ ArraySpec p (mapTSpec f s t) l
+mapTSpec f s t = f s t
 
+-- Map function over expressions in TypeSpec
+tspecMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> TypeSpec -> TypeSpec
+tspecMapExpr f s (ArraySpec p t l) = ArraySpec p t (f s l)
+tspecMapExpr _ _ t                 = t
+
+-- Expand top-level type reference
 typ' :: (?spec::Spec, WithType a) => a -> Type
 typ' x = case tspec $ typ x of
               UserTypeSpec _ n -> let (d,s') = getTypeDecl (scope $ typ x) n

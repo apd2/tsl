@@ -18,6 +18,29 @@ import TemplateOps
 import TemplateValidate
 import Const
 import ConstOps
+import Expr
+import ExprOps
+
+-- TODO:
+--
+-- Checks that require CFG analysis
+-- * All loops contain pause
+-- * All exits from non-void methods end with a return statement
+--
+-- Checks to be performed on pre-processed spec
+-- * variable visibility violations:
+--   - variables automatically tainted as invisible because they are accessed from invisible context 
+--     (process or invisible task) cannot be read inside uncontrollable visible transitions (which
+--     correspond to executable driver code)
+-- * No circular dependencies among ContAssign variables
+-- * Validate call graph (no recursion, all possible stacks are valid (only invoke methods allowed in this context))
+--   This cannot be done earlier because of method overrides
+-- * XXX: re-validate method and process bodies to make sure that continuous assignment variables are not assigned
+
+
+-----------------------------------------------------------------------------
+-- Validation
+-----------------------------------------------------------------------------
 
 -- Main validation function
 --
@@ -77,23 +100,43 @@ validateSpec s = do
 
     return ()
 
--- Checks that require CFG analysis
--- * All loops contain pause
--- * All exits from non-void methods end with a return statement
---
--- Checks to be performed on pre-processed spec
--- * variable visibility violations:
---   - variables automatically tainted as invisible because they are accessed from invisible context 
---     (process or invisible task) cannot be read inside uncontrollable visible transitions (which
---     correspond to executable driver code)
--- * No circular dependencies among ContAssign variables
--- * Validate call graph (no recursion, all possible stacks are valid (only invoke methods allowed in this context))
---   This cannot be done earlier because of method overrides
--- * XXX: re-validate method and process bodies to make sure that continuous assignment variables are not assigned
-
-
 -- Validate top-level namespace:
 -- * No identifier is declared twice at the top level
 validateSpecNS :: (?spec::Spec, MonadError String me) => me ()
 validateSpecNS = 
     uniqNames (\n -> "Identifier " ++ n ++ " declared more than once in the top-level scope") specNamespace
+
+
+-- Map function overl all expressions in the spec
+specMapExpr :: (Scope -> Expr -> Expr) -> Spec -> Spec
+specMapExpr f s =
+    let ?spec = s
+    in let tm' = map (templateMapExpr f) (specTemplate s)
+           t'  = map (\t -> TypeDecl (pos t) (tspecMapExpr f ScopeTop $ tspec t) (name t)) (specType s)
+           c'  = map (\c -> c{constVal = mapExpr f ScopeTop (constVal c)}) (specConst s)
+       in Spec tm' t' c'
+
+---------------------------------------------------------------------
+-- Flattening
+---------------------------------------------------------------------
+
+-- Move constants from templates to the top level
+flattenConsts :: Spec -> Spec
+flattenConsts s = s''{specTemplate = map (\t -> t{tmConst = []}) (specTemplate s'')}
+    where s'  = specMapExpr exprFlattenConsts s
+          s'' = foldl' (\s t -> foldl' (\s c -> flattenConst s t c) s (tmConst t)) s' (specTemplate s')
+                                   
+flattenConst :: Spec -> Template -> Const -> Spec
+flattenConst s t c = s{specConst = c':(specConst s)}
+    where c' = Const (pos c) (tspec c) (flattenConstName t c) (constVal c)
+
+flattenConstName :: Template -> Const -> Ident
+flattenConstName t c = Ident (pos $ name c) $ (sname t) ++ "::" ++ (sname c)
+
+exprFlattenConsts :: (?spec::Spec) => Scope -> Expr -> Expr
+exprFlattenConsts s e = case e of
+                             ETerm p sym  -> case getTerm s sym of
+                                                  ObjConst (ScopeTemplate t) c -> ETerm p [flattenConstName t c]
+                                                  _             -> e
+                             _            -> e
+
