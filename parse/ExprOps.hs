@@ -122,12 +122,12 @@ isLExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isLExpr (ETerm _ n)           = case getTerm ?scope n of
                                      ObjConst _ _ -> False
                                      ObjEnum  _ _ -> False
-                                     ObjGVar  t v -> not $ isContGVar t v
+                                     ObjWire  _ _ -> False
                                      _            -> True
 isLExpr (EField  _       e f) = isLExpr e &&
                                 case objGet (ObjType $ typ e) f of
-                                     ObjGVar t v -> not $ isContGVar t v
-                                     _           -> True
+                                     ObjWire  _ _ -> False
+                                     _            -> True
 isLExpr (EPField _       e _) = True
 isLExpr (EIndex  _       e _) = isLExpr e
 isLExpr (ESlice  _       e _) = isLExpr e
@@ -268,6 +268,8 @@ validateExpr' (EField p e f) = do
                                       Just (ObjInstance _ _) -> return ()
                                       Just (ObjGVar   _ v)   -> assert (gvarExport v) (pos f) $
                                                                        "Cannot access private variable " ++ sname v ++ " of template " ++ show t
+                                      Just (ObjWire   _ w)   -> assert (wireExport w) (pos f) $
+                                                                       "Cannot access private wire " ++ sname w ++ " of template " ++ show t
                                       _                      -> err (pos f) $ show f ++ " does not refer to an externally visible member of template " ++ show t
          _                    -> err (pos f) $ "Expression " ++ show e ++ " is not a struct or template"
 

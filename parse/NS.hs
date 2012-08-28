@@ -88,6 +88,7 @@ data Obj = ObjSpec
          | ObjMethod   Template Method
          | ObjVar      Scope    Var
          | ObjGVar     Template GVar
+         | ObjWire     Template Wire
          | ObjArg      Scope    Arg
          | ObjType              Type
          | ObjTypeDecl Scope    TypeDecl
@@ -104,6 +105,7 @@ instance WithPos Obj where
     pos (ObjMethod   _ m)   = pos m
     pos (ObjVar      _ v)   = pos v
     pos (ObjGVar     _ v)   = pos v
+    pos (ObjWire     _ w)   = pos w
     pos (ObjArg      _ a)   = pos a
     pos (ObjType       t)   = pos $ tspec t
     pos (ObjTypeDecl _ t)   = pos t
@@ -121,6 +123,7 @@ instance WithScope Obj where
     scope (ObjMethod t m)   = ScopeTemplate t
     scope (ObjVar s _)      = s
     scope (ObjGVar t _)     = ScopeTemplate t
+    scope (ObjWire t _)     = ScopeTemplate t
     scope (ObjArg s _)      = s
     scope (ObjType t)       = scope t
     scope (ObjTypeDecl s _) = s
@@ -137,6 +140,7 @@ instance WithName Obj where
     name (ObjMethod   _ m) = name m
     name (ObjVar      _ v) = name v
     name (ObjGVar     _ v) = name v
+    name (ObjWire     _ w) = name w
     name (ObjArg      _ a) = name a
     name (ObjType       t) = error $ "requesting name of a TypeSpec"
     name (ObjTypeDecl _ t) = name t
@@ -152,6 +156,7 @@ instance (?spec::Spec) => WithType Obj where
     typ (ObjMethod   _ m) = error $ "requesting type of ObjMethod"
     typ (ObjVar      s v) = Type s $ tspec v
     typ (ObjGVar     t v) = Type (ScopeTemplate t) (tspec v)
+    typ (ObjWire     t w) = Type (ScopeTemplate t) (tspec w)
     typ (ObjArg      s a) = Type s $ tspec a
     typ (ObjType       t) = error $ "requesting type of ObjType"
     typ (ObjTypeDecl _ d) = error $ "requesting type of ObjTypeDecl"
@@ -179,6 +184,7 @@ objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,pr,m,d,c,e,par]
           s = ScopeTemplate t
           p  = fmap (ObjPort     t) $ find ((== n) . name) (tmPort t)
           v  = fmap (ObjGVar     t) $ find ((== n) . name) (tmVar t)
+          w  = fmap (ObjWire     t) $ find ((== n) . name) (tmWire t)
           i  = fmap (ObjInstance t) $ find ((== n) . name) (tmInst t)
           pr = fmap (ObjProcess  t) $ find ((== n) . name) (tmProcess t)
           m  = fmap (ObjMethod   t) $ find ((== n) . name) (tmMethod t) 
@@ -204,10 +210,11 @@ objLookup (ObjMethod t m)   n = listToMaybe $ catMaybes $ [v,a]
     where v = fmap (\(t,m,v) -> ObjVar (ScopeMethod t m) v) $ find (\(_,_,v) -> name v == n) (methFullVar t m)
           a = fmap (ObjArg (ScopeMethod t m)) $ find ((== n) . name) (methArg m)
 
-objLookup o@(ObjVar s v)      n = objLookup o n
-objLookup o@(ObjGVar t v)     n = objLookup o n
-objLookup o@(ObjArg s a)      n = objLookup o n
-objLookup o@(ObjTypeDecl s t) n = objLookup o n
+objLookup (ObjVar s v)      n = objLookup (ObjType $ Type s                 (tspec v)) n
+objLookup (ObjGVar t v)     n = objLookup (ObjType $ Type (ScopeTemplate t) (tspec v)) n
+objLookup (ObjWire t w)     n = objLookup (ObjType $ Type (ScopeTemplate t) (tspec w)) n
+objLookup (ObjArg s a)      n = objLookup (ObjType $ Type s                 (tspec a)) n
+objLookup (ObjTypeDecl s t) n = objLookup (ObjType $ Type s                 (tspec t)) n
 
 objLookup (ObjType (Type s (StructSpec _ fs))) n = fmap (ObjType . Type s . tspec) $ find ((==n) . name) fs
 
@@ -227,8 +234,6 @@ objLookupPath o []     = Just o
 objLookupPath o (n:ns) = case objLookup o n of
                               Nothing -> Nothing
                               Just o' -> objLookupPath o' ns
-
-
 
 -- Lookup identifier visible in the local scope
 lookupIdent :: (?spec::Spec) => Scope -> Ident -> Maybe Obj
@@ -356,4 +361,3 @@ specNamespace = map ObjTemplate (specTemplate ?spec) ++
                 (concat $ map (\d -> case tspec d of
                                           EnumSpec _ es -> map (ObjEnum (Type ScopeTop $ tspec d)) es
                                           _             -> []) (specType ?spec))
-

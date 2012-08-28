@@ -128,8 +128,8 @@ staticsym = sepBy1 ident (reservedOp "::")
 methname = withPos $ MethodRef nopos <$> sepBy1 ident dot
 
 varDecl = withPos $ Var nopos <$> typeSpec 
-                                  <*> ident 
-                                  <*> optionMaybe (reservedOp "=" *> expr)
+                              <*> ident 
+                              <*> optionMaybe (reservedOp "=" *> expr)
 
 typeDef = withPos $ TypeDecl nopos <$ reserved "typedef" <*> typeSpec <*> ident
 
@@ -210,14 +210,14 @@ data TemplateItem = TDerive        Derive
                   | TInstDecl      Instance
                   | TConstDecl     Const
                   | TVarDecl       GVar
+                  | TWire          Wire
                   | TInitBlock     Init
                   | TProcessDecl   Process
                   | TMethod        Method
                   | TGoalDecl      Goal
-                  | TAssign        ContAssign
 
 mkTemplate :: Ident -> [Port] -> [TemplateItem] -> Template
-mkTemplate n ps is = Template nopos n ps drvs consts types vars insts inits assigns procs meths goals
+mkTemplate n ps is = Template nopos n ps drvs consts types vars wires insts inits procs meths goals
     where drvs = mapMaybe (\i -> case i of 
                                       TDerive d -> Just d
                                       _ -> Nothing) is
@@ -236,8 +236,8 @@ mkTemplate n ps is = Template nopos n ps drvs consts types vars insts inits assi
           inits = mapMaybe (\i -> case i of 
                                       TInitBlock init -> Just init
                                       _ -> Nothing) is
-          assigns = mapMaybe (\i -> case i of 
-                                      TAssign a -> Just a
+          wires = mapMaybe (\i -> case i of 
+                                      TWire w -> Just w
                                       _ -> Nothing) is
           procs = mapMaybe (\i -> case i of 
                                       TProcessDecl p -> Just p
@@ -262,19 +262,22 @@ templateItem =  TDerive      <$> tderive
             <|> TProcessDecl <$> tprocessDecl
             <|> TMethod      <$> tmethodDecl
             <|> TGoalDecl    <$> tgoalDecl
-            <|> TAssign      <$> tassign
+            <|> TWire        <$> twire
             <?> "declaration"
 
 tderive      = withPos $ Derive nopos <$  reserved "derive" 
                                       <*> ident 
-                                      <*> option [] (parens $ commaSep ident)
 instDecl     = withPos $ Instance nopos <$  reserved "instance"
                                         <*> ident
                                         <*> ident
                                         <*> (parens $ commaSep ident)
 tvarDecl     = withPos $ GVar nopos <$> (option False (True <$ reserved "export")) 
---                                        <*> (option True (False <$ reserved "invisible")) 
-                                        <*> varDecl
+                                    <*> varDecl
+twire        = withPos $ Wire nopos <$> (option False (True <$ reserved "export")) 
+                                    <*  reserved "wire" 
+                                    <*> typeSpec 
+                                    <*> (ident <* reservedOp "=")
+                                    <*> optionMaybe (reservedOp "=" *> expr)
 tinitBlock   = withPos $ Init nopos <$ reserved "init" <*> expr
 tprocessDecl = withPos $ Process nopos <$  reserved "process" 
                                        <*> ident 
@@ -291,9 +294,6 @@ tmethodDecl  = withPos $ Method nopos <$> (option False (True <$ reserved "expor
 tgoalDecl    = withPos $ Goal nopos <$  reserved "goal" 
                                     <*> (ident <* reservedOp "=") 
                                     <*> expr
-tassign      = withPos $ ContAssign nopos <$  reserved "assign" 
-                                          <*> (ident <* reservedOp "=") 
-                                          <*> expr 
 
 methCateg =  (Function <$ reserved "function")
          <|> (Procedure <$ reserved "procedure")

@@ -1,13 +1,14 @@
-module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst, tmGoal, tmAssign), 
+module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst, tmGoal, tmWire, tmInit), 
                 Port(Port,portTemplate), 
                 Instance(Instance, instPort, instTemplate),
                 GVar(GVar,gvarExport, gvarVar),
                 Goal(Goal, goalCond),
                 Init(Init,initBody),
-                ContAssign(ContAssign,cassVar,cassRHS),
-                Derive(Derive,drvTemplate, drvPort)) where
+                Wire(Wire,wireExport,wireRHS),
+                Derive(Derive,drvTemplate)) where
 
 import Text.PrettyPrint
+import Data.Maybe
 
 import PP
 import Pos
@@ -36,12 +37,10 @@ instance WithPos Port where
 
 -- Derive clause
 data Derive = Derive { dpos        :: Pos
-                     , drvTemplate :: Ident
-                     , drvPort     :: [Ident]}
+                     , drvTemplate :: Ident}
 
 instance PP Derive where
-    pp (Derive _ t []) = text "derive" <+> pp t
-    pp (Derive _ t ps) = text "derive" <+> pp t <+> (parens $ hsep $ punctuate comma $ map pp ps)
+    pp (Derive _ t) = text "derive" <+> pp t
 
 instance WithPos Derive where
     pos       = dpos
@@ -93,17 +92,27 @@ instance WithPos Goal where
 instance WithName Goal where
     name = gname
 
--- Continuous assignment
-data ContAssign = ContAssign { apos    :: Pos
-                             , cassVar :: Ident
-                             , cassRHS :: Expr}
+-- Wire (variable with continuous assignment)
+data Wire = Wire { wpos       :: Pos
+                 , wireExport :: Bool
+                 , wtype      :: TypeSpec
+                 , wname      :: Ident
+                 , wireRHS    :: Maybe Expr}
 
-instance PP ContAssign where
-    pp (ContAssign _ v r) = text "assign" <+> pp v <+> char '=' <+> pp r
+instance PP Wire where
+    pp (Wire _ e t n r) =  (if e then text "export" else empty)
+                       <+> text "wire" <+> pp t <+> pp n 
+                       <+> (if (isJust r) then char '=' <+> pp r else empty)
 
-instance WithPos ContAssign where
-    pos       = apos
-    atPos a p = a{apos = p}
+instance WithPos Wire where
+    pos       = wpos
+    atPos w p = w{wpos = p}
+
+instance WithName Wire where
+    name      = wname
+
+instance WithTypeSpec Wire where
+    tspec     = wtype
 
 -- Template-global variable
 data GVar = GVar { gvpos      :: Pos
@@ -133,9 +142,9 @@ data Template = Template { tpos       :: Pos
                          , tmConst    :: [Const]
                          , tmTypeDecl :: [TypeDecl]
                          , tmVar      :: [GVar]
+                         , tmWire     :: [Wire]
                          , tmInst     :: [Instance]
                          , tmInit     :: [Init]
-                         , tmAssign   :: [ContAssign]
                          , tmProcess  :: [Process]
                          , tmMethod   :: [Method]
                          , tmGoal     :: [Goal]}
@@ -147,8 +156,8 @@ instance PP Template where
                                ppitems (tmTypeDecl t) $+$
                                ppitems (tmConst t)    $+$
                                ppitems (tmVar t)      $+$
+                               ppitems (tmWire t)     $+$
                                ppitems (tmInit t)     $+$
-                               ppitems (tmAssign t)   $+$
                                ppitems (tmProcess t)  $+$
                                ppitems (tmMethod t)   $+$
                                ppitems (tmGoal t)     $+$

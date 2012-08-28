@@ -59,9 +59,10 @@ validateSpec s = do
     mapM (validateConst ScopeTop)             (specConst s)
     mapM validateTmConsts                     (specTemplate s)
     mapM validateTmGVars                      (specTemplate s)
-    mapM validateTmContAssigns                (specTemplate s)
+    mapM validateTmWires                      (specTemplate s)
 
     -- Second pass
+    mapM validateTmInit2                      (specTemplate s)
     mapM validateTmMethods2                   (specTemplate s)
     mapM validateTmInstances2                 (specTemplate s)
     mapM validateTmProcesses2                 (specTemplate s)
@@ -70,7 +71,7 @@ validateSpec s = do
     mapM validateTmGVars2                     (specTemplate s)
     mapM (validateTypeSpec2 ScopeTop . tspec) (specType s)
     mapM validateTmTypeDecls2                 (specTemplate s)
-    mapM validateTmContAssigns2               (specTemplate s)
+    mapM validateTmWires2                     (specTemplate s)
     mapM validateTmGoals2                     (specTemplate s)
 
     return ()
@@ -87,6 +88,7 @@ validateSpec s = do
 -- * No circular dependencies among ContAssign variables
 -- * Validate call graph (no recursion, all possible stacks are valid (only invoke methods allowed in this context))
 --   This cannot be done earlier because of method overrides
+-- * XXX: re-validate method and process bodies to make sure that continuous assignment variables are not assigned
 
 
 -- Validate top-level namespace:
