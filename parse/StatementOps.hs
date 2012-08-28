@@ -10,7 +10,7 @@ import TSLUtil
 import Pos
 import Name
 import Expr
-import ExprOps
+import {-# SOURCE #-} ExprOps
 import Spec
 import NS
 import Statement
@@ -129,9 +129,7 @@ validateStat' l (SCase p c cs md) = do
     case md of
          Just d  -> validateStat' l d
          Nothing -> return ()
-    mapM (\(e1,_) -> assert (typeComparable c e1) (pos e1) $ 
-                     "Expression " ++ show e1 ++ " has type "  ++ (show $ tspec e1) ++ 
-                     ", which does not match the type " ++ (show $ tspec c) ++ " of the key expression " ++ show c) cs
+    mapM (\(e1,_) -> checkTypeMatch c e1) cs
     return ()
 
 validateStat' l (SMagic p g) = do

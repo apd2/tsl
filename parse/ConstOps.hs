@@ -26,6 +26,7 @@ validateConst2 :: (?spec::Spec, MonadError String me) => Scope -> Const -> me ()
 validateConst2 s c = do
     let ?scope = s
     let v = constVal c
+    validateTypeSpec2 s (tspec c)
     validateExpr' v
     checkTypeMatch c v
     assert (isConstExpr v) (pos v) $ "Non-constant expression in constant declaration"

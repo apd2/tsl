@@ -5,16 +5,22 @@ module TemplateOps(tmNamespace,
                    isContGVar,
                    cassGetVar,
                    validateTmInstances,
+                   validateTmInstances2,
                    validateTmPorts,
                    validateTmDerives,
                    validateSpecDerives,
                    validateTmNS,
                    validateTmTypeDecls,
+                   validateTmTypeDecls2,
                    validateTmConsts,
+                   validateTmConsts2,
                    validateTmGVars,
                    validateTmGVars2,
                    validateTmContAssigns,
-                   validateTmMethods) where
+                   validateTmContAssigns2,
+                   validateTmMethods2,
+                   validateTmProcesses2,
+                   validateTmGoals2) where
 
 import Data.List
 import Data.Maybe
@@ -37,6 +43,7 @@ import Var
 import VarOps
 import {-# SOURCE #-} MethodOps
 import {-# SOURCE #-} ExprOps
+import ProcessOps
 import NS
 
 -- Check if variable is one of continuous assignment variables
@@ -47,9 +54,20 @@ cassGetVar :: (?spec::Spec) => Template -> ContAssign -> GVar
 cassGetVar t a = v
    where (ObjGVar _ v) = fromJust $ objLookup (ObjTemplate t) (cassVar a)
 
-
+-- Get parent templates
 tmParents :: (?spec::Spec) => Template -> [Template]
 tmParents t = map (getTemplate . drvTemplate) (tmDerive t)
+
+checkConcreteTemplate :: (?spec::Spec, MonadError String me) => Template -> Pos -> me ()
+checkConcreteTemplate t p = do
+    let pure = filter (\m -> case methFullBody t m of
+                                  Right _ -> True
+                                  Left  _ -> False)
+                      (tmMethod t)
+    assert (null pure) p $
+           "Cannot instantiate pure template " ++ sname t ++ ". The following methods are not implemented: " ++ 
+           (intercalate ", " $ map sname pure)
+
 
 -- Find port or instance by name.  Returns the name of the associated template.
 tmLookupPortInst :: (MonadError String me) => Template -> Ident -> me Ident
@@ -93,11 +111,10 @@ validateTmInstances tm = do {mapM (validateInstance tm) (tmInst tm); return()}
 
 validateInstance2 :: (?spec::Spec, MonadError String me) => Template -> Instance -> me ()
 validateInstance2 tm i = 
-    assert (isConcreteTemplate $ getTemplate $ instTemplate i) (pos i) $
-           "Cannot instantiate pure template " ++ (show $ instTemplate i)
+    checkConcreteTemplate (getTemplate $ instTemplate i) (pos i)
 
 validateTmInstances2 :: (?spec::Spec,MonadError String me) => Template -> me ()
-validateTmInstances2 tm = do {mapM (validateTmInstances2 tm) (tmInst tm); return()}
+validateTmInstances2 tm = do {mapM (validateInstance2 tm) (tmInst tm); return()}
 
 
 -----------------------------------------------------------
@@ -175,21 +192,21 @@ validateContAssign2 t a = do
     validateExpr' (cassRHS a)
     checkTypeMatch (Type ?scope $ tspec $ cassGetVar t a) (cassRHS a)
 
+validateTmContAssigns2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmContAssigns2 t = do {mapM (validateContAssign2 t) (tmAssign t); return ()}
 
 ------------------------------------------------------------------------------
--- Validate goals
+-- Validate goals at the second pass
 ------------------------------------------------------------------------------
 
-validateGoal :: (?spec::Spec, MonadError String me) => Template -> Goal -> me ()
-validateGoal t g = do
+validateGoal2 :: (?spec::Spec, MonadError String me) => Template -> Goal -> me ()
+validateGoal2 t g = do
     let ?scope = ScopeTemplate t
     validateExpr' (goalCond g)
     assert (isBool $ goalCond g) (pos $ goalCond g) $ "Goal must be a boolean expression"
 
-validateTmGoals :: (?spec::Spec, MonadError String me) => Template -> me ()
-validateTmGoals t = do
-    mapM (validateGoal t) (tmGoal t)
-    return ()
+validateTmGoals2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmGoals2 t = do {mapM (validateGoal2 t) (tmGoal t); return ()}
 
 ------------------------------------------------------------------------------
 -- Validate type decls
@@ -197,12 +214,19 @@ validateTmGoals t = do
 validateTmTypeDecls :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmTypeDecls tm = do {mapM (validateTypeSpec (ScopeTemplate tm) . tspec) (tmTypeDecl tm); return()}
 
+validateTmTypeDecls2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmTypeDecls2 tm = do {mapM (validateTypeSpec2 (ScopeTemplate tm) . tspec) (tmTypeDecl tm); return()}
+
 ------------------------------------------------------------------------------
 -- Validate constant declarations
 ------------------------------------------------------------------------------
 
 validateTmConsts :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmConsts tm = do {mapM (validateConst (ScopeTemplate tm)) (tmConst tm); return()}
+
+validateTmConsts2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmConsts2 tm = do {mapM (validateConst2 (ScopeTemplate tm)) (tmConst tm); return()}
+
 
 ------------------------------------------------------------------------------
 -- Validate global variables
@@ -225,11 +249,19 @@ validateTmGVars2 :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmGVars2 tm = do {mapM (validateGVar2 tm) (tmVar tm); return()}
 
 ------------------------------------------------------------------------------
--- Validate method declarations
+-- Validate method declarations (only safe during the second pass)
 ------------------------------------------------------------------------------
 
-validateTmMethods :: (?spec::Spec, MonadError String me) => Template -> me ()
-validateTmMethods tm = do {mapM (validateMeth tm) (tmMethod tm); return ()}
+validateTmMethods2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmMethods2 tm = do {mapM (validateMeth tm) (tmMethod tm); return ()}
+
+------------------------------------------------------------------------------
+-- Validate process declarations (only safe during the second pass)
+------------------------------------------------------------------------------
+
+validateTmProcesses2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmProcesses2 tm = do {mapM (validateProc tm) (tmProcess tm); return ()}
+
 
 ------------------------------------------------------------------------------
 -- Validate template namespace

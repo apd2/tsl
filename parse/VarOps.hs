@@ -18,7 +18,8 @@ validateVar :: (?spec::Spec, MonadError String me) => Scope -> Var -> me ()
 validateVar s v = validateTypeSpec s (tspec v)
 
 validateVar2 :: (?spec::Spec, MonadError String me) => Scope -> Var -> me ()
-validateVar2 s v = 
+validateVar2 s v = do
+    validateTypeSpec2 s (tspec v)
     case varInit v of
          Just e -> do let ?scope = s
                       validateExpr' e

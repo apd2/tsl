@@ -1,10 +1,13 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
 module MethodOps(validateMeth,
-                 methFullVar) where
+                 methFullVar,
+                 methFullBody) where
 
 import Data.Maybe
 import Control.Monad.Error
+import qualified Data.Graph.Inductive.Graph as G
+import qualified Data.Graph.Inductive.Tree as G
 
 import TSLUtil
 import Pos
@@ -115,3 +118,24 @@ validateMeth t m = do
     case methFullBody t m of 
          Left (mb,ma) -> do {mapM (validateStat ?scope) (catMaybes [mb,ma]); return()}
          Right b      -> validateStat ?scope b
+
+
+--------------------------------------------------------------------
+---- Call graph validation
+--------------------------------------------------------------------
+--
+--type CallGraph = G.Gr Scope ()
+--
+--
+--templateScopes :: Template -> [Scope]
+--templateScopes tm = map (ScopeProcess tm) (tmProcess tm) ++ map (ScopeMethod tm) (tmMethod tm)
+--
+---- construct template derivation graph
+--callGraph :: (?spec::Spec) => CallGraph
+--callGraph = 
+--    let scmap = M.fromList $ zip (concat $ map templateMethods $ specTemplate ?spec) [1..]
+--        gnodes = foldl' (\g t -> G.insNode (tmap M.! name t, name t) g) G.empty (specTemplate ?spec)
+--    in foldl' (\g t -> foldl' (\g d -> G.insEdge (tmap M.! name t, tmap M.! drvTemplate d, ()) g) 
+--                              g (tmDerive t))
+--              gnodes (specTemplate ?spec)
+
