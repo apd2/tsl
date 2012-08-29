@@ -1,15 +1,24 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module VarOps(validateVar, validateVar2) where
+module VarOps(varMapExpr,
+              validateVar, 
+              validateVar2) where
 
 import Control.Monad.Error
 
+import Pos
+import Name
 import Spec
 import NS
 import Var
 import TypeSpec
 import TypeSpecOps
+import Expr
 import {-# SOURCE #-} ExprOps
+
+varMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Var -> Var
+varMapExpr f s v = Var (pos v) (tspecMapExpr f s $ tspec v) (name v) (fmap (mapExpr f s) $ varInit v)
+
 
 instance (?spec::Spec, ?scope::Scope) => WithType Var where
     typ = Type ?scope . tspec

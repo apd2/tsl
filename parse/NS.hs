@@ -45,6 +45,23 @@ instance Eq Scope where
     (==) (ScopeProcess t1 p1) (ScopeProcess t2 p2) = name t1 == name t2 && name p1 == name p2
     (==) _                    _                    = False
 
+instance Ord Scope where
+    compare ScopeTop             ScopeTop             = EQ
+    compare ScopeTop             _                    = LT
+    compare (ScopeTemplate t1)   (ScopeTemplate t2)   = compare (name t1) (name t2)
+    compare (ScopeTemplate _)    ScopeTop             = GT
+    compare (ScopeTemplate _)    _                    = LT
+    compare (ScopeMethod t1 m1)  (ScopeMethod t2 m2)  = case compare (name t1) (name t2) of
+                                                             EQ -> compare (name m1) (name m2)
+                                                             c  -> c
+    compare (ScopeMethod _ _)    (ScopeProcess _ _)   = LT
+    compare (ScopeMethod _ _)    _                    = GT
+
+    compare (ScopeProcess t1 p1) (ScopeProcess t2 p2) = case compare (name t1) (name t2) of
+                                                             EQ -> compare (name p1) (name p2)
+                                                             c  -> c
+    compare (ScopeProcess _ _)   _                    = GT
+
 class WithScope a where
     scope :: a -> Scope
 
@@ -327,17 +344,17 @@ getTerm :: (?spec::Spec) => Scope -> StaticSym -> Obj
 getTerm s n = fromJustMsg "getTerm: term lookup failed" $ lookupTerm s n 
 
 -- Method lookup
-lookupMethod :: (?spec::Spec) => Scope -> MethodRef -> Maybe (Method, Scope)
+lookupMethod :: (?spec::Spec) => Scope -> MethodRef -> Maybe (Template, Method)
 lookupMethod s (MethodRef _ p) = case lookupPath s p of
-                                      Just (ObjMethod t m) -> Just (m, ScopeTemplate t)
+                                      Just (ObjMethod t m) -> Just (t,m)
                                       _                    -> Nothing
 
-checkMethod :: (?spec::Spec, MonadError String me) => Scope -> MethodRef -> me (Method, Scope)
+checkMethod :: (?spec::Spec, MonadError String me) => Scope -> MethodRef -> me (Template, Method)
 checkMethod s m = case lookupMethod s m of
                        Just x  -> return x
                        Nothing -> err (pos m) $ "Unknown method " ++ show m
 
-getMethod :: (?spec::Spec) => Scope -> MethodRef -> (Method, Scope)
+getMethod :: (?spec::Spec) => Scope -> MethodRef -> (Template, Method)
 getMethod s m = fromJustMsg "getMethod: method not found" $ lookupMethod s m
 
 -- Goal lookup

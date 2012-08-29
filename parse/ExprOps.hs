@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
 module ExprOps(mapExpr,
+               exprCallees,
                isLExpr,
                isConstExpr,
                evalInt,
@@ -44,6 +45,26 @@ mapExpr f s (ESlice p e (l,h))       = f s $ ESlice p (mapExpr f s e) (mapExpr f
 mapExpr f s (EStruct p n (Left fs))  = f s $ EStruct p n (Left $ map (mapSnd $ mapExpr f s) fs)
 mapExpr f s (EStruct p n (Right fs)) = f s $ EStruct p n (Right $ map (mapExpr f s) fs)
 mapExpr f s e                        = f s e
+
+-- Find all methods invoked by the expression
+exprCallees :: (?spec::Spec) => Scope -> Expr -> [(Template, Method)]
+exprCallees s (EApply  _ mref as)       = (getMethod s mref):(concatMap (exprCallees s) as)
+exprCallees s (EField  _ e _)           = exprCallees s e
+exprCallees s (EPField _ e _)           = exprCallees s e
+exprCallees s (EIndex  _ e idx)         = exprCallees s e ++ exprCallees s idx
+exprCallees s (EUnOp   _ _ e)           = exprCallees s e
+exprCallees s (EBinOp  _ _ e1 e2)       = exprCallees s e1 ++ exprCallees s e2
+exprCallees s (ETernOp _ e1 e2 e3)      = exprCallees s e1 ++ exprCallees s e2 ++ exprCallees s e3
+exprCallees s (ECase   _ c cs md)       = exprCallees s c ++ 
+                                          concatMap (\(e1,e2) -> exprCallees s e1 ++ exprCallees s e2) cs ++ 
+                                          (fromMaybe [] $ fmap (exprCallees s) md)
+exprCallees s (ECond   _ cs md)         = concatMap (\(e1,e2) -> exprCallees s e1 ++ exprCallees s e2) cs ++ 
+                                          (fromMaybe [] $ fmap (exprCallees s) md)
+exprCallees s (ESlice  _ e (l,h))       = exprCallees s e ++ exprCallees s l ++ exprCallees s h
+exprCallees s (EStruct _ _ (Left fs))   = concatMap (exprCallees s . snd) fs
+exprCallees s (EStruct _ _ (Right fs))  = concatMap (exprCallees s) fs
+exprCallees _ _ = []
+
 
 -- Eval constant expression
 eval :: (?spec::Spec,?scope::Scope) => ConstExpr -> TVal
@@ -183,7 +204,7 @@ isConstExpr (ENonDet _)              = False
 -- Side-effect free expression
 exprNoSideEffects :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 exprNoSideEffects (EApply _ m as)          = (and $ map exprNoSideEffects as) &&
-                                             case methCat $ fst $ getMethod ?scope m of
+                                             case methCat $ snd $ getMethod ?scope m of
                                                   Function -> True
                                                   _        -> False
 exprNoSideEffects (EField _ e _)           = exprNoSideEffects e
@@ -224,7 +245,7 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
     typ (ELit    p w True _ _)  = Type ?scope $ SIntSpec p w
     typ (ELit    p w False _ _) = Type ?scope $ UIntSpec p w
     typ (EBool   p _)           = Type ?scope $ BoolSpec p
-    typ (EApply  _ mref _)      = Type s $ fromJust $ methRettyp m where (m,s) = getMethod ?scope mref
+    typ (EApply  _ mref _)      = Type (ScopeTemplate t) $ fromJust $ methRettyp m where (t,m) = getMethod ?scope mref
     typ (EField  _ e f)         = typ $ objGet (ObjType $ typ e) f 
     typ (EPField _ e f)         = typ $ objGet (ObjType $ Type s t) f where Type s (PtrSpec _ t) = typ' e
     typ (EIndex  _ e i)         = Type s t where Type s (ArraySpec _ t _) = typ' e
@@ -270,7 +291,7 @@ validateExpr' (EBool _ _)        = return ()
 --   - the number and types of arguments match
 validateExpr' (EApply p mref as) = do
     validateCall p mref as
-    let (m, _) = getMethod ?scope mref
+    let (_, m) = getMethod ?scope mref
     assert (isJust $ methRettyp m) p $ "Method " ++ sname m ++ " has void return type and cannot be used in expression"
 
 -- * field selection refers to a valid struct field, or a valid and externally 
@@ -447,7 +468,7 @@ validateExpr' (ENonDet _) = return ()
 -- Common code to validate method calls in statement and expression contexts
 validateCall :: (?spec::Spec, ?scope::Scope, MonadError String me) => Pos -> MethodRef -> [Expr] -> me ()
 validateCall p mref as = do
-    (m, ScopeTemplate t) <- checkMethod ?scope mref
+    (t,m) <- checkMethod ?scope mref
     assert ((length $ methArg m) == length as) p $
            "Method " ++ sname m ++ " takes " ++ show (length $ methArg m) ++ 
            " arguments, but is invoked with " ++ show (length as) ++ " arguments"

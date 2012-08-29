@@ -4,7 +4,7 @@ module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, t
                 GVar(GVar,gvarExport, gvarVar),
                 Goal(Goal, goalCond),
                 Init(Init,initBody),
-                Wire(Wire,wireExport,wireRHS),
+                Wire(Wire,wireExport,wireRHS,wireType),
                 Derive(Derive,drvTemplate)) where
 
 import Text.PrettyPrint
@@ -95,7 +95,7 @@ instance WithName Goal where
 -- Wire (variable with continuous assignment)
 data Wire = Wire { wpos       :: Pos
                  , wireExport :: Bool
-                 , wtype      :: TypeSpec
+                 , wireType   :: TypeSpec
                  , wname      :: Ident
                  , wireRHS    :: Maybe Expr}
 
@@ -112,7 +112,7 @@ instance WithName Wire where
     name      = wname
 
 instance WithTypeSpec Wire where
-    tspec     = wtype
+    tspec     = wireType
 
 -- Template-global variable
 data GVar = GVar { gvpos      :: Pos

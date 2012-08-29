@@ -5,7 +5,6 @@ module TemplateValidate(validateTmInstances,
                         validateTmInit2,
                         validateTmPorts,
                         validateTmDerives,
-                        validateSpecDerives,
                         validateTmNS,
                         validateTmTypeDecls,
                         validateTmTypeDecls2,
@@ -45,11 +44,7 @@ import NS
 
 checkConcreteTemplate :: (?spec::Spec, MonadError String me) => Template -> Pos -> me ()
 checkConcreteTemplate t p = do
-    let purem = filter (\m -> case methFullBody t m of
-                                   Left  _ -> True
-                                   Right _ -> False)
-                       (tmAllMethod t)
-        purew = filter (isNothing . wireRHS) (tmAllWire t)
+    let (purem, purew) = tmPure t
     assert (null purem) p $
            "Cannot instantiate pure template " ++ sname t ++ ". The following methods are not implemented: " ++ 
            (intercalate ", " $ map sname purem)
@@ -93,7 +88,6 @@ validateInstance2 tm i =
 validateTmInstances2 :: (?spec::Spec,MonadError String me) => Template -> me ()
 validateTmInstances2 tm = do {mapM (validateInstance2 tm) (tmInst tm); return()}
 
-
 -----------------------------------------------------------
 -- Validate template port
 -- * port refers to a valid template 
@@ -108,20 +102,8 @@ validateTmPorts tm = do {mapM (validatePort tm) (tmPort tm); return()}
 
 -----------------------------------------------------------
 -- Validate template derivation
--- 1. Validate each derive statement locally
--- 2. Validate the shape of the derivation graph (no cycles)
 -----------------------------------------------------------
 
--- Validate the derivation graph of a spec
--- * no circular derivations
-validateSpecDerives :: (?spec::Spec, MonadError String me) => me ()
-validateSpecDerives = 
-    case grCycle $ fst drvGraph of
-         Nothing -> return ()
-         Just c  -> err (pos $ snd $ head c) $ "Template derivation cycle: " ++ (intercalate "->" $ map (show . snd) c) 
-
-
--- Validate individual derive statement
 validateDerive :: (?spec::Spec, MonadError String me) => Template -> Derive -> me ()
 validateDerive tm d = do
     checkTemplate $ drvTemplate d

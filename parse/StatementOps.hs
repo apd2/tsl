@@ -1,6 +1,9 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module StatementOps(validateStat,
+module StatementOps(mapStat,
+                    statMapExpr,
+                    statCallees,
+                    validateStat,
                     validateStat') where
 
 import Control.Monad.Error
@@ -19,16 +22,66 @@ import TypeSpecOps
 import Var
 import VarOps
 import Method
+import Template
+
+-- Map function over all substatements
+mapStat :: (?spec::Spec) => (Scope -> Statement -> Statement) -> Scope -> Statement -> Statement
+mapStat f s (SSeq     p ss)        = f s $ SSeq     p (map (mapStat f s) ss)
+mapStat f s (SPar     p ss)        = f s $ SPar     p (map (mapStat f s) ss)
+mapStat f s (SForever p b)         = f s $ SForever p (mapStat f s b)
+mapStat f s (SDo      p b c)       = f s $ SDo      p (mapStat f s b) c
+mapStat f s (SWhile   p c b)       = f s $ SWhile   p c (mapStat f s b)
+mapStat f s (SFor     p (i,c,u) b) = f s $ SFor     p ((fmap (mapStat f s) i),c, mapStat f s u) (mapStat f s b)
+mapStat f s (SChoice  p ss)        = f s $ SChoice  p (map (mapStat f s) ss)
+mapStat f s (SITE     p c t me)    = f s $ SITE     p c (mapStat f s t) (fmap (mapStat f s) me)
+mapStat f s (SCase    p c cs md)   = f s $ SCase    p c (map (\(e,st) -> (e,mapStat f s st)) cs) (fmap (mapStat f s) md)
+mapStat f s st                     = f s st
+
+-- Map function over all expression in the statement
+statMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Statement -> Statement
+statMapExpr f s st = mapStat (statMapExpr' f) s st
+
+statMapExpr' :: (?spec::Spec) =>  (Scope -> Expr -> Expr) -> Scope -> Statement -> Statement
+statMapExpr' f s (SVarDecl p v)         = SVarDecl p (varMapExpr f s v)
+statMapExpr' f s (SReturn  p mr)        = SReturn  p (fmap (mapExpr f s) mr)
+statMapExpr' f s (SDo      p b c)       = SDo      p b (mapExpr f s c)
+statMapExpr' f s (SWhile   p c b)       = SWhile   p (mapExpr f s c) b
+statMapExpr' f s (SFor     p (i,c,u) b) = SFor     p (i, mapExpr f s c, u) b
+statMapExpr' f s (SInvoke  p m as)      = SInvoke  p m (map (mapExpr f s) as)
+statMapExpr' f s (SAssert  p e)         = SAssert  p (mapExpr f s e)
+statMapExpr' f s (SAssume  p e)         = SAssume  p (mapExpr f s e)
+statMapExpr' f s (SAssign  p l r)       = SAssign  p (mapExpr f s l) (mapExpr f s r)
+statMapExpr' f s (SITE     p c t me)    = SITE     p (mapExpr f s c) t me
+statMapExpr' f s (SCase    p c cs md)   = SCase    p (mapExpr f s c) (map (mapFst $ mapExpr f s) cs) md
+statMapExpr' f s (SMagic   p (Right e)) = SMagic   p (Right $ mapExpr f s e)
+statMapExpr' f s st                     = st
+
+-- Find all methods invoked by the statement
+statCallees :: (?spec::Spec) => Scope -> Statement -> [(Template, Method)]
+statCallees s (SVarDecl _ v)            = fromMaybe [] $ fmap (exprCallees s) $ varInit v
+statCallees s (SReturn  _ me)           = fromMaybe [] $ fmap (exprCallees s) me
+statCallees s (SSeq     _ ss)           = concatMap (statCallees s) ss
+statCallees s (SPar     _ ss)           = concatMap (statCallees s) ss
+statCallees s (SForever _ b)            = statCallees s b
+statCallees s (SDo      _ b c)          = statCallees s b ++ exprCallees s c
+statCallees s (SWhile   _ c b)          = exprCallees s c ++ statCallees s b
+statCallees s (SFor     _ (i,c,u) b)    = (fromMaybe [] $ fmap (statCallees s) i) ++ exprCallees s c ++ statCallees s u ++ statCallees s b
+statCallees s (SChoice  _ ss)           = concatMap (statCallees s) ss
+statCallees s (SInvoke  _ mref as)      = (getMethod s mref):(concatMap (exprCallees s) as)
+statCallees s (SAssert  _ e)            = exprCallees s e
+statCallees s (SAssume  _ e)            = exprCallees s e
+statCallees s (SAssign  _ l r)          = exprCallees s l ++ exprCallees s r
+statCallees s (SITE     _ c t me)       = exprCallees s c ++ statCallees s t ++ (fromMaybe [] $ fmap (statCallees s) me)
+statCallees s (SCase    _ c cs md)      = exprCallees s c ++ 
+                                          concatMap (\(e,st) -> exprCallees s e ++ statCallees s st) cs ++
+                                          (fromMaybe [] $ fmap (statCallees s) md)
+statCallees _ _                         = []
+
+
 
 validateStat :: (?spec::Spec, MonadError String me) => Scope -> Statement -> me ()
 validateStat s e = let ?scope = s 
                    in validateStat' False e
-
--- Validating statements
--- * all loops
--- * method invocations
---   - if the method is a task, then the current context must be a process or task
---   - no recursion
 
 -- The first argument indicates that the statement belongs to a loop
 validateStat' :: (?spec::Spec, ?scope::Scope, MonadError String me) => Bool -> Statement -> me ()

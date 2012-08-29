@@ -3,7 +3,7 @@
 module Method(TaskCat(..), 
               MethodCat(..), 
               ArgDir(..), 
-              Arg(Arg,argDir), 
+              Arg(Arg,argDir,argType), 
               Method(Method,methCat, methArg, methRettyp),
               methVar,
               methBody) where
@@ -53,10 +53,10 @@ instance Show ArgDir where
     show = render . pp
 
 -- Method argument
-data Arg = Arg { apos   :: Pos
-               , argDir :: ArgDir
-               , atyp   :: TypeSpec
-               , aname  :: Ident}
+data Arg = Arg { apos    :: Pos
+               , argDir  :: ArgDir
+               , argType :: TypeSpec
+               , aname   :: Ident}
 
 instance PP Arg where
     pp a = pp (argDir a) <+> pp (tspec a) <+> pp (name a)
@@ -69,7 +69,7 @@ instance WithPos Arg where
     atPos a p = a{apos = p}
 
 instance WithTypeSpec Arg where 
-    tspec = atyp
+    tspec = argType
 
 -- Method
 data Method = Method { mpos       :: Pos
