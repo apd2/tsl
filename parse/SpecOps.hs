@@ -13,6 +13,7 @@ import Pos
 import Name
 import Spec
 import NS
+import Method
 import Template
 import TemplateOps
 import TemplateValidate
@@ -33,9 +34,6 @@ import ExprOps
 --     (process or invisible task) cannot be read inside uncontrollable visible transitions (which
 --     correspond to executable driver code)
 -- * No circular dependencies among ContAssign variables
--- * Validate call graph (no recursion, all possible stacks are valid (only invoke methods allowed in this context))
---   This cannot be done earlier because of method overrides
--- * XXX: re-validate method and process bodies to make sure that continuous assignment variables are not assigned
 
 
 -----------------------------------------------------------------------------
@@ -126,8 +124,9 @@ validateSpecInstances2 = case grCycle instGraph of
 
 -- Validate the callgraph of the spec
 -- * no recursion
+-- * task invocations occur in legal scopes
 validateSpecCallGraph2 :: (?spec::Spec, MonadError String me) => me ()
-validateSpecCallGraph2 = 
+validateSpecCallGraph2 = do
     case grCycle callGraph of
          Nothing -> return ()
          Just c  -> err p $ "Recursive method invocation: " ++ 
@@ -138,6 +137,20 @@ validateSpecCallGraph2 =
                     where p = case snd $ head c of
                                    ScopeMethod _ m  -> pos m
                                    ScopeProcess _ p -> pos p
+    mapM (\t -> mapM (\s -> mapM (\s' -> checkCall s s') (callees s)) 
+                     (tmScopes t))
+         (filter isConcreteTemplate $ specTemplate ?spec)
+    return ()
+
+checkCall :: (?spec::Spec, MonadError String me) => Scope -> (Pos, (Template, Method)) -> me ()
+checkCall (ScopeProcess _ pr) (p, (t,m)) = 
+    assert (methCat m /= Task Controllable) p $ "Controllable task invoked in process context"
+checkCall (ScopeMethod _ m1) (p, (t,m2)) = do
+    let c1 = methCat m1
+        c2 = methCat m2
+    assert (c1 /= Task Controllable) p                                     $ "Task invocations inside controllable tasks are currently not allowed"
+    assert (not $ (c1 == Task Uncontrollable) && (c2 == Task Invisible)) p $ "Invisible task invoked in uncontrollable task context"
+    assert (not $ (c1 == Task Invisible) && (c2 == Task Controllable)) p   $ "Controllable task invoked in invisible task context"
 
 -- Map function overl all expressions in the spec
 specMapExpr :: (Scope -> Expr -> Expr) -> Spec -> Spec

@@ -57,7 +57,7 @@ statMapExpr' f s (SMagic   p (Right e)) = SMagic   p (Right $ mapExpr f s e)
 statMapExpr' f s st                     = st
 
 -- Find all methods invoked by the statement
-statCallees :: (?spec::Spec) => Scope -> Statement -> [(Template, Method)]
+statCallees :: (?spec::Spec) => Scope -> Statement -> [(Pos, (Template, Method))]
 statCallees s (SVarDecl _ v)            = fromMaybe [] $ fmap (exprCallees s) $ varInit v
 statCallees s (SReturn  _ me)           = fromMaybe [] $ fmap (exprCallees s) me
 statCallees s (SSeq     _ ss)           = concatMap (statCallees s) ss
@@ -67,7 +67,7 @@ statCallees s (SDo      _ b c)          = statCallees s b ++ exprCallees s c
 statCallees s (SWhile   _ c b)          = exprCallees s c ++ statCallees s b
 statCallees s (SFor     _ (i,c,u) b)    = (fromMaybe [] $ fmap (statCallees s) i) ++ exprCallees s c ++ statCallees s u ++ statCallees s b
 statCallees s (SChoice  _ ss)           = concatMap (statCallees s) ss
-statCallees s (SInvoke  _ mref as)      = (getMethod s mref):(concatMap (exprCallees s) as)
+statCallees s (SInvoke  p mref as)      = (p,getMethod s mref):(concatMap (exprCallees s) as)
 statCallees s (SAssert  _ e)            = exprCallees s e
 statCallees s (SAssume  _ e)            = exprCallees s e
 statCallees s (SAssign  _ l r)          = exprCallees s l ++ exprCallees s r

@@ -47,8 +47,8 @@ mapExpr f s (EStruct p n (Right fs)) = f s $ EStruct p n (Right $ map (mapExpr f
 mapExpr f s e                        = f s e
 
 -- Find all methods invoked by the expression
-exprCallees :: (?spec::Spec) => Scope -> Expr -> [(Template, Method)]
-exprCallees s (EApply  _ mref as)       = (getMethod s mref):(concatMap (exprCallees s) as)
+exprCallees :: (?spec::Spec) => Scope -> Expr -> [(Pos, (Template, Method))]
+exprCallees s (EApply  p mref as)       = (p,getMethod s mref):(concatMap (exprCallees s) as)
 exprCallees s (EField  _ e _)           = exprCallees s e
 exprCallees s (EPField _ e _)           = exprCallees s e
 exprCallees s (EIndex  _ e idx)         = exprCallees s e ++ exprCallees s idx

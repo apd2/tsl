@@ -2,6 +2,7 @@
 
 module TemplateOps(tmMapExpr,
                    tmPure,
+                   isConcreteTemplate,
                    drvGraph,
                    instGraph,
                    callGraph,
@@ -16,7 +17,9 @@ module TemplateOps(tmMapExpr,
                    tmAllVar,
                    tmLookupPortInst,
                    tmLocalDecls,
-                   tmLocalAndParentDecls) where
+                   tmLocalAndParentDecls,
+                   tmScopes,
+                   callees) where
 
 import Data.List
 import Data.Maybe
@@ -117,14 +120,14 @@ drvGraph =
 -- Call graph
 -------------------------------------------------------------------
 
-type CallGraph = G.Gr Scope ()
+type CallGraph = G.Gr Scope Pos
 
 tmScopes :: (?spec::Spec) => Template -> [Scope]
 tmScopes tm = (map (ScopeProcess tm) (tmAllProcess tm)) ++ (map (ScopeMethod tm) (tmAllMethod tm))
 
-callees :: (?spec::Spec) => Scope -> [Scope]
-callees s@(ScopeProcess t p) = map (uncurry ScopeMethod) $ statCallees s (procStatement p)
-callees s@(ScopeMethod t m)  = map (uncurry ScopeMethod) $ statCallees s b
+callees :: (?spec::Spec) => Scope -> [(Pos, (Template, Method))]
+callees s@(ScopeProcess t p) = statCallees s (procStatement p)
+callees s@(ScopeMethod t m)  = statCallees s b
     where Right b = methFullBody t m
 
 callGraph :: (?spec::Spec) => CallGraph
@@ -132,10 +135,21 @@ callGraph =
     let scopes = zip (concatMap tmScopes $ filter isConcreteTemplate $ specTemplate ?spec) [1..]
         smap = M.fromList scopes
         gnodes = foldl' (\g (s,id) -> G.insNode (id, s) g) G.empty scopes
-        g = foldl' (\g (s,id) -> foldl' (\g s' -> G.insEdge (id, smap M.! s', ()) g)
+        g = foldl' (\g (s,id) -> foldl' (\g (p,(t,m)) -> G.insEdge (id, smap M.! (ScopeMethod t m), p) g)
                                         g (callees s))
                    gnodes scopes
     in g
+
+
+---- Call stack
+--type Stack = [Scope]
+--
+--stacks :: (?spec::Spec) => [Stack]
+--stacks = concatMap (\s -> map (map snd) $ stacks' [s]) roots
+-- where roots = filter (\(_,s) -> case s of 
+--                                      ScopeProcess _ _ -> True
+--                                      ScopeMethod  _ _ -> False)
+--                      (G.labNodes callGraph)
 
 -------------------------------------------------------------------
 -- Namespace-related stuff

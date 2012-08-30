@@ -25,4 +25,4 @@ validateCall :: (?spec::Spec, ?scope::Scope, MonadError String me) => Pos -> Met
 instance (?spec::Spec,?scope::Scope) => WithType Expr
 
 mapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Expr -> Expr
-exprCallees :: (?spec::Spec) => Scope -> Expr -> [(Template, Method)]
+exprCallees :: (?spec::Spec) => Scope -> Expr -> [(Pos, (Template, Method))]
