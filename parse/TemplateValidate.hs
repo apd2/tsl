@@ -29,6 +29,7 @@ import Pos
 import Name
 import TypeSpec
 import TypeSpecOps
+import TypeSpecValidate
 import Template
 import TemplateOps
 import Spec

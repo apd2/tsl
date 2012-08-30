@@ -2,6 +2,7 @@
 
 module StatementOps(mapStat,
                     statMapExpr,
+                    statMapTSpec,
                     statCallees,
                     validateStat,
                     validateStat') where
@@ -36,6 +37,14 @@ mapStat f s (SChoice  p ss)        = f s $ SChoice  p (map (mapStat f s) ss)
 mapStat f s (SITE     p c t me)    = f s $ SITE     p c (mapStat f s t) (fmap (mapStat f s) me)
 mapStat f s (SCase    p c cs md)   = f s $ SCase    p c (map (\(e,st) -> (e,mapStat f s st)) cs) (fmap (mapStat f s) md)
 mapStat f s st                     = f s st
+
+-- Map function over all TypeSpec's in the statement
+statMapTSpec :: (?spec::Spec) => (Scope -> TypeSpec -> TypeSpec) -> Scope -> Statement -> Statement
+statMapTSpec f s st = mapStat (statMapTSpec' f) s st
+
+statMapTSpec' :: (?spec::Spec) => (Scope -> TypeSpec -> TypeSpec) -> Scope -> Statement -> Statement
+statMapTSpec' f s (SVarDecl p v) = SVarDecl p (Var (pos v) (mapTSpec f s $ tspec v) (name v) (varInit v))
+statMapTSpec' _ _ st             = st
 
 -- Map function over all expression in the statement
 statMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Statement -> Statement

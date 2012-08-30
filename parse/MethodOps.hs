@@ -15,6 +15,7 @@ import Name
 import NS
 import TypeSpec
 import TypeSpecOps
+import TypeSpecValidate
 import Method
 import Template
 import TemplateOps

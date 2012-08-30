@@ -9,6 +9,7 @@ import Control.Monad.Error
 import TSLUtil
 import TypeSpec
 import TypeSpecOps
+import TypeSpecValidate
 import Pos
 import Name
 import Spec
@@ -17,6 +18,7 @@ import Method
 import Template
 import TemplateOps
 import TemplateValidate
+import TemplateFlatten
 import Const
 import ConstOps
 import Expr
@@ -152,7 +154,7 @@ checkCall (ScopeMethod _ m1) (p, (t,m2)) = do
     assert (not $ (c1 == Task Uncontrollable) && (c2 == Task Invisible)) p $ "Invisible task invoked in uncontrollable task context"
     assert (not $ (c1 == Task Invisible) && (c2 == Task Controllable)) p   $ "Controllable task invoked in invisible task context"
 
--- Map function overl all expressions in the spec
+-- Map function over all expressions in the spec
 specMapExpr :: (Scope -> Expr -> Expr) -> Spec -> Spec
 specMapExpr f s =
     let ?spec = s
@@ -161,9 +163,28 @@ specMapExpr f s =
            c'  = map (\c -> c{constVal = mapExpr f ScopeTop (constVal c)}) (specConst s)
        in Spec tm' t' c'
 
+-- Map function over all TypeSpec's in the spec
+specMapTSpec :: (Scope -> TypeSpec -> TypeSpec) -> Spec -> Spec
+specMapTSpec f s =
+    let ?spec = s
+    in let tm' = map (tmMapTSpec f) (specTemplate s)
+           t'  = map (\t -> TypeDecl (pos t) (mapTSpec f ScopeTop $ tspec t) (name t)) (specType s)
+           c'  = map (\c -> Const (pos c) (mapTSpec f ScopeTop $ tspec c) (name c) (constVal c)) (specConst s)
+       in Spec tm' t' c'
+
+
 ---------------------------------------------------------------------
 -- Flattening
 ---------------------------------------------------------------------
+
+--flatten :: (MonadError String me) => Spec -> me Spec
+--flatten s = 
+--    s' = flattenConsts $ flattenEnums s
+--    let mmain = find ((== "main") . sname) (specTemplate s')
+--    assert (isJust mmain) nopos $ "\"main\" template not found"
+--    let main = fromJust mmain
+--    let ttree = tmTree s' main
+    
 
 -- Flatten static enum or const name by prepending template name to it
 flattenName :: (WithName a) => Template -> a -> Ident
@@ -181,6 +202,25 @@ flattenConst :: Spec -> Template -> Const -> Spec
 flattenConst s t c = s{specConst = c':(specConst s)}
     where c' = Const (pos c) (tspec c) (flattenName t c) (constVal c)
 
+
+-- Move enums from templates to the top level
+flattenTDecls :: Spec -> Spec
+flattenTDecls s = s''{specTemplate = map (\t -> t{tmConst = []}) (specTemplate s'')}
+    where s'  = let ?spec = s 
+                in specMapTSpec tspecFlatten $ specMapExpr exprFlattenEnums s
+          s'' = foldl' (\s t -> foldl' (\s d -> flattenTDecl s t d) s (tmTypeDecl t)) s' (specTemplate s')
+                                   
+flattenTDecl :: Spec -> Template -> TypeDecl -> Spec
+flattenTDecl s t d = s{specType = d':(specType s)}
+    where d' = case tspec d of
+                    sp@(EnumSpec p es) -> TypeDecl (pos d) (flattenEnumSpec t sp) (flattenName t d)
+                    sp                 -> TypeDecl (pos d) sp                     (flattenName t d)
+        
+flattenEnumSpec :: Template -> TypeSpec -> TypeSpec
+flattenEnumSpec t (EnumSpec p es) = EnumSpec p (map (\e -> Enumerator (pos e) (flattenName t e)) es)
+
+-- Replace references to constants with flattened names
+-- (For use in mapExpr)
 exprFlattenConsts :: (?spec::Spec) => Scope -> Expr -> Expr
 exprFlattenConsts s e = case e of
                              ETerm p sym  -> case getTerm s sym of
@@ -188,27 +228,21 @@ exprFlattenConsts s e = case e of
                                                   _             -> e
                              _            -> e
 
-
--- Move enums from templates to the top level
-flattenEnums :: Spec -> Spec
-flattenEnums s = s''{specTemplate = map (\t -> t{tmConst = []}) (specTemplate s'')}
-    where s'  = let ?spec = s 
-                in specMapExpr exprFlattenEnums s
-          s'' = foldl' (\s t -> foldl' (\s d -> flattenEnumDecl s t d) s (tmTypeDecl t)) s' (specTemplate s')
-                                   
-flattenEnumDecl :: Spec -> Template -> TypeDecl -> Spec
-flattenEnumDecl s t d = case tspec d of
-                         sp@(EnumSpec p es) -> let d' = TypeDecl (pos d) (flattenEnumSpec t sp) (flattenName t d)
-                                               in s{specType = d':(specType s)}
-                         _                  -> s
-        
-flattenEnumSpec :: Template -> TypeSpec -> TypeSpec
-flattenEnumSpec t (EnumSpec p es) = EnumSpec p (map (\e -> Enumerator (pos e) (flattenName t e)) es)
-
+-- Replace references to enums with flattened names
+-- (For use in mapExpr)
 exprFlattenEnums :: (?spec::Spec) => Scope -> Expr -> Expr
 exprFlattenEnums s e = case e of
                              ETerm p sym  -> case getTerm s sym of
                                                   ObjEnum (Type (ScopeTemplate t) _) en -> ETerm p [flattenName t en]
                                                   _                                     -> e
                              _            -> e
+
+-- Replace references to local types with flattened names
+-- (For use in mapTSpec)
+tspecFlatten :: (?spec::Spec) => Scope -> TypeSpec -> TypeSpec
+tspecFlatten s (UserTypeSpec p n) = 
+    case getTypeDecl s n of
+         (d, ScopeTop)         -> UserTypeSpec p n
+         (d, ScopeTemplate tm) -> UserTypeSpec p [flattenName tm d]
+tspecFlatten _ t = t
 

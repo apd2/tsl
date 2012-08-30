@@ -9,6 +9,7 @@ import TSLUtil
 import Pos
 import TypeSpec
 import TypeSpecOps
+import TypeSpecValidate
 import {-# SOURCE #-} ExprOps
 import Const
 import Spec

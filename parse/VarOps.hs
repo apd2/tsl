@@ -13,6 +13,7 @@ import NS
 import Var
 import TypeSpec
 import TypeSpecOps
+import TypeSpecValidate
 import Expr
 import {-# SOURCE #-} ExprOps
 

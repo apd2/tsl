@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts, ImplicitParams, TupleSections #-}
 
 module TemplateOps(tmMapExpr,
+                   tmMapTSpec,
                    tmPure,
                    isConcreteTemplate,
                    drvGraph,
@@ -28,7 +29,7 @@ import Control.Monad.Error
 import qualified Data.Graph.Inductive.Graph     as G
 import qualified Data.Graph.Inductive.Tree      as G
 import qualified Data.Graph.Inductive.Query.DFS as G
-import Control.Applicative
+import Control.Applicative hiding (Const)
 
 import TSLUtil
 import Pos
@@ -67,6 +68,19 @@ tmMapExpr f tm = tm { tmConst    = map (\c -> c{constVal = mapExpr f s (constVal
                     , tmGoal     = map (\g -> g{goalCond = mapExpr f s (goalCond g)})                              (tmGoal tm)}
     where s = ScopeTemplate tm
 
+-- Map function over all TypeSpec's occurring in the template
+tmMapTSpec :: (?spec::Spec) => (Scope -> TypeSpec -> TypeSpec) -> Template -> Template
+tmMapTSpec f tm = tm { tmConst    = map (\c -> Const (pos c) (mapTSpec f s $ tspec c) (name c) (constVal c))            (tmConst tm)
+                     , tmTypeDecl = map (\t -> TypeDecl (pos t) (mapTSpec f s $ tspec t) (name t))                      (tmTypeDecl tm)
+                     , tmVar      = map (\v -> v{gvarVar  = (gvarVar v){varType = mapTSpec f s $ tspec v}})             (tmVar tm)
+                     , tmWire     = map (\w -> w{wireType = mapTSpec f s (wireType w)})                                 (tmWire tm)
+                     , tmProcess  = map (\p -> p{procStatement = statMapTSpec f s (procStatement p)})                   (tmProcess tm)
+                     , tmMethod   = map (\m -> m{methRettyp = fmap (mapTSpec f s) (methRettyp m),
+                                                 methArg    = map (\a -> a{argType = mapTSpec f s (argType a)}) (methArg m),
+                                                 methBody   = case methBody m of
+                                                                   Left (mb,ma) -> Left  $ (fmap (statMapTSpec f s) mb, fmap (statMapTSpec f s) mb)
+                                                                   Right b      -> Right $ statMapTSpec f s b})         (tmMethod tm)}
+    where s = ScopeTemplate tm
 
 
 tmPure :: (?spec::Spec) => Template -> ([Method],[Wire])
@@ -140,16 +154,6 @@ callGraph =
                    gnodes scopes
     in g
 
-
----- Call stack
---type Stack = [Scope]
---
---stacks :: (?spec::Spec) => [Stack]
---stacks = concatMap (\s -> map (map snd) $ stacks' [s]) roots
--- where roots = filter (\(_,s) -> case s of 
---                                      ScopeProcess _ _ -> True
---                                      ScopeMethod  _ _ -> False)
---                      (G.labNodes callGraph)
 
 -------------------------------------------------------------------
 -- Namespace-related stuff
@@ -236,21 +240,3 @@ tmAllWire :: (?spec::Spec) => Template -> [Wire]
 tmAllWire t = tmWire t ++
               (filter (\w -> not $ elem (name w) $ (map name $ tmWire t)) $ 
                       concat $ map tmAllWire (tmParents t))
-
-
--- Merge template with its parents
--- Assumes that constants and enums have already been flattened
-tmMergeParents :: (?spec::Spec) => Template -> Template
-tmMergeParents tm = Template (pos tm)
-                             (name tm)
-                             (tmPort tm)
-                             []                    -- tmDerive
-                             []                    -- tmConst
-                             []                    -- tmTypeDecl
-                             (tmAllVar tm)
-                             (tmAllWire tm)
-                             (tmAllInst tm)
-                             (tmAllInit tm)
-                             (tmAllProcess tm)
-                             (tmAllMethod tm)
-                             (tmAllGoal tm)
