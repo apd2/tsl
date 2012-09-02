@@ -16,6 +16,7 @@ import TypeSpec
 import TypeSpecOps
 import Expr
 import {-# SOURCE #-} ExprOps
+import ExprValidate
 
 
 ---------------------------------------------------------------------

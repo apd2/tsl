@@ -36,7 +36,8 @@ assert b p m =
 -- Check for duplicate declarations
 uniqNames :: (MonadError String me, WithPos a, WithName a) => (String -> String) -> [a] -> me ()
 uniqNames msgfunc xs = do
-    case filter ((>1) . length) $ groupBy (\x1 x2 -> name x1 == name x2) xs of
+    case filter ((>1) . length) $ groupBy (\x1 x2 -> name x1 == name x2) $ 
+                                  sortBy (\x1 x2 -> compare (name x1) (name x2)) xs of
          []        -> return ()
          g@(x:_):_ -> err (pos x) $ msgfunc (sname x) ++ " at the following locations:\n  " ++ (intercalate "\n  " $ map spos g)
 

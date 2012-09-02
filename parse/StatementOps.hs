@@ -4,6 +4,7 @@ module StatementOps(mapStat,
                     statMapExpr,
                     statMapTSpec,
                     statCallees,
+                    statFlatten,
                     validateStat,
                     validateStat') where
 
@@ -15,6 +16,8 @@ import Pos
 import Name
 import Expr
 import {-# SOURCE #-} ExprOps
+import ExprFlatten
+import ExprValidate
 import Spec
 import NS
 import Statement
@@ -24,6 +27,7 @@ import Var
 import VarOps
 import Method
 import Template
+import InstTree
 
 -- Map function over all substatements
 mapStat :: (?spec::Spec) => (Scope -> Statement -> Statement) -> Scope -> Statement -> Statement
@@ -86,6 +90,9 @@ statCallees s (SCase    _ c cs md)      = exprCallees s c ++
                                           (fromMaybe [] $ fmap (statCallees s) md)
 statCallees _ _                         = []
 
+
+statFlatten :: (?spec::Spec) => IID -> Scope -> Statement -> Statement
+statFlatten iid s st = statMapExpr (exprFlatten iid) s st
 
 
 validateStat :: (?spec::Spec, MonadError String me) => Scope -> Statement -> me ()

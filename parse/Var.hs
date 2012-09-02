@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, UndecidableInstances #-}
 
-module Var(Var(Var,varInit,varType)) where
+module Var(Var(Var,varInit,varType,varName)) where
 
 import Text.PrettyPrint
 
@@ -12,7 +12,7 @@ import Expr
 
 data Var = Var { vpos      :: Pos
                , varType   :: TypeSpec
-               , vname     :: Ident
+               , varName   :: Ident
                , varInit   :: Maybe Expr}
 
 instance PP Var where
@@ -24,7 +24,7 @@ instance WithPos Var where
     atPos v p = v{vpos = p}
 
 instance WithName Var where
-    name = vname
+    name = varName
 
 instance WithTypeSpec Var where
     tspec = varType

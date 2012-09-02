@@ -20,7 +20,8 @@ module TemplateOps(tmMapExpr,
                    tmLocalDecls,
                    tmLocalAndParentDecls,
                    tmScopes,
-                   callees) where
+                   callees,
+                   tmMergeParents) where
 
 import Data.List
 import Data.Maybe
@@ -240,3 +241,21 @@ tmAllWire :: (?spec::Spec) => Template -> [Wire]
 tmAllWire t = tmWire t ++
               (filter (\w -> not $ elem (name w) $ (map name $ tmWire t)) $ 
                       concat $ map tmAllWire (tmParents t))
+
+
+-- Merge template with its parents
+-- Assumes that constants and enums have already been flattened
+tmMergeParents :: (?spec::Spec) => Template -> Template
+tmMergeParents tm = Template (pos tm)
+                             (name tm)
+                             (tmPort tm)
+                             []                    -- tmDerive
+                             []                    -- tmConst
+                             []                    -- tmTypeDecl
+                             (tmAllVar tm)
+                             (tmAllWire tm)
+                             (tmAllInst tm)
+                             (tmAllInit tm)
+                             (tmAllProcess tm)
+                             (tmAllMethod tm)
+                             (tmAllGoal tm)

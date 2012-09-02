@@ -11,6 +11,7 @@ import TypeSpec
 import TypeSpecOps
 import TypeSpecValidate
 import {-# SOURCE #-} ExprOps
+import ExprValidate
 import Const
 import Spec
 import NS

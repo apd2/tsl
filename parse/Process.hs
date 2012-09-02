@@ -1,4 +1,4 @@
-module Process(Process(Process,procStatement),
+module Process(Process(Process,procStatement,procName),
                procVar) where
 
 import Text.PrettyPrint
@@ -10,7 +10,7 @@ import Var
 import Statement
 
 data Process = Process { ppos          :: Pos
-                       , pname         :: Ident
+                       , procName      :: Ident
                        , procStatement :: Statement}
 
 procVar :: Process -> [Var]
@@ -24,4 +24,4 @@ instance WithPos Process where
     atPos pr p = pr{ppos = p}
 
 instance WithName Process where
-    name = pname
+    name = procName

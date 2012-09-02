@@ -18,6 +18,7 @@ import Method
 import Template
 import TemplateOps
 import TemplateValidate
+import InstTree
 import TemplateFlatten
 import Const
 import ConstOps
@@ -177,13 +178,37 @@ specMapTSpec f s =
 -- Flattening
 ---------------------------------------------------------------------
 
---flatten :: (MonadError String me) => Spec -> me Spec
---flatten s = 
---    s' = flattenConsts $ flattenEnums s
---    let mmain = find ((== "main") . sname) (specTemplate s')
---    assert (isJust mmain) nopos $ "\"main\" template not found"
---    let main = fromJust mmain
---    let ttree = tmTree s' main
+-- Main function: flatten the spec, producing a spec with a single 
+-- template.
+flatten :: (MonadError String me) => Spec -> me Spec
+flatten s = do
+    let s' = flattenConsts $ flattenTDecls s
+        mmain = find ((== "main") . sname) (specTemplate s')
+    assert (isJust mmain) nopos $ "\"main\" template not found"
+    let main = fromJust mmain
+    let ?spec = s' 
+    checkConcreteTemplate main (pos main)
+    assert (null $ tmPort main) (pos main) $ "The main template cannot have ports"
+    let gvars = concat $ mapInstTree tmFlattenGVars
+        wires = concat $ mapInstTree tmFlattenWires
+        inits = concat $ mapInstTree tmFlattenInits
+        procs = concat $ mapInstTree tmFlattenProcs
+        meths = concat $ mapInstTree tmFlattenMeths
+        goals = concat $ mapInstTree tmFlattenGoals
+        main' = Template (pos main)
+                         (name main)
+                         []              -- tmPort
+                         []              -- tmDerive
+                         []              -- tmConst
+                         []              -- tmTypeDecl
+                         gvars
+                         wires
+                         []              -- tmInst
+                         inits           -- tmInit
+                         procs
+                         meths
+                         goals
+    return s'{specTemplate = [main']}
     
 
 -- Flatten static enum or const name by prepending template name to it
@@ -245,4 +270,3 @@ tspecFlatten s (UserTypeSpec p n) =
          (d, ScopeTop)         -> UserTypeSpec p n
          (d, ScopeTemplate tm) -> UserTypeSpec p [flattenName tm d]
 tspecFlatten _ t = t
-

@@ -4,7 +4,7 @@ module Method(TaskCat(..),
               MethodCat(..), 
               ArgDir(..), 
               Arg(Arg,argDir,argType), 
-              Method(Method,methCat, methArg, methRettyp),
+              Method(Method,methCat, methArg, methRettyp, methName),
               methVar,
               methBody) where
 
@@ -76,7 +76,7 @@ data Method = Method { mpos       :: Pos
                      , methExport :: Bool
                      , methCat    :: MethodCat
                      , methRettyp :: Maybe TypeSpec
-                     , mname      :: Ident
+                     , methName   :: Ident
                      , methArg    :: [Arg]
                      , methBody   :: Either (Maybe Statement, Maybe Statement) Statement}
 
@@ -104,7 +104,7 @@ instance PP Method where
                 Right s -> pp s
 
 instance WithName Method where
-    name = mname
+    name = methName
 
 instance WithPos Method where
     pos       = mpos

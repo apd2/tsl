@@ -16,6 +16,7 @@ import TypeSpecOps
 import TypeSpecValidate
 import Expr
 import {-# SOURCE #-} ExprOps
+import ExprValidate
 
 varMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Var -> Var
 varMapExpr f s v = Var (pos v) (tspecMapExpr f s $ tspec v) (name v) (fmap (mapExpr f s) $ varInit v)

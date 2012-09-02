@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts, ImplicitParams, TupleSections #-}
 
-module TemplateValidate(validateTmInstances,
+module TemplateValidate(checkConcreteTemplate,
+                        validateTmInstances,
                         validateTmInstances2,
                         validateTmInit2,
                         validateTmPorts,
@@ -37,6 +38,7 @@ import ConstOps
 import Var
 import VarOps
 import ExprOps
+import ExprValidate
 import Method
 import MethodOps
 import Process
