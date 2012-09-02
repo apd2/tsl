@@ -128,7 +128,10 @@ validateExpr' (ETernOp p e1 e2 e3) = do
 validateExpr' (ECase p e cs md) = do
     validateExpr' e
     assert (length cs > 0) p $ "Empty case expression"
-    mapM (\(e1,e2) -> do {validateExpr' e1; validateExpr' e2}) cs
+    mapM (\(e1,e2) -> do validateExpr' e1
+                         validateExpr' e2
+                         assert (exprNoSideEffects e1) (pos e1) "Case label must be side-effect free")
+         cs
     case md of
          Just d  -> validateExpr' d
          Nothing -> return ()
@@ -150,6 +153,7 @@ validateExpr' (ECond p cs md) = do
     assert (length cs > 0) p $ "Empty case expression"
     mapM (\(e1,e2) -> do validateExpr' e1
                          validateExpr' e2
+                         assert (exprNoSideEffects e1) (pos e1) "Condition must be side-effect free"
                          assert (isBool e1) (pos e1) $ "Expression " ++ show e1 ++ " is of non-boolean type")
          cs
     case md of
@@ -216,6 +220,9 @@ validateCall p mref as = do
            "Method " ++ sname m ++ " takes " ++ show (length $ methArg m) ++ 
            " arguments, but is invoked with " ++ show (length as) ++ " arguments"
     mapM (\(marg,a) -> do validateExpr' a
-                          checkTypeMatch marg a)
-         (zip (map (ObjArg (ScopeMethod t m)) (methArg m)) as)
+                          checkTypeMatch (ObjArg (ScopeMethod t m) marg) a
+                          if argDir marg == ArgOut
+                             then assert (isLExpr a) (pos a) $ "expression " ++ show a ++ " is not an L-value"
+                             else return ())
+         (zip (methArg m) as)
     return ()

@@ -270,3 +270,9 @@ tspecFlatten s (UserTypeSpec p n) =
          (d, ScopeTop)         -> UserTypeSpec p n
          (d, ScopeTemplate tm) -> UserTypeSpec p [flattenName tm d]
 tspecFlatten _ t = t
+
+----------------------------------------------------------------------------
+-- Preprocessing
+----------------------------------------------------------------------------
+
+

@@ -225,8 +225,7 @@ exprNoSideEffects _ = True
 
 
 maxType :: (?spec::Spec, ?scope::Scope, WithType a) => [a] -> Type
-maxType xs = foldl' (\t x -> maxType2 t (typ x))
-                    (typ $ head xs) (tail xs)
+maxType xs = foldl' (\t x -> maxType2 t (typ x)) (typ $ head xs) (tail xs)
 
 maxType2 :: (?spec::Spec,?scope::Scope) => Type -> Type -> Type
 maxType2 t1 t2 = let Type s1 t1' = typ' t1
