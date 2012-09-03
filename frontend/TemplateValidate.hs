@@ -172,7 +172,11 @@ validateTmConsts2 tm = do {mapM (validateConst2 (ScopeTemplate tm)) (tmConst tm)
 ------------------------------------------------------------------------------
 
 validateGVar2 :: (?spec::Spec, MonadError String me) => Template -> GVar -> me ()
-validateGVar2 tm v = validateVar2 (ScopeTemplate tm) (gvarVar v)
+validateGVar2 tm v = do let ?scope = ScopeTemplate tm
+                        validateVar2 ?scope (gvarVar v)
+                        case (varInit $ gvarVar v) of
+                             Nothing -> return ()
+                             Just e  -> assert (isConstExpr e) (pos e) $ "Initial value of a global variable must be a constant expression"
 
 validateTmGVars :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmGVars tm = do {mapM (validateVar (ScopeTemplate tm) . gvarVar) (tmVar tm); return()}

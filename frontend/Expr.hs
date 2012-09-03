@@ -14,6 +14,7 @@ import Data.Bits
 import Numeric
 import Data.Char
 
+import Common
 import PP
 import Pos
 import Name
@@ -23,12 +24,6 @@ type Slice = (ConstExpr, ConstExpr) -- low,high
 
 instance PP Slice where
     pp (l,h) = brackets $ pp l <> colon <> pp h 
-
-data Radix = Rad2 
-           | Rad8 
-           | Rad10 
-           | Rad16 
-           deriving (Eq)
 
 data MethodRef = MethodRef Pos [Ident]
 
@@ -43,62 +38,6 @@ instance PP MethodRef where
     pp (MethodRef _ m) = hcat $ punctuate (char '.') (map pp m)
 
 instance Show MethodRef where
-    show = render . pp
-
-data UOp = UMinus 
-         | Not 
-         | BNeg
-         | Deref
-         | AddrOf
-         deriving (Eq)
-
-instance PP UOp where
-    pp UMinus = char '-'
-    pp Not    = char '!'
-    pp BNeg   = char '~'
-    pp Deref  = char '*'
-    pp AddrOf = char '&'
-
-instance Show UOp where
-    show = render . pp
-
-data BOp = Eq 
-         | Neq 
-         | Lt 
-         | Gt 
-         | Lte 
-         | Gte
-         | And 
-         | Or 
-         | Imp
-         | BAnd 
-         | BOr 
-         | BXor
-         | Plus 
-         | BinMinus 
-         | Mod
-         | Mul
-         deriving(Eq)
-
-instance PP BOp where
-    pp Eq       = text "=="
-    pp Neq      = text "!="
-    pp Lt       = text "<"
-    pp Gt       = text ">"
-    pp Lte      = text "<="
-    pp Gte      = text ">="
-    pp And      = text "&&"
-    pp Or       = text "||"
-    pp Imp      = text "->"
-    pp BAnd     = text "&"
-    pp BOr      = text "|"
-    pp BXor     = text "^"
-    pp Plus     = text "+"
-    pp BinMinus = text "-"
-    pp Mod      = text "%"
-    pp Mul      = text "*"
-
-instance Show BOp where
     show = render . pp
 
 -- Expressions 

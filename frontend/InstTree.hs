@@ -42,7 +42,7 @@ mapInstTree' f iid = (f iid (itreeTemplate iid)):
                      concatMap (\i -> mapInstTree' f (iid++[name i])) (tmInst $ itreeTemplate iid)
 
 itreeFlattenName :: IID -> Ident -> Ident
-itreeFlattenName iid i = Ident (pos i) $ intercalate "." $ map sname (iid ++ [i])
+itreeFlattenName iid i = Ident (pos i) $ intercalate ":" $ map sname (iid ++ [i])
 
 -- Translate relative path in the instance tree to absolute path
 -- iid  - path to a template in the tree

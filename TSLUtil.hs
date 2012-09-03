@@ -2,6 +2,8 @@
 
 module TSLUtil(mapFst,
                mapSnd,
+               fromLeft,
+               fromRight,
                err,
                assert,
                uniqNames,
@@ -23,6 +25,11 @@ mapFst f (x,y) = (f x,y)
 mapSnd :: (c->b) -> (a,c) -> (a,b)
 mapSnd f (x,y) = (x,f y)
 
+fromLeft :: (Either a b) -> a
+fromLeft (Left x) = x
+
+fromRight :: (Either a b) -> b
+fromRight (Right x) = x
 
 err :: (MonadError String me) => Pos -> String -> me a
 err p e = throwError $ show p ++ ": " ++ e
