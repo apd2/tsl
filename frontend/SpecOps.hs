@@ -7,9 +7,9 @@ import Data.Maybe
 import Control.Monad.Error
 
 import TSLUtil
-import TypeSpec
-import TypeSpecOps
-import TypeSpecValidate
+import Type
+import TypeOps
+import TypeValidate
 import Pos
 import Name
 import Spec

@@ -11,7 +11,7 @@ import TSLUtil
 import Util hiding (name)
 import Name
 import Pos
-import TypeSpec
+import Type
 import Template
 import Const
 import Method

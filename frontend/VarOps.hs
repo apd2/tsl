@@ -11,9 +11,9 @@ import Name
 import Spec
 import NS
 import Var
-import TypeSpec
-import TypeSpecOps
-import TypeSpecValidate
+import Type
+import TypeOps
+import TypeValidate
 import Expr
 import {-# SOURCE #-} ExprOps
 import ExprValidate

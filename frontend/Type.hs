@@ -1,10 +1,10 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances #-}
 
-module TypeSpec(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec,TemplateTypeSpec, FlexTypeSpec), 
-                WithTypeSpec(..),
-                TypeDecl(TypeDecl), 
-                Enumerator(Enumerator),
-                Field(Field)) where
+module Type(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec,TemplateTypeSpec, FlexTypeSpec), 
+            WithTypeSpec(..),
+            TypeDecl(TypeDecl), 
+            Enumerator(Enumerator),
+            Field(Field)) where
 
 import Text.PrettyPrint
 import Control.Monad.Error

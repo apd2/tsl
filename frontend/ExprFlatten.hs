@@ -6,7 +6,7 @@ import Name
 import Expr
 import {-# SOURCE #-} ExprOps
 import InstTree
-import TypeSpec
+import Type
 import Spec
 import NS
 

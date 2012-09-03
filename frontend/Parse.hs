@@ -27,7 +27,7 @@ import Statement
 import Process
 import Template
 import Var
-import TypeSpec
+import Type
 import Method
 import Const
 

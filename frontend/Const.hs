@@ -8,7 +8,7 @@ import PP
 import Pos
 import Name
 import Expr
-import TypeSpec
+import Type
 
 data Const = Const { cpos     :: Pos
                    , ctyp     :: TypeSpec

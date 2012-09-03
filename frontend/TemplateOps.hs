@@ -35,8 +35,8 @@ import Control.Applicative hiding (Const)
 import TSLUtil
 import Pos
 import Name
-import TypeSpec
-import TypeSpecOps
+import Type
+import TypeOps
 import Template
 import Spec
 import Const

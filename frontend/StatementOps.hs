@@ -21,8 +21,8 @@ import ExprValidate
 import Spec
 import NS
 import Statement
-import TypeSpec
-import TypeSpecOps
+import Type
+import TypeOps
 import Var
 import VarOps
 import Method

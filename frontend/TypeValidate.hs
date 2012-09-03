@@ -1,8 +1,8 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module TypeSpecValidate (validateTypeSpec,
-                         validateTypeSpec2,
-                         validateTypeDeps) where
+module TypeValidate (validateTypeSpec,
+                     validateTypeSpec2,
+                     validateTypeDeps) where
 
 import Control.Monad.Error
 import Data.List
@@ -12,8 +12,8 @@ import Pos
 import Name
 import NS
 import Spec
-import TypeSpec
-import TypeSpecOps
+import Type
+import TypeOps
 import Expr
 import {-# SOURCE #-} ExprOps
 import ExprValidate

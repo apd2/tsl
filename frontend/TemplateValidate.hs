@@ -28,9 +28,9 @@ import Control.Applicative
 import TSLUtil
 import Pos
 import Name
-import TypeSpec
-import TypeSpecOps
-import TypeSpecValidate
+import Type
+import TypeOps
+import TypeValidate
 import Template
 import TemplateOps
 import Spec

@@ -19,8 +19,8 @@ import Pos
 import Name
 import Template
 import TemplateOps
-import TypeSpec
-import TypeSpecOps
+import Type
+import TypeOps
 import Expr
 import Spec
 import Method

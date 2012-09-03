@@ -17,7 +17,7 @@ import Const
 import Var
 import Process
 import Method
-import TypeSpec
+import Type
 import Expr
 
 -- Template port

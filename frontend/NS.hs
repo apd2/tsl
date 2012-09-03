@@ -29,7 +29,7 @@ import Method
 import {-# SOURCE #-} MethodOps
 import Var
 import Const
-import TypeSpec
+import Type
 import Spec
 import Expr
 

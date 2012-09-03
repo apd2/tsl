@@ -9,8 +9,8 @@ import Data.Maybe
 import TSLUtil
 import Pos
 import Name
-import TypeSpec
-import TypeSpecOps
+import Type
+import TypeOps
 import NS
 import Expr
 import {-# SOURCE #-} ExprOps

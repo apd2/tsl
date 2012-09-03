@@ -7,9 +7,9 @@ import Control.Monad.Error
 
 import TSLUtil
 import Pos
-import TypeSpec
-import TypeSpecOps
-import TypeSpecValidate
+import Type
+import TypeOps
+import TypeValidate
 import {-# SOURCE #-} ExprOps
 import ExprValidate
 import Const

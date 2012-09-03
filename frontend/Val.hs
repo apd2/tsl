@@ -7,7 +7,7 @@ import qualified Data.Map as M
 import Name
 import NS
 import Expr
-import TypeSpec
+import Type
 
 -- Value
 data Val = BoolVal          Bool

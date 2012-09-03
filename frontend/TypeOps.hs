@@ -1,15 +1,15 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module TypeSpecOps(mapTSpec,
-                   tspecMapExpr,
-                   typ', 
-                   typeIso,
-                   typeMatch,
-                   checkTypeMatch,
-                   typeComparable,
-                   typeWidth,
-                   isInt, isBool, isPtr, isArray, isStruct,
-                   tdeclGraph) where
+module TypeOps(mapTSpec,
+               tspecMapExpr,
+               typ', 
+               typeIso,
+               typeMatch,
+               checkTypeMatch,
+               typeComparable,
+               typeWidth,
+               isInt, isBool, isPtr, isArray, isStruct,
+               tdeclGraph) where
 
 import Control.Monad.Error
 import Data.List
@@ -20,7 +20,7 @@ import qualified Data.Graph.Inductive.Tree as G
 import TSLUtil
 import Name
 import Pos
-import TypeSpec
+import Type
 import Template
 import Spec
 import NS

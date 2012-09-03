@@ -13,9 +13,9 @@ import TSLUtil
 import Pos
 import Name
 import NS
-import TypeSpec
-import TypeSpecOps
-import TypeSpecValidate
+import Type
+import TypeOps
+import TypeValidate
 import Method
 import Template
 import TemplateOps

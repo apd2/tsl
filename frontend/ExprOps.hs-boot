@@ -9,7 +9,7 @@ import Template
 import Method
 import NS
 import Pos
-import TypeSpec
+import Type
 
 evalInt :: (?spec::Spec, ?scope::Scope) => ConstExpr -> Integer
 

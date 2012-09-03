@@ -15,7 +15,7 @@ import Pos
 import Name
 import Var
 import PP
-import TypeSpec
+import Type
 import Statement
 
 data TaskCat = Controllable

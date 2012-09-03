@@ -7,7 +7,7 @@ import Text.PrettyPrint
 import Pos
 import Name
 import PP
-import TypeSpec
+import Type
 import Expr
 
 data Var = Var { vpos      :: Pos
