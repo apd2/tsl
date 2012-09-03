@@ -275,4 +275,9 @@ tspecFlatten _ t = t
 -- Preprocessing
 ----------------------------------------------------------------------------
 
-
+-- Lift method invocations to top-level expressions, e.g.,
+--
+-- x = f(y) + g(z)  ==>  tmp1 = f(y)
+--                       tmp2 = g(z)
+--                       x = tmp1 + tmp2
+--liftCalls
