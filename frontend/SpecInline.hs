@@ -3,6 +3,9 @@
 -- Convert flattened spec to internal representation
 module SpecInline () where
 
+import Data.List
+import Data.Maybe
+
 import TSLUtil
 import Spec
 import qualified ISpec as I
@@ -44,6 +47,32 @@ methSimplify tm m = let ?scope = ScopeMethod tm m
                         ?uniq = newUniq
                     in m { methBody = Right $ statSimplify $ fromRight $ methBody m}
 
+-- Process structure analysis: subprocesses, methods, variables
+-- Recursively compute the set of methods invoked by the process.
+-- (assume that the spec has been simplified previously)
+statMethods :: (?spec::Spec, ?scope::Scope) => Statement -> [Ident]
+statMethods (SReturn _ (Just (EApply _ mref _))) = mrefMethods mref
+statMethods (SSeq    _ ss)                       = concatMap statMethods ss
+statMethods (SForever _ s)                       = statMethods s
+statMethods (SDo _ b c)                          = statMethods b
+statMethods (SWhile _ c b)                       = statMethods b
+statMethods (SFor  _ (mi,c,s) b)                 = nub $ concatMap statMethods $ (maybeToList mi) ++ [s,b]
+statMethods (SChoice _ ss)                       = nub $ concatMap statMethods ss
+statMethods (SInvoke _ mref _)                   = mrefMethods mref
+statMethods (SAssign _ lhs (EApply _ mref _))    = mrefMethods mref
+statMethods (SITE _ _ t me)                      = nub $ concatMap statMethods $ t : (maybeToList me)
+statMethods (SCase _ _ cs mdef)                  = nub $ concatMap statMethods $ (snd $ unzip cs) ++ (maybeToList mdef)
+statMethods _                                    = []
+
+mrefMethods :: (?spec::Spec, ?scope::Scope) => MethodRef -> [Ident]
+mrefMethods mref = 
+    let m = snd $ getMethod ?scope mref
+    in let ?scope = ScopeMethod (head $ specTemplate ?spec) m 
+       in nub $ (name m):(statMethods $ fromRight $ methBody m)
+
+--processChildren
+
+--processVars
 
 --
 --
