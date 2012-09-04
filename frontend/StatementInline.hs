@@ -19,7 +19,7 @@ import Type
 import ExprInline
 
 statSimplify :: (?spec::Spec, ?scope::Scope, ?uniq::Uniq) => Statement -> Statement
-statSimplify s = sseq (pos s) $ statSimplify' s
+statSimplify s = sSeq (pos s) $ statSimplify' s
 
 statSimplify' :: (?spec::Spec, ?scope::Scope, ?uniq::Uniq) => Statement -> [Statement]
 statSimplify' (SVarDecl p v) = 
@@ -29,27 +29,21 @@ statSimplify' (SVarDecl p v) =
 
 statSimplify' (SReturn p (Just e)) = 
     let (ss,e') = exprSimplify e
-    in case e' of
-            EApply _ _ _ -> let tmp = tmpName p ?uniq
-                            in ss ++ 
-                               [SVarDecl p (Var p (tspec e') tmp Nothing)] ++
-                               [SAssign p (ETerm p [tmp]) e'] ++
-                               [SReturn p (Just $ ETerm p [tmp])]
-            _            -> ss ++ [SReturn p (Just e')]
+    in ss ++ [SReturn p (Just e')]
 
 statSimplify' (SSeq p ss)           = [SSeq p $ concatMap statSimplify' ss]
 statSimplify' (SPar p ss)           = [SPar p $ map statSimplify ss]
 statSimplify' (SForever p s)        = [SForever p $ statSimplify s]
 statSimplify' (SDo p b c)           = let (ss,c') = exprSimplify c
-                                      in [SDo p (sseq (pos b) $ statSimplify' b ++ ss) c']
+                                      in [SDo p (sSeq (pos b) $ statSimplify' b ++ ss) c']
 statSimplify' (SWhile p c b)        = let (ss,c') = exprSimplify c
-                                      in ss ++ [SWhile p c' (sseq (pos b) $ statSimplify' b ++ ss)]
+                                      in ss ++ [SWhile p c' (sSeq (pos b) $ statSimplify' b ++ ss)]
 statSimplify' (SFor p (mi, c, s) b) = let i' = case mi of
                                                     Nothing -> []
                                                     Just i  -> statSimplify' i
                                           (ss,c') = exprSimplify c
                                           s' = statSimplify s
-                                      in i' ++ ss ++ [SFor p (Nothing, c',s') (sseq (pos b) $ statSimplify' b ++ ss)]
+                                      in i' ++ ss ++ [SFor p (Nothing, c',s') (sSeq (pos b) $ statSimplify' b ++ ss)]
 statSimplify' (SChoice p ss)        = [SChoice p $ map statSimplify ss]
 statSimplify' (SInvoke p mref as)   = -- Order of argument evaluation is undefined in C;
                                       -- Go left-to-right
@@ -61,8 +55,8 @@ statSimplify' (SAssume p c)         = let (ss,c') = exprSimplify c
                                       in ss ++ [SAssume p c']
 statSimplify' (SAssign p l r)       = -- Evaluate lhs first
                                       let (ssl,l') = exprSimplify l
-                                          (ssr,r') = exprSimplify r
-                                      in ssl ++ ssr ++ [SAssign p l' r']
+                                          ssr = exprSimplifyAsn p l' r
+                                      in ssl ++ ssr
 statSimplify' (SITE p c t me)       = let (ss,c') = exprSimplify c
                                       in ss ++ [SITE p c' (statSimplify t) (fmap statSimplify me)]
 statSimplify' (SCase p c cs md)     = -- Case labels must be side-effect-free, so it is ok to 
@@ -75,8 +69,3 @@ statSimplify' (SCase p c cs md)     = -- Case labels must be side-effect-free, s
 statSimplify' (SMagic p (Right e))  = let (ss,e') = exprSimplify e
                                       in (SMagic p (Right $ EBool (pos e) True)):(ss ++ [SAssert (pos e) e'])
 statSimplify' st                    = [st]
-
-
-sseq :: Pos -> [Statement] -> Statement
-sseq p [s] = s
-sseq p ss  = SSeq p ss

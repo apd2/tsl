@@ -194,7 +194,9 @@ validateStat' l (SITE _ i t e) = do
 validateStat' l (SCase p c cs md) = do
     validateExpr' c
     assert (length cs > 0) p $ "Empty case statement"
-    mapM (\(e,s) -> do {validateExpr' e; validateStat' l s}) cs
+    mapM (\(e,s) -> do validateExpr' e
+                       validateStat' l s
+                       assert (exprNoSideEffects e) (pos e) "Case label must be side-effect free") cs
     case md of
          Just d  -> validateStat' l d
          Nothing -> return ()

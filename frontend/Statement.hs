@@ -79,6 +79,8 @@ stmtVar (SITE _ _ ts es)        = concat $ map stmtVar $ ts:(maybeToList es)
 stmtVar (SCase _ _ cs def)      = concat $ map stmtVar $ (snd $ unzip cs) ++ (maybeToList def)
 stmtVar _                       = []
 
-sSeq :: [Statement] -> Statement
-sSeq [s] = s
-sSeq ss = SSeq nopos ss
+sSeq :: Pos -> [Statement] -> Statement
+sSeq p [s] = s
+sSeq p ss = SSeq p ss
+
+

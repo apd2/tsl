@@ -6,7 +6,8 @@ module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,EUnOp,EBinOp,ETer
             MethodRef(MethodRef),
             Radix(..),
             UOp(..),
-            BOp(..)) where
+            BOp(..),
+            eAnd) where
 
 import Text.PrettyPrint
 import Data.List
@@ -123,3 +124,6 @@ instance WithPos Expr where
 type ConstExpr = Expr
 
 type LExpr = Expr
+
+eAnd :: Pos -> [Expr] -> Expr
+eAnd p es = foldl' (EBinOp p And) (head es) (tail es)

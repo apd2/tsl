@@ -41,16 +41,16 @@ methFullBody t m =
                               (Left (mb',ma'), Left (mb,ma)) -> 
                                   let bef = case (mb',mb) of
                                                  (Nothing, Nothing) -> Nothing
-                                                 (Just b', Just b)  -> Just $ sSeq [b',b]
+                                                 (Just b', Just b)  -> Just $ sSeq nopos [b',b]
                                                  (Just b', Nothing) -> Just b'
                                                  (Nothing, Just b)  -> Just b
                                       aft = case (ma',ma) of
                                                  (Nothing, Nothing) -> Nothing
-                                                 (Just a', Just a)  -> Just $ sSeq [a,a']
+                                                 (Just a', Just a)  -> Just $ sSeq nopos [a,a']
                                                  (Just a', Nothing) -> Just a'
                                                  (Nothing, Just a)  -> Just a
                                   in Left (bef, aft)
-                              (Left (mb',ma'), Right b)      -> Right $ sSeq $ (maybeToList mb')++[b]++(maybeToList ma')
+                              (Left (mb',ma'), Right b)      -> Right $ sSeq nopos $ (maybeToList mb')++[b]++(maybeToList ma')
                               (Right b', Right b)            -> Right b
                               _                              -> Left (Nothing, Nothing)
 
