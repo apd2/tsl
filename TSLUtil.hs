@@ -7,7 +7,10 @@ module TSLUtil(mapFst,
                err,
                assert,
                uniqNames,
-               grCycle) where
+               grCycle,
+               Uniq, 
+               newUniq, 
+               getUniq) where
 
 import Control.Monad.Error
 import Data.List
@@ -15,6 +18,8 @@ import Data.Maybe
 import Data.Graph.Inductive.Graph
 import Data.Graph.Inductive.Query.BFS
 import Data.Graph.Inductive.Query.DFS
+import System.IO.Unsafe
+import Data.IORef
 
 import Pos
 import Name
@@ -56,3 +61,18 @@ grCycle g = case mapMaybe nodeCycle (nodes g) of
   where
     nodeCycle n = listToMaybe $ map (\s -> map (\id -> (id, fromJust $ lab g id)) (n:(esp s n g))) $ 
                                 filter (\s -> elem n (reachable s g)) $ suc g n
+
+
+-- Unique number generator
+type Uniq = IORef Integer
+
+-- Create a new generator initialised to 0
+newUniq :: Uniq
+newUniq = unsafePerformIO $ newIORef 0
+
+getUniq :: Uniq -> Integer
+getUniq u = unsafePerformIO $
+            do v <- readIORef u
+               writeIORef u (v+1)
+               return (v+1)
+

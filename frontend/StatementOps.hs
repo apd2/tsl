@@ -210,6 +210,7 @@ validateStat' l (SMagic p g) = do
     case g of
          Left n  -> do {checkGoal ?scope n; return()}
          Right e -> do validateExpr' e
+                       assert (exprNoSideEffects e) (pos e) $ "Objective must be a side-effect-free expression"
                        assert (isBool e) (pos e) $ "Objective must be a boolean expression"
 
 -- There is no path through the loop body that does not break out of the loop and

@@ -1,6 +1,8 @@
 module ISpec() where
 
 import qualified Data.Graph.Inductive.Graph as G
+import qualified Data.Graph.Inductive.Tree as G
+import qualified Data.Map as M
 
 import Common
 
@@ -26,9 +28,9 @@ data Val = BoolVal   Bool
 
 data TVal = TVal {ttyp::TypeSpec, tval::Val}
 
-data Enum = Enum { enumName  :: String
-                 , enumEnums :: [String]
-                 }
+data Enumeration = Enumeration { enumName  :: String
+                               , enumEnums :: [String]
+                               }
 
 data VarCategory = VarLabel
                  | VarState
@@ -65,6 +67,7 @@ type LExpr = Expr
 -- Atomic statement
 data Statement = SPause   
                | SStop    
+               | SLabel  String [(String, Expr)]
                | SAssert Expr
                | SAssume Expr
                | SAssign Expr Expr
@@ -75,7 +78,7 @@ data Statement = SPause
 type Loc = Int
 type CFA = G.Gr Loc Statement
 
-data Spec = Spec { specEnum         :: [Enum]
+data Spec = Spec { specEnum         :: [Enumeration]
                  , specVar          :: [Var]
                  , specProcess      :: [Process]
                  , specControllable :: Expr
