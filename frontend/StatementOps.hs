@@ -4,6 +4,7 @@ module StatementOps(mapStat,
                     statMapExpr,
                     statMapTSpec,
                     statCallees,
+                    statSubprocess,
                     statFlatten,
                     validateStat,
                     validateStat') where
@@ -32,7 +33,7 @@ import InstTree
 -- Map function over all substatements
 mapStat :: (?spec::Spec) => (Scope -> Statement -> Statement) -> Scope -> Statement -> Statement
 mapStat f s (SSeq     p ss)        = f s $ SSeq     p (map (mapStat f s) ss)
-mapStat f s (SPar     p ss)        = f s $ SPar     p (map (mapStat f s) ss)
+mapStat f s (SPar     p ss)        = f s $ SPar     p (map (mapSnd (mapStat f s)) ss)
 mapStat f s (SForever p b)         = f s $ SForever p (mapStat f s b)
 mapStat f s (SDo      p b c)       = f s $ SDo      p (mapStat f s b) c
 mapStat f s (SWhile   p c b)       = f s $ SWhile   p c (mapStat f s b)
@@ -74,7 +75,7 @@ statCallees :: (?spec::Spec) => Scope -> Statement -> [(Pos, (Template, Method))
 statCallees s (SVarDecl _ v)            = fromMaybe [] $ fmap (exprCallees s) $ varInit v
 statCallees s (SReturn  _ me)           = fromMaybe [] $ fmap (exprCallees s) me
 statCallees s (SSeq     _ ss)           = concatMap (statCallees s) ss
-statCallees s (SPar     _ ss)           = concatMap (statCallees s) ss
+statCallees s (SPar     _ ss)           = concatMap (statCallees s . snd) ss
 statCallees s (SForever _ b)            = statCallees s b
 statCallees s (SDo      _ b c)          = statCallees s b ++ exprCallees s c
 statCallees s (SWhile   _ c b)          = exprCallees s c ++ statCallees s b
@@ -91,9 +92,29 @@ statCallees s (SCase    _ c cs md)      = exprCallees s c ++
 statCallees _ _                         = []
 
 
-statFlatten :: (?spec::Spec) => IID -> Scope -> Statement -> Statement
-statFlatten iid s st = statMapExpr (exprFlatten iid) s st
+-- List of subprocesses spawned by the statement
+statSubprocess :: (?spec::Spec) => Statement -> [(Ident, Statement)]
+statSubprocess (SSeq _ ss)         = concatMap statSubprocess ss
+statSubprocess (SPar _ ss)         = ss ++ concatMap (statSubprocess . snd) ss
+statSubprocess (SForever _ b)      = statSubprocess b
+statSubprocess (SDo _ b _)         = statSubprocess b
+statSubprocess (SWhile _ _ b)      = statSubprocess b
+statSubprocess (SFor _ (mi,_,s) b) = concatMap statSubprocess $ (maybeToList mi) ++ [s,b]
+statSubprocess (SChoice _ ss)      = concatMap statSubprocess ss
+statSubprocess (SITE _ _ t me)     = concatMap statSubprocess $ t:(maybeToList me)
+statSubprocess (SCase _ _ cs mdef) = concatMap statSubprocess $ map snd cs ++ maybeToList mdef
+statSubprocess _                   = []
 
+statFlatten :: (?spec::Spec) => IID -> Scope -> Statement -> Statement
+statFlatten iid s st = mapStat (statFlatten' iid) s $ statMapExpr (exprFlatten iid) s st
+
+statFlatten' :: (?spec::Spec) => IID -> Scope -> Statement -> Statement
+statFlatten' iid s (SPar p ps) = SPar p $ map (\(n,s) -> (itreeFlattenName iid n,s)) ps
+statFlatten' _   _ st          = st
+
+-------------------------------------------------------------------------
+-- Validation
+-------------------------------------------------------------------------
 
 validateStat :: (?spec::Spec, MonadError String me) => Scope -> Statement -> me ()
 validateStat s e = let ?scope = s 
@@ -118,7 +139,7 @@ validateStat' l (SSeq _ ss) = do
     return ()
 
 validateStat' l (SPar _ ss) = do
-    mapM (validateStat' l) ss
+    mapM (validateStat' l . snd) ss
     return ()
 
 validateStat' _ (SForever _ b) = do

@@ -17,7 +17,7 @@ import Var
 data Statement = SVarDecl {stpos::Pos, svar::Var}
                | SReturn  {stpos::Pos, retval::(Maybe Expr)}
                | SSeq     {stpos::Pos, statements::[Statement]}
-               | SPar     {stpos::Pos, statements::[Statement]}
+               | SPar     {stpos::Pos, procs::[(Ident, Statement)]}
                | SForever {stpos::Pos, body::Statement}
                | SDo      {stpos::Pos, body::Statement, cond::Expr}
                | SWhile   {stpos::Pos, cond::Expr, body::Statement}
@@ -37,7 +37,7 @@ instance PP Statement where
     pp (SVarDecl _ d)               = pp d
     pp (SReturn _ e)                = text "return" <+> pp e
     pp (SSeq _ ss)                  = braces' $ vcat $ map ((<> semi) . pp) ss
-    pp (SPar _ ss)                  = text "fork" $+$ (braces' $ vcat $ map ((<> semi) . pp) ss)
+    pp (SPar _ ss)                  = text "fork" $+$ (braces' $ vcat $ map ((<> semi) . (\(l,s) -> pp l <> char ':' <+> pp s)) ss)
     pp (SForever _ s)               = text "forever" $+$ pp s
     pp (SDo _ s cond)               = text "do" $+$ pp s <+> text "while" <+> (parens $ pp cond)
     pp (SWhile _ cond s)            = (text "while" <+> (parens $ pp cond)) $+$ pp s
@@ -69,7 +69,7 @@ instance WithPos Statement where
 stmtVar :: Statement -> [Var]
 stmtVar (SVarDecl _ v)          = [v]
 stmtVar (SSeq _ ss)             = concat $ map stmtVar ss
-stmtVar (SPar _ ss)             = concat $ map stmtVar ss
+stmtVar (SPar _ ss)             = concat $ map (stmtVar . snd) ss
 stmtVar (SForever _ s)          = stmtVar s
 stmtVar (SDo _ s _)             = stmtVar s
 stmtVar (SWhile _ _ s)          = stmtVar s

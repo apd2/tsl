@@ -17,6 +17,7 @@ module TemplateValidate(checkConcreteTemplate,
                         validateTmWires2,
                         validateTmMethods2,
                         validateTmProcesses2,
+                        validateTmProcesses3,
                         validateTmGoals2) where
 
 import Data.List
@@ -239,6 +240,11 @@ validateTmMethods2 tm = do {mapM (validateMeth tm) (tmMethod tm); return ()}
 
 validateTmProcesses2 :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmProcesses2 tm = do {mapM (validateProc tm) (tmProcess tm); return ()}
+
+-- Third pass (after the template has been merged with its parents)
+validateTmProcesses3 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmProcesses3 tm = uniqNames (\n -> "Process " ++ n ++ " declared multiple times in template " ++ sname tm) 
+                                    (map fst3 $ tmSubprocess tm)
 
 ------------------------------------------------------------------------------
 -- Validate template namespace

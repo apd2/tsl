@@ -32,7 +32,7 @@ statSimplify' (SReturn p (Just e)) =
     in ss ++ [SReturn p (Just e')]
 
 statSimplify' (SSeq p ss)           = [SSeq p $ concatMap statSimplify' ss]
-statSimplify' (SPar p ss)           = [SPar p $ map statSimplify ss]
+statSimplify' (SPar p ss)           = [SPar p $ map (mapSnd statSimplify) ss]
 statSimplify' (SForever p s)        = [SForever p $ statSimplify s]
 statSimplify' (SDo p b c)           = let (ss,c') = exprSimplify c
                                       in [SDo p (sSeq (pos b) $ statSimplify' b ++ ss) c']

@@ -2,6 +2,9 @@
 
 module TSLUtil(mapFst,
                mapSnd,
+               fst3,
+               snd3,
+               trd3,
                fromLeft,
                fromRight,
                err,
@@ -35,6 +38,10 @@ fromLeft (Left x) = x
 
 fromRight :: (Either a b) -> b
 fromRight (Right x) = x
+
+fst3 (x,y,z) = x
+snd3 (x,y,z) = y
+trd3 (x,y,z) = z
 
 err :: (MonadError String me) => Pos -> String -> me a
 err p e = throwError $ show p ++ ": " ++ e

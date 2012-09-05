@@ -178,7 +178,7 @@ specMapTSpec f s =
 -- Flattening
 ---------------------------------------------------------------------
 
--- Main function: flatten the spec, producing a spec with a single 
+-- Main flattening function: flatten the spec, producing a spec with a single 
 -- template.
 flatten :: (MonadError String me) => Spec -> me Spec
 flatten s = do
@@ -187,6 +187,7 @@ flatten s = do
     assert (isJust mmain) nopos $ "\"main\" template not found"
     let main = fromJust mmain
     let ?spec = s' 
+    mapM validateTmProcesses3 (specTemplate s')
     checkConcreteTemplate main (pos main)
     assert (null $ tmPort main) (pos main) $ "The main template cannot have ports"
     let gvars = concat $ mapInstTree tmFlattenGVars
@@ -214,7 +215,7 @@ flatten s = do
 mergeParents :: Spec -> Spec
 mergeParents s = s{specTemplate = tms}
     where tms = let ?spec = s 
-                in map tmMergeParents (filter isConcreteTemplate $ specTemplate s)
+                in map tmMergeParents $ filter isConcreteTemplate $ specTemplate s
 
 -- Flatten static enum or const name by prepending template name to it
 flattenName :: (WithName a) => Template -> a -> Ident

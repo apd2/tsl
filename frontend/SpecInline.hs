@@ -70,9 +70,18 @@ mrefMethods mref =
     in let ?scope = ScopeMethod (head $ specTemplate ?spec) m 
        in nub $ (name m):(statMethods $ fromRight $ methBody m)
 
---processChildren
+--procChildren :: (?spec::Spec, ?scope::Scope) => Statement -> [(Ident, Scope, Statement)]
+--procChildren st =
+--    let tm = head $ specTemplate ?spec
+--        ms = map (getMethod tm) $ statMethods st
+        
 
---processVars
+--procVars :: (?spec::Spec, ?scope::Scope) => PID -> Statement -> [I.Var]
+
+
+
+
+
 
 --
 --

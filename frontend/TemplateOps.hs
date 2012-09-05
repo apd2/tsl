@@ -12,6 +12,7 @@ module TemplateOps(tmMapExpr,
                    tmAllGoal,
                    tmAllMethod,
                    tmAllProcess,
+                   tmSubprocess,
                    tmAllInit,
                    tmAllInst,
                    tmAllWire,
@@ -49,6 +50,7 @@ import {-# SOURCE #-} ExprOps
 import Method
 import Process
 import ProcessOps
+import Statement
 import StatementOps
 import NS
 
@@ -200,6 +202,12 @@ isDescendant anc des =
         ancid = m M.! (name anc)
         desid = m M.! (name des)
     in elem ancid (G.reachable desid g)
+
+tmSubprocess :: (?spec::Spec) => Template -> [(Ident, Scope, Statement)]
+tmSubprocess tm = map (\p -> (name p, ScopeTemplate tm, procStatement p)) (tmProcess tm) ++
+                  concatMap (\(scope,st) -> map (\(n,st') -> (n,scope,st')) $ statSubprocess st) stats
+    where stats = map (\p -> (ScopeProcess tm p, procStatement p)) (tmProcess tm) ++ 
+                  map (\m -> (ScopeMethod  tm m, fromRight $ methBody m)) (tmMethod tm)
 
 
 tmAllVar :: (?spec::Spec) => Template -> [GVar]
