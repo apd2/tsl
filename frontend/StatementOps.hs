@@ -182,6 +182,12 @@ validateStat' _ (SAssign _ lhs rhs) = do
     validateExpr' rhs
     assert (isLExpr lhs) (pos lhs) $ "Left-hand side of assignment is not an L-value"
     checkTypeMatch lhs rhs
+    -- No modifications to global variables in a function
+    case ?scope of
+         ScopeMethod tm m -> if methCat m == Function
+                                then assert (isLocalLHS lhs) (pos lhs) "Global state modification inside a function"
+                                else return ()
+         _                -> return ()
 
 validateStat' l (SITE _ i t e) = do
     validateExpr' i

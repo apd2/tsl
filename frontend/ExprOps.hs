@@ -3,9 +3,11 @@
 module ExprOps(mapExpr,
                exprCallees,
                isLExpr,
+               isLocalLHS,
                isConstExpr,
                evalInt,
-               exprNoSideEffects) where
+               exprNoSideEffects,
+               applyNoSideEffects) where
 
 import Control.Monad.Error
 import Data.Maybe
@@ -172,6 +174,20 @@ isLExpr (ESlice  _       e _) = isLExpr e
 isLExpr (EUnOp   _ Deref e  ) = True
 isLExpr _                     = False
 
+-- Check that L-expr refers to a local variable (used in checking side-effect 
+-- freedom of expressions)
+isLocalLHS :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+isLocalLHS (ETerm _ n)         = case getTerm ?scope n of
+                                      ObjVar _ _   -> True
+                                      _            -> False
+isLocalLHS (EField  _ e f)     = isLocalLHS e
+isLocalLHS (EPField _ e _)     = False
+isLocalLHS (EIndex  _ e _)     = isLocalLHS e
+isLocalLHS (ESlice  _ e _)     = isLocalLHS e
+isLocalLHS (EUnOp   _ Deref e) = False
+isLocalLHS _                   = False
+
+
 -- case/cond must be exhaustive
 isConstExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isConstExpr (ETerm _ n)              = case getTerm ?scope n of
@@ -203,10 +219,7 @@ isConstExpr (ENonDet _)              = False
 
 -- Side-effect free expression
 exprNoSideEffects :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
-exprNoSideEffects (EApply _ m as)          = (and $ map exprNoSideEffects as) &&
-                                             case methCat $ snd $ getMethod ?scope m of
-                                                  Function -> True
-                                                  _        -> False
+exprNoSideEffects (EApply _ m as)          = applyNoSideEffects m as
 exprNoSideEffects (EField _ e _)           = exprNoSideEffects e
 exprNoSideEffects (EPField _ e _)          = exprNoSideEffects e
 exprNoSideEffects (EIndex _ a i)           = exprNoSideEffects a && exprNoSideEffects i
@@ -223,6 +236,16 @@ exprNoSideEffects (EStruct _ _ (Left fs))  = and $ map (exprNoSideEffects . snd)
 exprNoSideEffects (EStruct _ _ (Right fs)) = and $ map exprNoSideEffects fs 
 exprNoSideEffects _ = True
 
+-- Check that method call is side-effect-free:
+-- The method must be a function, all arguments must be side-effect-free 
+-- expressions, and all out arguments must be local variables.
+applyNoSideEffects :: (?spec::Spec, ?scope::Scope) => MethodRef -> [Expr] -> Bool
+applyNoSideEffects mref as =  (and $ map isLocalLHS oargs)     
+                           && (methCat m == Function) 
+                           && (and $ map exprNoSideEffects as)
+    where m       = snd $ getMethod ?scope mref
+          oidx    = findIndices ((== ArgOut) . argDir) (methArg m)
+          oargs   = map (as !!) oidx
 
 maxType :: (?spec::Spec, ?scope::Scope, WithType a) => [a] -> Type
 maxType xs = foldl' (\t x -> maxType2 t (typ x)) (typ $ head xs) (tail xs)

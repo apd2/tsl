@@ -215,14 +215,21 @@ validateExpr' (ENonDet _) = return ()
 -- Common code to validate method calls in statement and expression contexts
 validateCall :: (?spec::Spec, ?scope::Scope, MonadError String me) => Pos -> MethodRef -> [Expr] -> me ()
 validateCall p mref as = do
+    let isfunc = case ?scope of
+                      ScopeMethod _ _ -> True
+                      _               -> False
     (t,m) <- checkMethod ?scope mref
     assert ((length $ methArg m) == length as) p $
            "Method " ++ sname m ++ " takes " ++ show (length $ methArg m) ++ 
            " arguments, but is invoked with " ++ show (length as) ++ " arguments"
+    assert ((not isfunc) || (methCat m == Function)) (pos mref) $ show (methCat m) ++ " invocation not allowed in function context"
     mapM (\(marg,a) -> do validateExpr' a
                           checkTypeMatch (ObjArg (ScopeMethod t m) marg) a
+                          assert ((not isfunc) || exprNoSideEffects a) (pos a) $ "Expression " ++ show a ++ " has side effects "
                           if argDir marg == ArgOut
-                             then assert (isLExpr a) (pos a) $ "expression " ++ show a ++ " is not an L-value"
+                             then do assert (isLExpr a) (pos a) $ "Expression " ++ show a ++ " is not an L-value"
+                                     assert ((not isfunc) || (isLocalLHS a)) (pos a) $ "out argument " ++ sname marg ++ " of method " ++ 
+                                                                                       sname m ++ " refers to non-local state"
                              else return ())
          (zip (methArg m) as)
     return ()

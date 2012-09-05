@@ -220,6 +220,7 @@ validateWire2 t w = do
     case wireRHS w of
          Just e  -> do validateExpr' e
                        checkTypeMatch (Type ?scope $ tspec w) e
+                       assert (exprNoSideEffects e) (pos e) "Wire expression must be side-effect free"
          Nothing -> return ()
 
 validateTmWires2 :: (?spec::Spec, MonadError String me) => Template -> me ()
