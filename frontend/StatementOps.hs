@@ -4,7 +4,8 @@ module StatementOps(mapStat,
                     statMapExpr,
                     statMapTSpec,
                     statCallees,
-                    statSubprocess,
+                    statSubprocessRec,
+                    statSubprocessNonrec,
                     statFlatten,
                     validateStat,
                     validateStat') where
@@ -92,18 +93,34 @@ statCallees s (SCase    _ c cs md)      = exprCallees s c ++
 statCallees _ _                         = []
 
 
--- List of subprocesses spawned by the statement
-statSubprocess :: (?spec::Spec) => Statement -> [(Ident, Statement)]
-statSubprocess (SSeq _ ss)         = concatMap statSubprocess ss
-statSubprocess (SPar _ ss)         = ss ++ concatMap (statSubprocess . snd) ss
-statSubprocess (SForever _ b)      = statSubprocess b
-statSubprocess (SDo _ b _)         = statSubprocess b
-statSubprocess (SWhile _ _ b)      = statSubprocess b
-statSubprocess (SFor _ (mi,_,s) b) = concatMap statSubprocess $ (maybeToList mi) ++ [s,b]
-statSubprocess (SChoice _ ss)      = concatMap statSubprocess ss
-statSubprocess (SITE _ _ t me)     = concatMap statSubprocess $ t:(maybeToList me)
-statSubprocess (SCase _ _ cs mdef) = concatMap statSubprocess $ map snd cs ++ maybeToList mdef
-statSubprocess _                   = []
+-- List of subprocesses spawned by the statement:
+
+-- Computed by recursing through fork statements
+statSubprocessRec :: (?spec::Spec) => Statement -> [(Ident, Statement)]
+statSubprocessRec (SSeq _ ss)         = concatMap statSubprocessRec ss
+statSubprocessRec (SPar _ ss)         = ss ++ concatMap (statSubprocessRec . snd) ss
+statSubprocessRec (SForever _ b)      = statSubprocessRec b
+statSubprocessRec (SDo _ b _)         = statSubprocessRec b
+statSubprocessRec (SWhile _ _ b)      = statSubprocessRec b
+statSubprocessRec (SFor _ (mi,_,s) b) = concatMap statSubprocessRec $ (maybeToList mi) ++ [s,b]
+statSubprocessRec (SChoice _ ss)      = concatMap statSubprocessRec ss
+statSubprocessRec (SITE _ _ t me)     = concatMap statSubprocessRec $ t:(maybeToList me)
+statSubprocessRec (SCase _ _ cs mdef) = concatMap statSubprocessRec $ map snd cs ++ maybeToList mdef
+statSubprocessRec _                   = []
+
+-- non-recursive (first-level subprocesses only)
+statSubprocessNonrec :: (?spec::Spec) => Statement -> [(Ident, Statement)]
+statSubprocessNonrec (SSeq _ ss)         = concatMap statSubprocessNonrec ss
+statSubprocessNonrec (SPar _ ss)         = ss 
+statSubprocessNonrec (SForever _ b)      = statSubprocessNonrec b
+statSubprocessNonrec (SDo _ b _)         = statSubprocessNonrec b
+statSubprocessNonrec (SWhile _ _ b)      = statSubprocessNonrec b
+statSubprocessNonrec (SFor _ (mi,_,s) b) = concatMap statSubprocessNonrec $ (maybeToList mi) ++ [s,b]
+statSubprocessNonrec (SChoice _ ss)      = concatMap statSubprocessNonrec ss
+statSubprocessNonrec (SITE _ _ t me)     = concatMap statSubprocessNonrec $ t:(maybeToList me)
+statSubprocessNonrec (SCase _ _ cs mdef) = concatMap statSubprocessNonrec $ map snd cs ++ maybeToList mdef
+statSubprocessNonrec _                   = []
+
 
 statFlatten :: (?spec::Spec) => IID -> Scope -> Statement -> Statement
 statFlatten iid s st = mapStat (statFlatten' iid) s $ statMapExpr (exprFlatten iid) s st
@@ -138,9 +155,15 @@ validateStat' l (SSeq _ ss) = do
     mapM (validateStat' l) ss
     return ()
 
-validateStat' l (SPar _ ss) = do
+validateStat' l (SPar p ss) = do
     mapM (validateStat' l . snd) ss
-    return ()
+    case ?scope of
+         ScopeMethod  _ m -> case methCat m of
+                                  Function          -> err p $ "fork inside function"
+                                  Procedure         -> err p $ "fork inside procedure"
+                                  Task Controllable -> err p $ "fork inside controllable task"
+                                  _                 -> return ()
+         ScopeProcess _ pr -> return ()
 
 validateStat' _ (SForever _ b) = do
     checkLoopBody b
@@ -232,9 +255,7 @@ validateStat' l (SCase p c cs md) = do
 
 validateStat' l (SMagic p g) = do
     case ?scope of
-         ScopeMethod t m -> case methCat m of
-                                 Task Uncontrollable -> return ()
-                                 _                   -> err p "Magic blocks only allowed in uncontrollable tasks"
+         ScopeMethod t m -> assert (methCat m == Task Uncontrollable) p "Magic blocks only allowed in uncontrollable tasks"
          _               -> err p "Magic blocks only allowed in uncontrollable tasks"
     case g of
          Left n  -> do {checkGoal ?scope n; return()}

@@ -205,7 +205,7 @@ isDescendant anc des =
 
 tmSubprocess :: (?spec::Spec) => Template -> [(Ident, Scope, Statement)]
 tmSubprocess tm = map (\p -> (name p, ScopeTemplate tm, procStatement p)) (tmProcess tm) ++
-                  concatMap (\(scope,st) -> map (\(n,st') -> (n,scope,st')) $ statSubprocess st) stats
+                  concatMap (\(scope,st) -> map (\(n,st') -> (n,scope,st')) $ statSubprocessRec st) stats
     where stats = map (\p -> (ScopeProcess tm p, procStatement p)) (tmProcess tm) ++ 
                   map (\m -> (ScopeMethod  tm m, fromRight $ methBody m)) (tmMethod tm)
 

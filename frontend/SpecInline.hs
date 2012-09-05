@@ -13,6 +13,7 @@ import Pos
 import Name
 import NS
 import Statement
+import StatementOps
 import StatementInline
 import Expr
 import ExprOps
@@ -48,7 +49,8 @@ methSimplify tm m = let ?scope = ScopeMethod tm m
                     in m { methBody = Right $ statSimplify $ fromRight $ methBody m}
 
 -- Process structure analysis: subprocesses, methods, variables
--- Recursively compute the set of methods invoked by the process.
+
+-- Recursively compute the set of methods invoked by the statement.
 -- (assume that the spec has been simplified previously)
 statMethods :: (?spec::Spec, ?scope::Scope) => Statement -> [Ident]
 statMethods (SReturn _ (Just (EApply _ mref _))) = mrefMethods mref
@@ -70,21 +72,24 @@ mrefMethods mref =
     in let ?scope = ScopeMethod (head $ specTemplate ?spec) m 
        in nub $ (name m):(statMethods $ fromRight $ methBody m)
 
---procChildren :: (?spec::Spec, ?scope::Scope) => Statement -> [(Ident, Scope, Statement)]
---procChildren st =
---    let tm = head $ specTemplate ?spec
---        ms = map (getMethod tm) $ statMethods st
-        
+-- Child processes spawned by the statement (including processes spawned 
+-- by tasks invoked by the statement)
+procChildren :: (?spec::Spec, ?scope::Scope) => Statement -> [(Ident, Scope, Statement)]
+procChildren st = map (\(n, st) -> (n,?scope,st)) (statSubprocessNonrec st) ++
+                  concatMap (\(tm',m) -> map (\(n,st) -> (n, ScopeMethod tm' m, st)) $ statSubprocessNonrec $ fromRight $ methBody m) ms
+    where tm = head $ specTemplate ?spec
+          ms = map (getMethod (ScopeTemplate tm) . (\n -> MethodRef (pos n) [n])) $ statMethods st
 
---procVars :: (?spec::Spec, ?scope::Scope) => PID -> Statement -> [I.Var]
+-- Process ID (path in the process tree)
+type PID = [String]
+
+initid = [":init"]
 
 
+-- Variables:
+-- * Processes (top-level), methods, procedures, controllable tasks - single copy of local variables and input arguments
+-- * Uncontrollable, invisible tasks - per-PID copies of local variables and input arguments
 
-
-
-
---
---
 --spec2Internal :: Spec -> I.Spec
 --spec2Internal s = I.Spec senum svar sproc sctl sinvis sinit sgoal
 --    where ?spec = specSimplify s -- preprocessing
@@ -98,12 +103,6 @@ mrefMethods mref =
 --          (sinit, initvars) = proc2CFA initid (ScopeTemplate tmmain) initstat
 --
 --
----- Process ID (path in the process tree)
---type PID = [String]
---
---initid = [":init"]
---
---procChildren :: Statement -> [(String, Statement)]
 --
 ---- Inline process and convert it to CFA form
 --proc2CFA :: (?spec::Spec) => PID -> Scope -> Statement -> (I.CFA, [I.Var])
