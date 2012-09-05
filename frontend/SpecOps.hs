@@ -182,7 +182,7 @@ specMapTSpec f s =
 -- template.
 flatten :: (MonadError String me) => Spec -> me Spec
 flatten s = do
-    let s' = flattenConsts $ flattenTDecls s
+    let s' = mergeParents $ flattenConsts $ flattenTDecls s
         mmain = find ((== "main") . sname) (specTemplate s')
     assert (isJust mmain) nopos $ "\"main\" template not found"
     let main = fromJust mmain
@@ -210,6 +210,11 @@ flatten s = do
                          goals
     return s'{specTemplate = [main']}
     
+-- Remove all pure templates from the spec; merge concrete templates with their parents
+mergeParents :: Spec -> Spec
+mergeParents s = s{specTemplate = tms}
+    where tms = let ?spec = s 
+                in map tmMergeParents (filter isConcreteTemplate $ specTemplate s)
 
 -- Flatten static enum or const name by prepending template name to it
 flattenName :: (WithName a) => Template -> a -> Ident
