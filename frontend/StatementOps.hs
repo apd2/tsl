@@ -94,7 +94,6 @@ statCallees _ _                         = []
 
 
 -- List of subprocesses spawned by the statement:
-
 -- Computed by recursing through fork statements
 statSubprocessRec :: (?spec::Spec) => Statement -> [(Ident, Statement)]
 statSubprocessRec (SSeq _ ss)         = concatMap statSubprocessRec ss

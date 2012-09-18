@@ -5,6 +5,7 @@ module SpecInline () where
 
 import Data.List
 import Data.Maybe
+import qualified Data.Map as M
 
 import TSLUtil
 import Spec
@@ -25,8 +26,8 @@ import Type
 
 -- Preprocess all statements and expressions before inlining.  
 -- In the preprocessed spec:
--- * Function calls can only appear in top-level expressions
--- * No function calls in return statements
+-- * Method calls can only appear in top-level expressions
+-- * No method calls in return statements
 -- * Local variables are declared and initialised separately
 
 
@@ -80,10 +81,109 @@ procChildren st = map (\(n, st) -> (n,?scope,st)) (statSubprocessNonrec st) ++
     where tm = head $ specTemplate ?spec
           ms = map (getMethod (ScopeTemplate tm) . (\n -> MethodRef (pos n) [n])) $ statMethods st
 
+----------------------------------------------------------------------
+-- CFA transformation
+----------------------------------------------------------------------
+
 -- Process ID (path in the process tree)
 type PID = [String]
 
 initid = [":init"]
+
+globaliseName :: (WithName a) => PID -> a -> String
+globaliseName pid x = intercalate "/" $ (pid ++ [sname x])
+
+type NameMap = M.Map Ident I.Expr
+
+data CFACtx = CFACtx { ctxPID    :: PID           -- PID of the process being constructed
+                     , ctxScope  :: Scope         -- current syntactic scope
+                     , ctxCFA    :: I.CFA         -- CFA constructed so far
+                     , ctxRetLoc :: I.Loc         -- return location
+                     , ctxBrkLoc :: I.Loc         -- break location
+                     , ctxLHS    :: I.Expr        -- LHS expression
+                     , ctxGNMap  :: NameMap       -- global variable visible in current scope
+                     , ctxLNMap  :: NameMap       -- local variable map
+                     }
+
+-- Convert process or forked process to CFA
+-- For a forked process the mparpid argument is the PID of the process in 
+-- whose syntactic scope the present process is located.
+procToCFA :: (?spec::Spec) => PID -> NameMap -> Process -> Statement -> Maybe PID -> I.CFA
+procToCFA pid gmap proc stat mparpid = ctxCFA ctx'
+    where -- Add process-local variables to nmap
+          lmap  = M.fromList $
+                  map (\v -> let p = case mparpid of 
+                                          Nothing -> pid
+                                          Just ppid -> ppid
+                             in (name v, I.EVar $ globaliseName p v))
+                      (procVar proc)
+          cfa = newCFA
+          ctx = CFACtx { ctxPID    = pid 
+                       , ctxScope  = ScopeProcess (head $ specTemplate ?spec) proc
+                       , ctxCFA    = cfa
+                       , ctxRetLoc = error "return from a process"
+                       , ctxBrkLoc = error "break outside a loop"
+                       , ctxLHS    = error "returning value from a process"
+                       , ctxGNMap  = gmap
+                       , ctxLNMap  = lmap}
+          ctx' = execState (statToCFA (cfaInitState cfa) stat) ctx
+
+
+taskToCFA :: (?spec::Spec) => PID -> NameMap -> Method -> I.CFA
+taskToCFA pid gmap meth = ctxCFA ctx'
+    where tm = (head $ specTemplate ?spec)
+          retvar = retIVar meth pid
+          lmap   = M.fromList $ 
+                   map (\v -> (name v, I.EVar $ globaliseName pid v)) (methVar meth) ++
+                   map (\a -> (name a, I.EVar $ globaliseName pid a)) (methArg meth)
+          cfa = newCFA
+          ctx = CFACtx { ctxPID    = pid 
+                       , ctxScope  = ScopeMethod tm meth
+                       , ctxCFA    = cfa
+                       , ctxRetLoc = cfaInitState cfa
+                       , ctxBrkLoc = error "break outside a loop"
+                       , ctxLHS    = case retvar of 
+                                          Nothing -> error "returning value from void process"
+                                          Just v  -> I.EVar $ varName v
+                       , ctxGNMap  = gmap
+                       , ctxLNMap  = lmap}
+          ctx' = execState (statToCFA (cfaInitState cfa) stat) ctx
+
+
+
+-- Convert process statement to CFA
+statToCFA :: I.Loc -> Statement -> State CFACtx Loc
+statToCFA from (SVarDecl _ _) = return from
+        
+--               | SReturn  {stpos::Pos, retval::(Maybe Expr)}
+--               | SSeq     {stpos::Pos, statements::[Statement]}
+--               | SPar     {stpos::Pos, procs::[(Ident, Statement)]}
+--               | SForever {stpos::Pos, body::Statement}
+--               | SDo      {stpos::Pos, body::Statement, cond::Expr}
+--               | SWhile   {stpos::Pos, cond::Expr, body::Statement}
+--               | SFor     {stpos::Pos, limits::(Maybe Statement, Expr, Statement), body::Statement}
+--               | SChoice  {stpos::Pos, statements::[Statement]}
+--               | SPause   {stpos::Pos}
+--               | SStop    {stpos::Pos}
+--               | SBreak   {stpos::Pos}
+--               | SInvoke  {stpos::Pos, mname::MethodRef, args::[Expr]}
+--               | SAssert  {stpos::Pos, cond::Expr}
+--               | SAssume  {stpos::Pos, cond::Expr}
+--               | SAssign  {stpos::Pos, lhs::Expr, rhs::Expr}
+--               | SITE     {stpos::Pos, cond::Expr, sthen::Statement, selse::(Maybe Statement)}     -- if () then {..} [else {..}]
+--               | SCase    {stpos::Pos, caseexpr::Expr, cases::[(Expr, Statement)], def::(Maybe Statement)}
+--               | SMagic   {stpos::Pos, magiccond::(Either Ident Expr)}
+
+
+--
+--methInline :: I.Loc -> I.Loc -> Meth -> [Expr] -> State CFACtx
+
+
+
+
+
+
+
 
 
 -- Variables:

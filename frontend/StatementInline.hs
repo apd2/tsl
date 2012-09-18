@@ -4,7 +4,6 @@ module StatementInline(statSimplify) where
 
 import TSLUtil
 import Spec
-import qualified ISpec as I
 import Pos
 import Name
 import NS
@@ -17,6 +16,8 @@ import Method
 import Process
 import Type
 import ExprInline
+
+import qualified ISpec as I
 
 statSimplify :: (?spec::Spec, ?scope::Scope, ?uniq::Uniq) => Statement -> Statement
 statSimplify s = sSeq (pos s) $ statSimplify' s
@@ -69,3 +70,5 @@ statSimplify' (SCase p c cs md)     = -- Case labels must be side-effect-free, s
 statSimplify' (SMagic p (Right e))  = let (ss,e') = exprSimplify e
                                       in (SMagic p (Right $ EBool (pos e) True)):(ss ++ [SAssert (pos e) e'])
 statSimplify' st                    = [st]
+
+

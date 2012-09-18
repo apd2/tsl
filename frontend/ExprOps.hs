@@ -65,7 +65,7 @@ exprCallees s (ECond   _ cs md)         = concatMap (\(e1,e2) -> exprCallees s e
 exprCallees s (ESlice  _ e (l,h))       = exprCallees s e ++ exprCallees s l ++ exprCallees s h
 exprCallees s (EStruct _ _ (Left fs))   = concatMap (exprCallees s . snd) fs
 exprCallees s (EStruct _ _ (Right fs))  = concatMap (exprCallees s) fs
-exprCallees _ _ = []
+exprCallees _ _                         = []
 
 
 -- Eval constant expression

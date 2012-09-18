@@ -1,4 +1,6 @@
-module ISpec() where
+module ISpec(Expr(..),
+             Loc,
+             CFA) where
 
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.Tree as G
@@ -32,11 +34,7 @@ data Enumeration = Enumeration { enumName  :: String
                                , enumEnums :: [String]
                                }
 
-data VarCategory = VarLabel
-                 | VarState
-
 data Var = Var { varName :: String
-               , varCat  :: VarCategory
                , varType :: TypeSpec
                }
 
