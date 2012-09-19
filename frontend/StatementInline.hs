@@ -65,7 +65,6 @@ statSimplify' (SCase p c cs md)     = -- Case labels must be side-effect-free, s
                                       let (ssc,c')   = exprSimplify c
                                           (sscs,clabs') = unzip $ map exprSimplify (fst $ unzip cs)
                                           cstats = map statSimplify (snd $ unzip cs)
-
                                       in (concat sscs) ++ ssc ++ [SCase p c' (zip clabs' cstats) (fmap statSimplify md)]
 statSimplify' (SMagic p (Right e))  = let (ss,e') = exprSimplify e
                                       in (SMagic p (Right $ EBool (pos e) True)):(ss ++ [SAssert (pos e) e'])

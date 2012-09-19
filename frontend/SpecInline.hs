@@ -6,7 +6,9 @@ module SpecInline () where
 import Data.List
 import Data.Maybe
 import qualified Data.Map as M
+import Control.Monad.State
 
+import Util hiding (name)
 import TSLUtil
 import Spec
 import qualified ISpec as I
@@ -81,17 +83,51 @@ procChildren st = map (\(n, st) -> (n,?scope,st)) (statSubprocessNonrec st) ++
     where tm = head $ specTemplate ?spec
           ms = map (getMethod (ScopeTemplate tm) . (\n -> MethodRef (pos n) [n])) $ statMethods st
 
+
 ----------------------------------------------------------------------
--- CFA transformation
+-- Process ID (path in the process tree)
 ----------------------------------------------------------------------
 
--- Process ID (path in the process tree)
 type PID = [String]
+
+-- PID to process name
+pidToName :: PID -> String
+pidToName pid = intercalate "/" pid
+
+childPID :: PID -> Ident -> PID
+childPID pid pname = pid ++ [sname pname]
+
+----------------------------------------------------------------------
+-- Names
+----------------------------------------------------------------------
 
 initid = [":init"]
 
 globaliseName :: (WithName a) => PID -> a -> String
 globaliseName pid x = intercalate "/" $ (pid ++ [sname x])
+
+-- Variable that stores return value of a task
+retIVarName :: PID -> Method -> Maybe String
+retIVarName pid meth = case methRettyp meth of
+                            Nothing -> Nothing
+                            Just _  -> Just $ globaliseName pid (Ident nopos (sname meth ++ "$ret"))
+
+-- Variable used to make a forked process runnable
+--runIVarName :: PID -> String
+--runIVarName pid = globaliseName pid (Ident nopos "$run")
+
+
+----------------------------------------------------------------------
+-- Convert expressions to internal format
+----------------------------------------------------------------------
+
+exprToIExpr :: Expr -> State CFACtx I.Expr
+exprToIExpr = error $ "Not implemented: exprToIExpr"
+
+----------------------------------------------------------------------
+-- CFA transformation
+----------------------------------------------------------------------
+
 
 type NameMap = M.Map Ident I.Expr
 
@@ -100,84 +136,236 @@ data CFACtx = CFACtx { ctxPID    :: PID           -- PID of the process being co
                      , ctxCFA    :: I.CFA         -- CFA constructed so far
                      , ctxRetLoc :: I.Loc         -- return location
                      , ctxBrkLoc :: I.Loc         -- break location
-                     , ctxLHS    :: I.Expr        -- LHS expression
+                     , ctxLHS    :: Maybe I.Expr  -- LHS expression
                      , ctxGNMap  :: NameMap       -- global variable visible in current scope
                      , ctxLNMap  :: NameMap       -- local variable map
                      }
 
+ctxInsLoc :: State CFACtx I.Loc
+ctxInsLoc = do
+    ctx <- get
+    let (cfa', loc) = I.cfaInsLoc $ ctxCFA ctx
+    put $ ctx {ctxCFA = cfa'}
+    return loc
+
+ctxInsTrans :: I.Loc -> I.Loc -> I.Statement -> State CFACtx ()
+ctxInsTrans from to stat = do
+    ctx <- get
+    let cfa' = I.cfaInsTrans from to stat $ ctxCFA ctx
+    put $ ctx {ctxCFA = cfa'}
+
+ctxPutBrkLoc :: I.Loc -> State CFACtx ()
+ctxPutBrkLoc loc = do
+    ctx <- get
+    put $ ctx {ctxBrkLoc = loc}
+
+
 -- Convert process or forked process to CFA
 -- For a forked process the mparpid argument is the PID of the process in 
 -- whose syntactic scope the present process is located.
-procToCFA :: (?spec::Spec) => PID -> NameMap -> Process -> Statement -> Maybe PID -> I.CFA
-procToCFA pid gmap proc stat mparpid = ctxCFA ctx'
+procToCFA :: (?spec::Spec) => PID -> NameMap -> Process -> Statement -> I.CFA
+procToCFA pid gmap proc stat = ctxCFA ctx'
     where -- Add process-local variables to nmap
-          lmap  = M.fromList $
-                  map (\v -> let p = case mparpid of 
-                                          Nothing -> pid
-                                          Just ppid -> ppid
-                             in (name v, I.EVar $ globaliseName p v))
-                      (procVar proc)
-          cfa = newCFA
+          lmap  = M.fromList $ map (\v -> (name v, I.EVar $ globaliseName pid v)) (procVar proc)
           ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeProcess (head $ specTemplate ?spec) proc
-                       , ctxCFA    = cfa
+                       , ctxCFA    = I.newCFA
                        , ctxRetLoc = error "return from a process"
                        , ctxBrkLoc = error "break outside a loop"
-                       , ctxLHS    = error "returning value from a process"
+                       , ctxLHS    = Nothing
                        , ctxGNMap  = gmap
                        , ctxLNMap  = lmap}
-          ctx' = execState (statToCFA (cfaInitState cfa) stat) ctx
+          ctx' = execState (statToCFA I.cfaInitLoc stat) ctx
+
+
+fprocToCFA :: (?spec::Spec) => PID -> NameMap -> Process -> Statement -> PID -> I.CFA
+fprocToCFA pid gmap proc stat parpid = ctxCFA ctx'
+    where -- Add process-local variables to nmap
+          lmap  = M.fromList $ map (\v -> (name v, I.EVar $ globaliseName parpid v)) (procVar proc)
+          ctx = CFACtx { ctxPID    = pid 
+                       , ctxScope  = ScopeProcess (head $ specTemplate ?spec) proc
+                       , ctxCFA    = I.newCFA
+                       , ctxRetLoc = error "return from a process"
+                       , ctxBrkLoc = error "break outside a loop"
+                       , ctxLHS    = Nothing
+                       , ctxGNMap  = gmap
+                       , ctxLNMap  = lmap}
+          ctx' = execState (statToCFA I.cfaInitLoc stat) ctx
+
 
 
 taskToCFA :: (?spec::Spec) => PID -> NameMap -> Method -> I.CFA
 taskToCFA pid gmap meth = ctxCFA ctx'
     where tm = (head $ specTemplate ?spec)
-          retvar = retIVar meth pid
+          stat = fromRight $ methBody meth
           lmap   = M.fromList $ 
                    map (\v -> (name v, I.EVar $ globaliseName pid v)) (methVar meth) ++
                    map (\a -> (name a, I.EVar $ globaliseName pid a)) (methArg meth)
-          cfa = newCFA
           ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeMethod tm meth
-                       , ctxCFA    = cfa
-                       , ctxRetLoc = cfaInitState cfa
+                       , ctxCFA    = I.newCFA
+                       , ctxRetLoc = I.cfaInitLoc
                        , ctxBrkLoc = error "break outside a loop"
-                       , ctxLHS    = case retvar of 
-                                          Nothing -> error "returning value from void process"
-                                          Just v  -> I.EVar $ varName v
+                       , ctxLHS    = fmap I.EVar $ retIVarName pid meth
                        , ctxGNMap  = gmap
                        , ctxLNMap  = lmap}
-          ctx' = execState (statToCFA (cfaInitState cfa) stat) ctx
-
+          ctx' = execState (statToCFA I.cfaInitLoc stat) ctx
 
 
 -- Convert process statement to CFA
-statToCFA :: I.Loc -> Statement -> State CFACtx Loc
-statToCFA from (SVarDecl _ _) = return from
-        
---               | SReturn  {stpos::Pos, retval::(Maybe Expr)}
---               | SSeq     {stpos::Pos, statements::[Statement]}
---               | SPar     {stpos::Pos, procs::[(Ident, Statement)]}
---               | SForever {stpos::Pos, body::Statement}
---               | SDo      {stpos::Pos, body::Statement, cond::Expr}
---               | SWhile   {stpos::Pos, cond::Expr, body::Statement}
---               | SFor     {stpos::Pos, limits::(Maybe Statement, Expr, Statement), body::Statement}
---               | SChoice  {stpos::Pos, statements::[Statement]}
---               | SPause   {stpos::Pos}
---               | SStop    {stpos::Pos}
---               | SBreak   {stpos::Pos}
---               | SInvoke  {stpos::Pos, mname::MethodRef, args::[Expr]}
---               | SAssert  {stpos::Pos, cond::Expr}
---               | SAssume  {stpos::Pos, cond::Expr}
---               | SAssign  {stpos::Pos, lhs::Expr, rhs::Expr}
---               | SITE     {stpos::Pos, cond::Expr, sthen::Statement, selse::(Maybe Statement)}     -- if () then {..} [else {..}]
---               | SCase    {stpos::Pos, caseexpr::Expr, cases::[(Expr, Statement)], def::(Maybe Statement)}
+statToCFA :: (?spec::Spec) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA before (SSeq _ ss) = foldM statToCFA before ss
+statToCFA before stat = do
+    after <- ctxInsLoc
+    statToCFA' before after stat
+    return after
+
+-- Only safe to call from statToCFA.  Do not call this function directly!
+statToCFA' :: (?spec::Spec) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
+statToCFA' before after (SVarDecl _ _) = ctxInsTrans before after I.SNop
+statToCFA' before after (SReturn _ rval) = do
+    -- add transition before before to return location
+    lhs <- gets ctxLHS
+    ret <- gets ctxRetLoc
+    stat <- case rval of 
+                 Nothing -> return I.SNop
+                 Just v  -> case lhs of
+                                 Nothing  -> return I.SNop
+                                 Just lhs -> do vi <- exprToIExpr v
+                                                return $ I.SAssign lhs vi
+    ctxInsTrans before ret stat
+
+statToCFA' before after (SPar _ ps) = do
+    pid <- gets ctxPID
+    -- child process names
+    let procs = map (pidToName . childPID pid . fst) ps
+    ctxInsTrans before after (I.SFork procs)
+
+statToCFA' before after (SForever _ stat) = do
+    brkLoc <- gets ctxBrkLoc
+    ctxPutBrkLoc after
+    -- loc' = end of loop body
+    loc' <- statToCFA before stat 
+    -- loop-back transition
+    ctxInsTrans loc' after I.SNop
+    ctxPutBrkLoc brkLoc
+
+statToCFA' before after (SDo _ stat cond) = do
+    brkLoc <- gets ctxBrkLoc
+    cond' <- exprToIExpr cond
+    ctxInsTrans before after (I.SAssume $ I.EUnOp Not cond')
+    -- after condition has been checked, before the body
+    befbody <- ctxInsLoc
+    ctxInsTrans before befbody (I.SAssume cond')
+    -- body
+    ctxPutBrkLoc after
+    aftbody <- statToCFA befbody stat
+    -- loop-back transition
+    ctxInsTrans aftbody before I.SNop
+    ctxPutBrkLoc brkLoc
+
+statToCFA' before after (SWhile _ cond stat) = do
+    brkLoc <- gets ctxBrkLoc
+    cond' <- exprToIExpr cond
+    ctxPutBrkLoc after
+    aftbody <- statToCFA before stat
+    ctxPutBrkLoc brkLoc
+    -- loop-back transition
+    ctxInsTrans aftbody before (I.SAssume cond')
+    -- exit loop transition
+    ctxInsTrans aftbody after (I.SAssume $ I.EUnOp Not cond')
+
+statToCFA' before after (SFor _ (minit, cond, inc) body) = do
+    brkLoc <- gets ctxBrkLoc
+    cond' <- exprToIExpr cond
+    aftinit <- case minit of
+                    Nothing   -> return before
+                    Just init -> statToCFA before init
+    ctxInsTrans aftinit after (I.SAssume $ I.EUnOp Not cond')
+    -- before loop body
+    befbody <- ctxInsLoc
+    ctxInsTrans aftinit befbody (I.SAssume cond')
+    ctxPutBrkLoc after
+    aftbody <- statToCFA befbody body
+    -- after increment is performed at the end of loop iteration
+    aftinc <- statToCFA aftbody inc
+    ctxPutBrkLoc brkLoc
+    -- loopback transition
+    ctxInsTrans aftinc befbody I.SNop
+
+statToCFA' before after (SChoice _ ss) = do
+    mapM (\s -> do aft <- statToCFA before s
+                   ctxInsTrans aft after I.SNop) ss
+    return ()
+
+statToCFA' before after (SPause _) = ctxInsTrans before after I.SPause
+
+statToCFA' before after (SStop _) = ctxInsTrans before after I.SStop
+
+statToCFA' before after (SBreak _) = do
+    brkLoc <- gets ctxBrkLoc
+    ctxInsTrans before brkLoc I.SNop
+
+statToCFA' before after (SInvoke _ mref as) = do
+    scope <- gets ctxScope
+    let meth = snd $ getMethod scope mref
+    case methCat meth of
+         Task Controllable   -> taskCall before after meth as Nothing
+         Task Uncontrollable -> taskCall before after meth as Nothing
+         _                   -> methInline before after meth as Nothing
+
+statToCFA' before after (SAssert _ cond) = do
+    cond' <- exprToIExpr cond
+    ctxInsTrans before after (I.SAssume cond')
+    ctxInsTrans before I.cfaErrLoc (I.SAssume $ I.EUnOp Not cond')
+
+statToCFA' before after (SAssume _ cond) = do
+    cond' <- exprToIExpr cond
+    ctxInsTrans before after (I.SAssume cond')
+
+statToCFA' before after (SAssign _ lhs (EApply _ mref args)) = do
+    scope <- gets ctxScope
+    let meth = snd $ getMethod scope mref
+    case methCat meth of
+         Task Controllable   -> taskCall before after meth args (Just lhs)
+         Task Uncontrollable -> taskCall before after meth args (Just lhs)
+         _                   -> methInline before after meth args (Just lhs)
+
+statToCFA' before after (SAssign _ lhs rhs) = do
+    lhs' <- exprToIExpr lhs
+    rhs' <- exprToIExpr rhs
+    ctxInsTrans before after (I.SAssign lhs' rhs')
+
+statToCFA' before after (SITE _ cond sthen mselse) = do
+    befthen <- statToCFA before (SAssume nopos cond)
+    aftthen <- statToCFA befthen sthen
+    ctxInsTrans aftthen after I.SNop
+    case mselse of
+         Nothing -> return ()
+         Just selse -> do befelse <- statToCFA before (SAssume nopos $ EUnOp nopos Not cond)
+                          aftelse <- statToCFA befelse selse
+                          ctxInsTrans aftelse after I.SNop
+
+statToCFA' before after (SCase _ e cs mdef) = do
+    let negs = map (eAnd nopos . map (EBinOp nopos Neq e)) $ inits $ map fst cs
+        cs' = map (\((c, st), neg) -> (EBinOp nopos And (EBinOp nopos Eq e c) neg, st)) $ zip cs negs
+        cs'' = case mdef of
+                    Nothing  -> cs'
+                    Just def -> cs' ++ [(last negs, def)]
+    mapM (\(c,st) -> do befst <- statToCFA before (SAssume nopos c)
+                        aftst <- statToCFA befst  st
+                        ctxInsTrans aftst after I.SNop) cs''
+    return ()
+
+
 --               | SMagic   {stpos::Pos, magiccond::(Either Ident Expr)}
 
 
---
---methInline :: I.Loc -> I.Loc -> Meth -> [Expr] -> State CFACtx
+methInline :: I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
+methInline before after meth args mlhs = error $ "Not imlemented: methInline"
 
+taskCall :: I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
+taskCall before after meth args mlhs = error $ "Not implemented: methInline"
 
 
 

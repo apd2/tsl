@@ -1,6 +1,12 @@
 module ISpec(Expr(..),
              Loc,
-             CFA) where
+             CFA,
+             newCFA,
+             cfaInitLoc,
+             cfaErrLoc,
+             cfaInsLoc,
+             cfaInsTrans,
+             Statement(..)) where
 
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.Tree as G
@@ -63,18 +69,33 @@ type Slice = (Int, Int)
 type LExpr = Expr
 
 -- Atomic statement
-data Statement = SPause   
+data Statement = SNop
+               | SPause   
                | SStop    
-               | SLabel  String [(String, Expr)]
-               | SAssert Expr
                | SAssume Expr
                | SAssign Expr Expr
                | SMagic  (Either String Expr)
-
+               | SFork   [String]
 
 -- Control-flow automaton
-type Loc = Int
-type CFA = G.Gr Loc Statement
+type Loc = G.Node
+data CFA = CFA {cfaTran  :: G.Gr () Statement}
+
+newCFA :: CFA
+newCFA = CFA {cfaTran = G.insNode (1,()) $ G.insNode (0,()) G.empty}
+
+cfaErrLoc :: Loc
+cfaErrLoc = 0
+
+cfaInitLoc :: Loc
+cfaInitLoc = 1
+
+cfaInsLoc :: CFA -> (CFA, Loc)
+cfaInsLoc cfa = (cfa {cfaTran = G.insNode (loc,()) (cfaTran cfa)}, loc)
+   where loc = (snd $ G.nodeRange $ cfaTran cfa) + 1
+
+cfaInsTrans :: Loc -> Loc -> Statement -> CFA -> CFA
+cfaInsTrans from to stat cfa = cfa {cfaTran = G.insEdge (from,to,stat) (cfaTran cfa)}
 
 data Spec = Spec { specEnum         :: [Enumeration]
                  , specVar          :: [Var]
