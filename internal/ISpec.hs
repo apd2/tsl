@@ -1,4 +1,8 @@
-module ISpec(Expr(..),
+module ISpec(Val(..),
+             Expr(..),
+             true,
+             false,
+             (===),
              Loc,
              CFA,
              newCFA,
@@ -6,7 +10,9 @@ module ISpec(Expr(..),
              cfaErrLoc,
              cfaInsLoc,
              cfaInsTrans,
-             Statement(..)) where
+             Statement(..),
+             (=:),
+             Process(..)) where
 
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.Tree as G
@@ -45,16 +51,15 @@ data Var = Var { varName :: String
                }
 
 data Process = Process { procName :: String
-                       , procBody :: Statement
+                       , procBody :: CFA
                        }
 
 data Goal = Goal { goalName :: String
-                 , goalCond :: Expr
+                 , goalCond :: Process
                  }
 
 data Expr = EVar    String
           | EConst  Val
-          | EBool   Bool
           | EField  Expr String
           | EIndex  Expr Expr
           | EUnOp   UOp Expr
@@ -63,6 +68,12 @@ data Expr = EVar    String
           | ESlice  Expr Slice
           | EStruct String [Expr]
           | ENonDet
+
+(===) :: Expr -> Expr -> Expr
+e1 === e2 = EBinOp Eq e1 e2
+
+true = EConst $ BoolVal True
+false = EConst $ BoolVal False
 
 type Slice = (Int, Int)
 
@@ -76,6 +87,9 @@ data Statement = SNop
                | SAssign Expr Expr
                | SMagic  (Either String Expr)
                | SFork   [String]
+
+(=:) :: Expr -> Expr -> Statement
+(=:) e1 e2 = SAssign e1 e2
 
 -- Control-flow automaton
 type Loc = G.Node
@@ -100,8 +114,6 @@ cfaInsTrans from to stat cfa = cfa {cfaTran = G.insEdge (from,to,stat) (cfaTran 
 data Spec = Spec { specEnum         :: [Enumeration]
                  , specVar          :: [Var]
                  , specProcess      :: [Process]
-                 , specControllable :: Expr
-                 , specInvisible    :: Expr
                  , specInit         :: Statement
                  , specGoal         :: [Goal] 
                  }

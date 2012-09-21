@@ -52,7 +52,7 @@ statMapTSpec' :: (?spec::Spec) => (Scope -> TypeSpec -> TypeSpec) -> Scope -> St
 statMapTSpec' f s (SVarDecl p v) = SVarDecl p (Var (pos v) (mapTSpec f s $ tspec v) (name v) (varInit v))
 statMapTSpec' _ _ st             = st
 
--- Map function over all expression in the statement
+-- Map function over all expressions in the statement
 statMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Statement -> Statement
 statMapExpr f s st = mapStat (statMapExpr' f) s st
 
