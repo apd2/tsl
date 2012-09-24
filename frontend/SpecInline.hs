@@ -125,6 +125,14 @@ retIVar pid meth = case methRettyp meth of
 enableIVar :: PID -> Method -> I.Expr
 enableIVar pid meth = globaliseVarS pid meth "$en"
 
+tagIVar :: I.Expr
+tagIVar = I.EVar "$tag"
+
+tagMethod :: Method -> I.Expr
+tagMethod meth = I.EConst $ EnumVal $ (sname $methName meth) 
+
+tagIdle :: I.Expr
+tagIdle = I.EConst $ EnumVal "$idle"
 
 -- Variable used to make a forked process runnable
 --runIVarName :: PID -> String
@@ -277,9 +285,11 @@ fprocToCFA pid lmap parscope stat = ctxCFA ctx'
                        , ctxLNMap  = lmap}
           ctx' = execState (statToCFA I.cfaInitLoc stat) ctx
 
--- Convert controllable or uncontrollable task to CFA
-taskToCFA :: (?spec::Spec) => PID -> Method -> I.CFA
-taskToCFA pid meth = ctxCFA ctx'
+-- Convert controllable or uncontrollable task to CFA.
+-- The ctl argument indicates that a controllable transition is to be
+-- generated (using tag instead of enabling variable)
+taskToCFA :: (?spec::Spec) => PID -> Method -> Bool -> I.CFA
+taskToCFA pid meth ctl = ctxCFA ctx'
     where stat = fromRight $ methBody meth
           ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeMethod tmMain meth
@@ -289,10 +299,16 @@ taskToCFA pid meth = ctxCFA ctx'
                        , ctxLHS    = retIVar pid meth
                        , ctxGNMap  = globalNMap
                        , ctxLNMap  = methodLMap pid meth}
-          ctx' = execState (do aftwait <- ctxInsTrans' I.cfaInitLoc $ I.SAssume $ enableIVar pid meth I.=== I.true
-                               aftbody <- statToCFA aftwait stat
-                               ctxInsTrans aftbody I.cfaInitLoc $ (enableIVar pid meth) I.=: I.false) 
-                           ctx
+          ctx' = if ctl
+                    then execState (do aftwait <- ctxInsTrans' I.cfaInitLoc $ I.SAssume $ tagIVar I.== tagMethod meth
+                                       aftbody <- statToCFA aftwait stat
+                                       ctxInsTrans aftbody I.cfaInitLoc $ tagIVar I.=: tagIdle) 
+                                   ctx
+                    else execState (do aftwait <- ctxInsTrans' I.cfaInitLoc $ I.SAssume $ enableIVar pid meth I.=== I.true
+                                       aftbody <- statToCFA aftwait stat
+                                       ctxInsTrans aftbody I.cfaInitLoc $ (enableIVar pid meth) I.=: I.false) 
+                                   ctx
+
 
 -- Convert process statement to CFA
 statToCFA :: (?spec::Spec) => I.Loc -> Statement -> State CFACtx I.Loc
@@ -473,8 +489,8 @@ methInline before after meth args mlhs = do
 
     -- copy out arguments
     aftout <- copyOutArgs retloc meth args'
-    -- nop-transition to after
-    ctxInsTrans aftout after I.SNop
+    -- pause-transition to after
+    ctxInsTrans aftout after I.SPause
     -- restore context
     ctxPutBrkLoc $ ctxBrkLoc befctx
     ctxPutRetLoc $ ctxRetLoc befctx
@@ -526,22 +542,21 @@ copyOutArgs loc meth args = do
 -- * Processes (top-level), methods, procedures, controllable tasks - single copy of local variables and input arguments
 -- * Uncontrollable, invisible tasks - per-PID copies of local variables and input arguments
 
---spec2Internal :: Spec -> I.Spec
---spec2Internal s = I.Spec senum svar sproc sctl sinvis sinit sgoal
---    where ?spec = specSimplify s -- preprocessing
---          senum = mapMaybe (\d -> case tspec d of
---                                     EnumSpec _ es -> I.Enum (sname d) (map sname es)
---                                     _             -> Nothing) (specType ?spec)
---          sproc = concat $ map procTree (specProcess ?spec)
---          -- TODO: controllable processes
---
---
---                 { specEnum         :: [Enumeration]
---                 , specVar          :: [Var]
---                 , specProcess      :: [Process]
---                 , specInit         :: Process
---                 , specGoal         :: [Goal] 
---                 }
+spec2Internal :: Spec -> I.Spec
+spec2Internal s = I.Spec senum svar sproc sctl sinvis sinit sgoal
+    where ?spec = specSimplify s -- preprocessing
+          senum = mapMaybe (\d -> case tspec d of
+                                     EnumSpec _ es -> I.Enum (sname d) (map sname es)
+                                     _             -> Nothing) (specType ?spec)
+          sproc = (concatMap procTree (specProcess ?spec)) ++ 
+                  concatMap (filter ((== Task Controllable) . methCat m) $ tmMethod tmMain)
+          -- TODO: controllable processes
+          { specEnum         :: [Enumeration]
+          , specVar          :: [Var]
+          , specProcess      :: [Process]
+          , specInit         :: Process
+          , specGoal         :: [Goal] 
+          }
 
 
 -- Recursively construct CFAs for the process and its children
@@ -551,7 +566,7 @@ procTree p =
         cfa = procToCFA pid p
         scope = ScopeProcess tmMain p
     in (I.Process (pidToName pid) cfa) : (procTreeRec pid scope (procStatement p) (procLMap pid p))
-        
+
 fprocTree :: (?spec::Spec) => PID -> Scope -> NameMap -> (Ident, Statement) -> [I.Process]
 fprocTree parpid parscope lmap (n,stat) = 
     let pid = parpid ++ [sname n]
@@ -561,7 +576,7 @@ fprocTree parpid parscope lmap (n,stat) =
 taskProcTree :: (?spec::Spec) => PID -> Method -> [I.Process]
 taskProcTree parpid meth = 
     let pid = parpid ++ [sname meth]
-        cfa = taskToCFA parpid meth
+        cfa = taskToCFA parpid meth False
     in (I.Process (pidToName pid) cfa) : (procTreeRec parpid (ScopeMethod tmMain meth) (fromRight $ methBody meth) (methodLMap parpid meth))
 
 -- Recursive step of the algorithm: find all child subprocess of a statement
