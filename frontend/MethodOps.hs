@@ -24,6 +24,10 @@ import StatementOps
 import Spec
 import Var
 
+instance (?spec::Spec, ?scope::Scope) => WithType Arg where
+    typ = Type ?scope . tspec
+
+
 -- Find implementation of the method inherited from a parent
 methParent :: (?spec::Spec) => Template -> Method -> Maybe (Template, Method)
 methParent t m = 

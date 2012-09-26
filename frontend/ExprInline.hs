@@ -2,10 +2,15 @@
 
 module ExprInline(tmpName,
                   exprSimplify,
-                  exprSimplifyAsn) where
+                  exprSimplifyAsn,
+                  exprToIExpr) where
 
 import Data.List
+import Data.Maybe
+import Control.Monad.State
+import qualified Data.Map as M
 
+import qualified ISpec as I
 import TSLUtil
 import NS
 import Pos
@@ -16,6 +21,8 @@ import ExprOps
 import Statement
 import Var
 import Type
+import TypeOps
+import Inline
 
 tmpName :: Pos -> Uniq -> Ident
 tmpName p u = Ident p $ "$" ++ (show $ getUniq u)
@@ -89,3 +96,56 @@ condSimplify p mlhs cs mdef =
                     ((map Just $ snd $ unzip cs) ++ [mdef])
         choices = map (\(a,s) -> sSeq (pos a) (a:s)) (zip assumes stats)
     in (sdecl ++ (concat ss) ++ [SChoice p choices], lhs)
+
+
+----------------------------------------------------------------------
+-- Convert expressions to internal format
+----------------------------------------------------------------------
+
+exprToIExpr :: (?spec::Spec) => Expr -> State CFACtx I.Expr
+exprToIExpr (ETerm _ ssym) = do
+    scope <- gets ctxScope
+    lmap  <- gets ctxLNMap
+    gmap  <- gets ctxGNMap
+    let n = case getTerm scope ssym of
+                 ObjVar      _ v -> name v
+                 ObjGVar     _ v -> name v
+                 ObjWire     _ w -> name w
+                 ObjArg      _ a -> name a
+                 ObjConst    _ c -> name c
+                 ObjEnum     _ e -> name e
+    return $ case M.lookup n gmap of
+                  Just e -> e
+                  Nothing -> case M.lookup n lmap of
+                                  Just e  -> e
+                                  Nothing -> error $ "exprToIExpr: unknown name: " ++ sname n
+
+exprToIExpr (ELit _ _ _ _ v)             = return $ I.EConst $ I.IntVal v
+exprToIExpr (EBool _ b)                  = return $ I.EConst $ I.BoolVal b
+exprToIExpr (EField _ e f)               = do e' <- exprToIExpr e
+                                              return $ I.EField e' (sname f)
+exprToIExpr (EPField _ e f)              = do e' <- exprToIExpr e
+                                              let e'' = I.EUnOp Deref e'
+                                              return $ I.EField e'' (sname f)
+exprToIExpr (EIndex _ e i)               = do e' <- exprToIExpr e
+                                              i' <- exprToIExpr i
+                                              return $ I.EIndex e' i'
+exprToIExpr (EUnOp _ op e)               = do e' <- exprToIExpr e
+                                              return $ I.EUnOp op e'
+exprToIExpr (EBinOp _ op e1 e2)          = do e1' <- exprToIExpr e1
+                                              e2' <- exprToIExpr e2
+                                              return $ I.EBinOp op e1' e2'
+exprToIExpr (ESlice _ e (l,h))           = do scope <- gets ctxScope
+                                              let ?scope = scope
+                                              e' <- exprToIExpr e
+                                              let l' = fromInteger $ evalInt l
+                                                  h' = fromInteger $ evalInt h
+                                              return $ I.ESlice e' (l',h')
+exprToIExpr e@(EStruct _ tname (Left fs))= do scope <- gets ctxScope
+                                              let ?scope = scope
+                                              let StructSpec _ sfs = tspec $ typ' e
+                                              fs' <- mapM (exprToIExpr . snd . fromJust . (\f -> find ((==f) . fst) fs) . name) sfs
+                                              return $ I.EStruct (sname $ head tname) fs'
+exprToIExpr (EStruct _ tname (Right fs)) = do fs' <- mapM exprToIExpr fs
+                                              return $ I.EStruct (sname $ head tname) fs'
+exprToIExpr (ENonDet _)                  = return I.ENonDet
