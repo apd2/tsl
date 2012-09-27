@@ -19,6 +19,7 @@ module ISpec(Type(..),
              Statement(..),
              (=:),
              nop,
+             Transition(..),
              Process(..)) where
 
 import Data.List
@@ -114,7 +115,7 @@ nop = SAssume $ true
 
 -- Control-flow automaton
 type Loc = G.Node
-data LocLabel = LNone | LPause | LFinal
+data LocLabel = LNone | LPause | LFinal deriving (Eq)
 type CFA = G.Gr LocLabel Statement
 
 newCFA :: CFA

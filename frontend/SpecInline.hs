@@ -8,6 +8,7 @@ import Data.Maybe
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad.State
+import qualified Data.Graph.Inductive.Graph as G
 
 import Util hiding (name)
 import TSLUtil
@@ -53,38 +54,6 @@ methSimplify :: (?spec::Spec) => Template -> Method -> Method
 methSimplify tm m = let ?scope = ScopeMethod tm m
                         ?uniq = newUniq
                     in m { methBody = Right $ statSimplify $ fromRight $ methBody m}
-
--- Process structure analysis: subprocesses, methods, variables
-
----- Recursively compute the set of methods invoked by the statement.
----- (assume that the spec has been simplified previously)
---statMethods :: (?spec::Spec, ?scope::Scope) => Statement -> [Ident]
---statMethods (SReturn _ (Just (EApply _ mref _))) = mrefMethods mref
---statMethods (SSeq    _ ss)                       = concatMap statMethods ss
---statMethods (SForever _ s)                       = statMethods s
---statMethods (SDo _ b c)                          = statMethods b
---statMethods (SWhile _ c b)                       = statMethods b
---statMethods (SFor  _ (mi,c,s) b)                 = nub $ concatMap statMethods $ (maybeToList mi) ++ [s,b]
---statMethods (SChoice _ ss)                       = nub $ concatMap statMethods ss
---statMethods (SInvoke _ mref _)                   = mrefMethods mref
---statMethods (SAssign _ lhs (EApply _ mref _))    = mrefMethods mref
---statMethods (SITE _ _ t me)                      = nub $ concatMap statMethods $ t : (maybeToList me)
---statMethods (SCase _ _ cs mdef)                  = nub $ concatMap statMethods $ (snd $ unzip cs) ++ (maybeToList mdef)
---statMethods _                                    = []
---
---mrefMethods :: (?spec::Spec, ?scope::Scope) => MethodRef -> [Ident]
---mrefMethods mref = 
---    let m = snd $ getMethod ?scope mref
---    in let ?scope = ScopeMethod tmMain m 
---       in nub $ (name m):(statMethods $ fromRight $ methBody m)
-
--- Child processes spawned by the statement (including processes spawned 
--- by tasks invoked by the statement)
---procChildren :: (?spec::Spec, ?scope::Scope) => Statement -> [(Ident, Scope, Statement)]
---procChildren st = map (\(n, st) -> (n,?scope,st)) (statSubprocessNonrec st) ++
---                  concatMap (\(tm',m) -> map (\(n,st) -> (n, ScopeMethod tm' m, st)) $ statSubprocessNonrec $ fromRight $ methBody m) ms
---    where ms = map (getMethod (ScopeTemplate tmMain) . (\n -> MethodRef (pos n) [n])) $ statMethods st
-
 
 ----------------------------------------------------------------------
 -- Variables
@@ -204,6 +173,27 @@ taskToCFA pid meth ctl = ctxCFA ctx'
 --          }
 
 
+initCond :: (?spec::Spec) => I.Expr
+initCond = 
+    -- conjunction of initial variable assignments
+    ass = mapMaybe (\v -> case varInit $ gvarVar v of
+                               Nothing -> Nothing
+                               Just e  -> Just (EBinOp (pos v) Eq (ETerm $ name v) e)) (tmVar tmMain)
+    -- add init blocks
+    cond = eAnd nopos (ass++tmInit tmMain)
+    -- simplify and convert into a statement
+    (ss, cond') = let ?scope = ScopeTemplate tmMain 
+                      ?uniq = newUniq
+                  in exprSimplify cond
+    stat = SSeq nopos (ss ++ SAssume nopos cond')
+    let ?procs = [] in cfaToIProcess $ fprocToCFA initid (M.empty) (ScopeTemplate tmMain) stat
+
+fprocToCFA pid lmap parscope stat = ctxCFA ctx'
+
+
+    -- precondition
+    -- make sure that precondition only depends on state variables
+
 -- Recursively construct LTS for the process and its children
 procTree :: (?spec::Spec) => Process -> [I.Process]
 procTree p = 
@@ -311,17 +301,40 @@ forkedProcsRec s stat =
 ---------------------------------------------------------------
 
 cfaToIProcess :: String -> I.CFA -> I.Process
-cfaToIProcess n cfa = I.Process n trans final
+cfaToIProcess n cfa = I.Process n trans' final
     where
     -- compute a set of transitions for each location labelled with pause or final
     trans = concatMap (locTrans cfa . fst)
-                      $ filter (\(_, lab) -> lab == LPause || lab == LFinal)
-                      $ labNodes cfa
+                      $ filter (\(_, lab) -> lab == I.LPause || lab == I.LFinal)
+                      $ G.labNodes cfa
+    final = map fst $ filter (\(loc,lab) -> lab == I.LFinal) $ G.labNodes cfa
+    -- filter out unreachable location
 
 locTrans :: I.CFA -> I.Loc -> [I.Transition]
 locTrans cfa loc =
-    -- compute all reachable locations before pause
-    -- check for loop freedom
-    -- for each final location, compute a subgraph that connects the two by iteratively pruning dead-end locations
+    let -- compute all reachable locations before pause
+        r = reach cfa S.empty (S.singleton loc)
+        -- construct subgraph with only these nodes
+        cfa' = foldl' (\g loc -> if S.member loc r then g else G.delNode loc g) cfa (G.nodes cfa)
+        -- check for loop freedom
+        -- for each final location, compute a subgraph that connects the two
+        dst = filter (\loc -> elem (G.lab cfa loc) [Just I.LPause, Just I.LFinal]) $ S.toList r 
+    in map (\dloc -> I.Transition loc dloc (pruneTrans cfa' loc dloc)) dst
 
-
+-- iteratively prune dead-end locations until only transitions connecting from and to remain
+pruneTrans :: I.CFA -> I.Loc -> I.Loc -> I.CFA
+pruneTrans cfa from to = if G.noNodes cfa' == G.noNodes cfa then cfa else pruneTrans cfa' from to
+    where cfa' = foldl' (\g loc -> if loc /= to && null (G.suc g loc) then G.delNode loc g else g) cfa (G.nodes cfa)
+    
+-- locations reachable from found before reaching the next pause or final state
+reach :: I.CFA -> S.Set I.Loc -> S.Set I.Loc -> S.Set I.Loc
+reach cfa found frontier = if S.null frontier'
+                              then found
+                              else reach cfa found' frontier'
+    where
+    new       = suc frontier
+    found'    = S.union found new
+    -- frontier' = all newly discovered states that are not pause or final states
+    frontier' = S.filter (\loc -> notElem (G.lab cfa loc) [Just I.LPause, Just I.LFinal]) $ new S.\\ found
+    suc locs  = S.unions $ map suc1 (S.toList locs)
+    suc1 loc  = S.fromList $ G.suc cfa loc

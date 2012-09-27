@@ -99,7 +99,7 @@ condSimplify p mlhs cs mdef =
 
 
 ----------------------------------------------------------------------
--- Convert expressions to internal format
+-- Convert (simplified) expressions to internal format
 ----------------------------------------------------------------------
 
 exprToIExpr :: (?spec::Spec) => Expr -> State CFACtx I.Expr

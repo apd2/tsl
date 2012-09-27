@@ -32,8 +32,10 @@ statSimplify s = sSeq (pos s) $ statSimplify' s
 statSimplify' :: (?spec::Spec, ?scope::Scope, ?uniq::Uniq) => Statement -> [Statement]
 statSimplify' (SVarDecl p v) = 
     case varInit v of
-         Just e -> (SVarDecl p v{varInit = Nothing}) :
-                   (statSimplify' $ SAssign p (ETerm (pos $ varName v) [varName v]) e)
+         Just e  -> (SVarDecl p v{varInit = Nothing}) :
+                    (statSimplify' $ SAssign p (ETerm (pos $ varName v) [varName v]) e)
+         Nothing -> (SVarDecl p v{varInit = Nothing}) :
+                    (statSimplify' $ SAssign p (ETerm (pos $ varName v) [varName v]) (ENonDet nopos))
 
 statSimplify' (SReturn p (Just e)) = 
     let (ss,e') = exprSimplify e

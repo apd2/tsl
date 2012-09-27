@@ -76,7 +76,7 @@ isStruct x = case tspec $ typ' x of
 -- Various equivalence relations over types
 -------------------------------------------------
 
--- Type isomorphism: types are equivalent module UserTypeSpec expansion
+-- Type isomorphism: types are equivalent modulo UserTypeSpec expansion
 typeIso :: (?spec::Spec, WithType a, WithType b) => a -> b -> Bool
 typeIso x y = 
     let Type sx tx = typ' x
