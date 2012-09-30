@@ -83,7 +83,7 @@ statSimplify' st                    = [st]
 ----------------------------------------------------------
 -- Convert statement to CFA
 ----------------------------------------------------------
-statToCFA :: (?spec::Spec, ?procs::[I.Process]) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA before (SSeq _ ss) = foldM statToCFA before ss
 statToCFA before (SPause _)  = ctxPause before
 statToCFA before (SStop _)   = do after <- ctxInsLocLab I.LFinal
@@ -94,7 +94,7 @@ statToCFA before stat        = do after <- ctxInsLoc
                                   return after
 
 -- Only safe to call from statToCFA.  Do not call this function directly!
-statToCFA' :: (?spec::Spec, ?procs::[I.Process]) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
+statToCFA' :: (?spec::Spec, ?procs::[ProcTrans]) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
 statToCFA' before after (SVarDecl _ _) = ctxInsTrans before after I.nop
 statToCFA' before after (SReturn _ rval) = do
     -- add transition before before to return location
@@ -116,12 +116,12 @@ statToCFA' before after (SPar _ ps) = do
     aften <- foldM (\bef pid -> ctxInsTrans' bef $ mkEnVar pid Nothing I.=: I.true) before pids
     -- pause and wait for all of them to reach final states
     aftpause <- ctxPause aften
-    let mkFinalCheck pid = I.disj $ map (\loc -> mkPCVar (Just pid) Nothing I.=== mkPC (Just pid) Nothing loc) $ I.procFinal p
+    let mkFinalCheck pid = I.disj $ map (\loc -> mkPCVar pid I.=== mkPC pid loc) $ pFinal p
                            where p = fromJustMsg ("mkFinalCheck: process " ++ pidToName pid ++ " unknown") $ 
-                                     find ((== pidToName pid) . I.procName) ?procs
+                                     find ((== pidToName pid) . pName) ?procs
     aftwait <- ctxInsTrans' aftpause $ I.SAssume $ I.conj $ map mkFinalCheck pids
     -- Disable forked processes and bring them back to initial states
-    aftreset <- foldM (\bef pid -> ctxInsTrans' bef $ mkPCVar (Just pid) Nothing I.=: mkLoc (Just pid) Nothing I.cfaInitLoc) aftwait pids
+    aftreset <- foldM (\bef pid -> ctxInsTrans' bef $ mkPCVar pid I.=: mkLoc (Just pid) Nothing I.cfaInitLoc) aftwait pids
     aftdisable <- foldM (\bef pid -> ctxInsTrans' bef $ mkEnVar pid Nothing I.=: I.false) aftreset pids
     ctxInsTrans aftdisable after I.nop
 
@@ -248,7 +248,7 @@ statToCFA' before after (SMagic _ obj) = do
                    Right cond -> statToCFA aftwait $ SAssert nopos cond
     ctxInsTrans aftass after I.nop  
 
-methInline :: (?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
+methInline :: (?spec::Spec,?procs::[ProcTrans]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
 methInline before after meth args mlhs = do
     -- save current context
     befctx <- get

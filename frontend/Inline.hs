@@ -24,6 +24,12 @@ tmMain = head $ specTemplate ?spec
 -- Process ID (path in the process tree)
 ----------------------------------------------------------------------
 
+data ProcTrans = ProcTrans { pName   :: String
+                           , pBody   :: [I.Transition]
+                           , pFinal  :: [I.Loc]  -- final locations
+                           , pPCEnum :: I.Enumeration
+                           }
+
 type PID = [String]
 
 -- PID to process name
@@ -78,16 +84,20 @@ mkEnVar pid mmeth = I.EVar $ mkEnVarName pid mmeth
 mkEnVarDecl :: PID -> Maybe Method -> I.Var
 mkEnVarDecl pid mmeth = I.Var (mkEnVarName pid mmeth) I.Bool
 
-mkPCVarName :: Maybe PID -> Maybe Method -> String
-mkPCVarName mpid mmeth = mkVarNameS mpid mmeth "$pc"
+mkPCVarName :: PID -> String
+mkPCVarName pid = mkVarNameS (Just pid) Nothing "$pc"
 
-mkPCVar :: Maybe PID -> Maybe Method -> I.Expr
-mkPCVar mpid mmeth = I.EVar $ mkPCVarName mpid mmeth
+mkPCEnumName :: PID -> String
+mkPCEnumName pid = mkVarNameS (Just pid) Nothing "$pcenum"
 
---mkPCEnum :: Maybe PID -> Maybe Method -> I.Loc -> String
+mkPCVar :: PID -> I.Expr
+mkPCVar pid = I.EVar $ mkPCVarName pid
 
-mkPC :: Maybe PID -> Maybe Method -> I.Loc -> I.Expr
-mkPC mpid mmeth loc = I.EVar $ mkVarNameS mpid mmeth ("$" ++ show loc)
+mkPCEnum :: PID -> I.Loc -> String
+mkPCEnum pid loc = mkVarNameS (Just pid) Nothing $ show loc
+
+mkPC :: PID -> I.Loc -> I.Expr
+mkPC pid loc = I.EVar $ mkVarNameS (Just pid) Nothing ("$" ++ show loc)
 
 --mkPCVarDecl :: Maybe PID -> Maybe Method -> 
 --mkPCVarDecl (Just pid) Nothing

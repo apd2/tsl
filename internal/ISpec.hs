@@ -2,6 +2,7 @@ module ISpec(Type(..),
              Val(..),
              Enumeration(..),
              Var(..),
+             Goal(..),
              Expr(..),
              disj,
              conj,
@@ -15,18 +16,22 @@ module ISpec(Type(..),
              cfaInitLoc,
              cfaErrLoc,
              cfaInsLoc,
+             cfaLocLabel,
              cfaInsTrans,
              Statement(..),
              (=:),
              nop,
              Transition(..),
-             Process(..)) where
+             wp,
+             isTmpVar,
+             exprVars) where
 
 import Data.List
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.Tree as G
 import qualified Data.Map as M
 
+import Util hiding (name)
 import Common
 
 data Field = Field String Type
@@ -64,11 +69,6 @@ data Transition = Transition { tranFrom :: Loc
                              , tranTo   :: Loc
                              , tranCFA  :: CFA
                              }
-
-data Process = Process { procName  :: String
-                       , procBody  :: [Transition]
-                       , procFinal :: [Loc]  -- final locations
-                       }
 
 data Goal = Goal { goalName :: String
                  , goalCond :: Expr
@@ -131,12 +131,25 @@ cfaInsLoc :: LocLabel -> CFA -> (CFA, Loc)
 cfaInsLoc lab cfa = (G.insNode (loc,lab) cfa, loc)
    where loc = (snd $ G.nodeRange cfa) + 1
 
+cfaLocLabel :: Loc -> CFA -> LocLabel
+cfaLocLabel loc cfa = fromJustMsg "cfaLocLabel" $ G.lab cfa loc
+
 cfaInsTrans :: Loc -> Loc -> Statement -> CFA -> CFA
 cfaInsTrans from to stat cfa = G.insEdge (from,to,stat) cfa
 
 data Spec = Spec { specEnum         :: [Enumeration]
                  , specVar          :: [Var]
-                 , specProcess      :: [Process]
+                 , specCTran        :: [Transition]
+                 , specUTran        :: [Transition]
                  , specInit         :: Expr
                  , specGoal         :: [Goal] 
                  }
+
+wp :: Expr -> [Transition] -> Expr
+wp _ _ = error "Not implemented: wp"
+
+isTmpVar :: Var -> Bool
+isTmpVar _ = error "Not implemented: isTmpVar"
+
+exprVars :: Expr -> [Var]
+exprVars _ = error "Not implemented: exprVars"
