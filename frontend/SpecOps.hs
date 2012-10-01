@@ -36,7 +36,7 @@ import ExprOps
 --   - variables automatically tainted as invisible because they are accessed from invisible context 
 --     (process or invisible task) cannot be read inside uncontrollable visible transitions (which
 --     correspond to executable driver code)
--- * No circular dependencies among ContAssign variables
+-- * No circular dependencies among wires variables
 
 
 -----------------------------------------------------------------------------
@@ -65,7 +65,7 @@ import ExprOps
 -- * Validate initial assignment expressions in constant declarations
 -- * Validate array size declarations (must be integer constants)
 -- * Validate initial variable assignments
--- * Validate RHS of continous assignments
+-- * Validate RHS of wire assignments
 -- * Validate goals
 -- * Validate call graph
 
@@ -209,7 +209,9 @@ flatten s = do
                          procs
                          meths
                          goals
-    return s'{specTemplate = [main']}
+        s'' = s'{specTemplate = [main']}
+    validateFlattenedSpec s''
+    return s''
     
 -- Remove all pure templates from the spec; merge concrete templates with their parents
 mergeParents :: Spec -> Spec
@@ -277,13 +279,12 @@ tspecFlatten s (UserTypeSpec p n) =
          (d, ScopeTemplate tm) -> UserTypeSpec p [flattenName tm d]
 tspecFlatten _ t = t
 
-----------------------------------------------------------------------------
--- Preprocessing
-----------------------------------------------------------------------------
 
--- Lift method invocations to top-level expressions, e.g.,
---
--- x = f(y) + g(z)  ==>  tmp1 = f(y)
---                       tmp2 = g(z)
---                       x = tmp1 + tmp2
---liftCalls
+-----------------------------------------------------------------------------
+-- Validation steps performed on the flattened spec
+-----------------------------------------------------------------------------
+
+validateFlattenedSpec :: (MonadError String me) => Spec -> me ()
+validateFlattenedSpec s = do
+    let ?spec = s
+    validateTmWires4

@@ -71,6 +71,7 @@ methLocalDecls :: (?spec::Spec) => Template -> Method -> [Obj]
 methLocalDecls t m = map (ObjArg s) (methArg m) ++ map (\(t,m,v) -> ObjVar (ScopeMethod t m) v) (methFullVar t m)
     where s = ScopeMethod t m
 
+
 -- Local names are unique and do not override template-level names
 validateMethNS :: (?spec::Spec, MonadError String me) => Template -> Method -> me ()
 validateMethNS t m = do

@@ -15,6 +15,7 @@ module TemplateValidate(checkConcreteTemplate,
                         validateTmGVars2,
                         validateTmWires,
                         validateTmWires2,
+                        validateTmWires4,
                         validateTmMethods2,
                         validateTmProcesses2,
                         validateTmProcesses3,
@@ -34,6 +35,7 @@ import TypeOps
 import TypeValidate
 import Template
 import TemplateOps
+import TemplateFlatten
 import Spec
 import ConstOps
 import Var
@@ -226,6 +228,12 @@ validateWire2 t w = do
 
 validateTmWires2 :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmWires2 t = do {mapM (validateWire2 t) (tmWire t); return ()}
+
+validateTmWires4 :: (?spec::Spec, MonadError String me) => me ()
+validateTmWires4 = 
+    case grCycle $ wireGraph of
+         Nothing -> return ()
+         Just c  -> err (pos $ snd $ head c) $ "Cyclic wire dependency: " ++ (intercalate "->" $ map (show . snd) c) 
 
 ------------------------------------------------------------------------------
 -- Validate method declarations (only safe during the second pass)

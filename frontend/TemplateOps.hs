@@ -157,6 +157,12 @@ callGraph =
                    gnodes scopes
     in g
 
+-------------------------------------------------------------------
+-- Wires
+-------------------------------------------------------------------
+
+instance (?spec::Spec, ?scope::Scope) => WithType Wire where
+    typ = Type ?scope . tspec
 
 -------------------------------------------------------------------
 -- Namespace-related stuff

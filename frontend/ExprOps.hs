@@ -7,7 +7,9 @@ module ExprOps(mapExpr,
                isConstExpr,
                evalInt,
                exprNoSideEffects,
-               applyNoSideEffects) where
+               applyNoSideEffects,
+               exprObjs,
+               exprObjsRec) where
 
 import Control.Monad.Error
 import Data.Maybe
@@ -26,9 +28,11 @@ import TypeOps
 import Expr
 import Spec
 import Method
+import MethodOps
 import Const
 import NS
 import Val
+import StatementOps
 
 -- Map function over subexpression of expression
 mapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Expr -> Expr
@@ -246,6 +250,38 @@ applyNoSideEffects mref as =  (and $ map isLocalLHS oargs)
     where m       = snd $ getMethod ?scope mref
           oidx    = findIndices ((== ArgOut) . argDir) (methArg m)
           oargs   = map (as !!) oidx
+
+-- Objects referred to by the expression
+exprObjs :: (?spec::Spec, ?scope::Scope) => Expr -> [Obj]
+exprObjs (ETerm   _ s)            = [getTerm ?scope s]
+exprObjs (EApply  _ m as)         = (let (t,meth) = getMethod ?scope m in ObjMethod t meth):
+                                    concatMap exprObjs as
+exprObjs (EField  _ e f)          = (objGet (ObjType $ typ e) f) : 
+                                    exprObjs e
+exprObjs (EPField _ e f)          = exprObjs e
+exprObjs (EIndex  _ a i)          = exprObjs a ++ exprObjs i
+exprObjs (EUnOp   _ op a1)        = exprObjs a1
+exprObjs (EBinOp  _ op a1 a2)     = exprObjs a1 ++ exprObjs a2
+exprObjs (ETernOp _ a1 a2 a3)     = exprObjs a1 ++ exprObjs a2 ++ exprObjs a3
+exprObjs (ECase   _ c cs md)      = exprObjs c ++ 
+                                    concatMap (\(e1,e2) -> exprObjs e1 ++ exprObjs e2) cs ++ 
+                                    concatMap exprObjs (maybeToList md)
+exprObjs (ECond   _ cs md)        = concatMap (\(e1,e2) -> exprObjs e1 ++ exprObjs e2) cs ++ 
+                                    concatMap exprObjs (maybeToList md)
+exprObjs (ESlice  _ e (l,h))      = exprObjs e ++ exprObjs l ++ exprObjs h
+exprObjs (EStruct _ _ (Left fs))  = concatMap (exprObjs . snd) fs
+exprObjs (EStruct _ _ (Right fs)) = concatMap exprObjs fs
+exprObjs _                        = []
+
+-- recursive version
+exprObjsRec :: (?spec::Spec, ?scope::Scope) => Expr -> [Obj]
+exprObjsRec e =
+    let os = exprObjs e
+        mos = filter (\o -> case o of
+                                 ObjMethod _ _ -> True
+                                 _             -> False) os
+        os' = concatMap (\(ObjMethod t m) -> methObjsRec t m) mos
+    in os ++ os'
 
 maxType :: (?spec::Spec, ?scope::Scope, WithType a) => [a] -> Type
 maxType xs = foldl' (\t x -> maxType2 t (typ x)) (typ $ head xs) (tail xs)

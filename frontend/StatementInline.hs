@@ -118,7 +118,7 @@ statToCFA' before after (SPar _ ps) = do
     aftpause <- ctxPause aften
     let mkFinalCheck pid = I.disj $ map (\loc -> mkPCVar pid I.=== mkPC pid loc) $ pFinal p
                            where p = fromJustMsg ("mkFinalCheck: process " ++ pidToName pid ++ " unknown") $ 
-                                     find ((== pidToName pid) . pName) ?procs
+                                     find ((== pid) . pPID) ?procs
     aftwait <- ctxInsTrans' aftpause $ I.SAssume $ I.conj $ map mkFinalCheck pids
     -- Disable forked processes and bring them back to initial states
     aftreset <- foldM (\bef pid -> ctxInsTrans' bef $ mkPCVar pid I.=: mkLoc (Just pid) Nothing I.cfaInitLoc) aftwait pids

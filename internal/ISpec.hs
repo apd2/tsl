@@ -18,13 +18,15 @@ module ISpec(Type(..),
              cfaInsLoc,
              cfaLocLabel,
              cfaInsTrans,
+             cfaInsTrans',
              Statement(..),
              (=:),
              nop,
              Transition(..),
              wp,
              isTmpVar,
-             exprVars) where
+             exprVars,
+             Spec(..)) where
 
 import Data.List
 import qualified Data.Graph.Inductive.Graph as G
@@ -137,10 +139,15 @@ cfaLocLabel loc cfa = fromJustMsg "cfaLocLabel" $ G.lab cfa loc
 cfaInsTrans :: Loc -> Loc -> Statement -> CFA -> CFA
 cfaInsTrans from to stat cfa = G.insEdge (from,to,stat) cfa
 
+cfaInsTrans' :: Loc -> Statement -> CFA -> (CFA, Loc)
+cfaInsTrans' from stat cfa = (cfaInsTrans from to stat cfa', to)
+    where (cfa', to) = cfaInsLoc LNone cfa
+
 data Spec = Spec { specEnum         :: [Enumeration]
                  , specVar          :: [Var]
                  , specCTran        :: [Transition]
                  , specUTran        :: [Transition]
+                 , specWire         :: Transition
                  , specInit         :: Expr
                  , specGoal         :: [Goal] 
                  }

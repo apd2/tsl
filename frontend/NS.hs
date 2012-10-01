@@ -9,6 +9,7 @@ module NS(Scope(..),
           lookupTerm    , checkTerm    , getTerm,
           lookupMethod  , checkMethod  , getMethod,
           lookupGoal    , checkGoal    , getGoal,
+          lookupWire    , checkWire    , getWire,
           Obj(..), objLookup, objGet,
           specNamespace) where
 
@@ -370,6 +371,21 @@ checkGoal s n = case lookupGoal s n of
 
 getGoal :: (?spec::Spec) => Scope -> Ident -> Goal
 getGoal s n = fromJustMsg "getGoal: goal not found" $ lookupGoal s n
+
+-- Wire lookup
+lookupWire :: (?spec::Spec) => Scope -> Ident -> Maybe Wire
+lookupWire s n = case lookupPath s [n] of
+                      Just (ObjWire _ w) -> Just w
+                      _                  -> Nothing
+
+checkWire :: (?spec::Spec, MonadError String me) => Scope -> Ident -> me Wire
+checkWire s n = case lookupWire s n of
+                     Just w  -> return w
+                     Nothing -> err (pos n) $ "Unknown wire " ++ show n
+
+getWire :: (?spec::Spec) => Scope -> Ident -> Wire
+getWire s n = fromJustMsg "getWire: wire not found" $ lookupWire s n
+
 
 specNamespace :: (?spec::Spec) => [Obj]
 specNamespace = map ObjTemplate (specTemplate ?spec) ++ 

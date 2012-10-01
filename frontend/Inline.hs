@@ -24,7 +24,7 @@ tmMain = head $ specTemplate ?spec
 -- Process ID (path in the process tree)
 ----------------------------------------------------------------------
 
-data ProcTrans = ProcTrans { pName   :: String
+data ProcTrans = ProcTrans { pPID    :: PID
                            , pBody   :: [I.Transition]
                            , pFinal  :: [I.Loc]  -- final locations
                            , pPCEnum :: I.Enumeration
@@ -123,6 +123,15 @@ tagMethod meth = I.EConst $ I.EnumVal $ (sname $methName meth)
 tagIdle :: I.Expr
 tagIdle = I.EConst $ I.EnumVal "$idle"
 
+mkContVarName :: String
+mkContVarName = "$cont"
+
+mkContVar :: I.Expr
+mkContVar = I.EVar mkContVarName
+
+mkContVarDecl :: (?spec::Spec) => I.Var
+mkContVarDecl = I.Var mkContVarName I.Bool
+
 mkMagicVarName :: String
 mkMagicVarName = "$magic"
 
@@ -147,6 +156,10 @@ procLMap pid p = M.fromList $ map (\v -> (name v, mkVar (Just pid) Nothing v)) (
 
 globalNMap :: (?spec::Spec) => NameMap
 globalNMap = error $ "Not implemented: globalNMap"
+             -- global variables
+             -- wires
+             -- enums
+             -- consts
 
 ----------------------------------------------------------------------
 -- Types

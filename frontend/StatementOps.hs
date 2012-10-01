@@ -7,6 +7,9 @@ module StatementOps(mapStat,
                     statSubprocessRec,
                     statSubprocessNonrec,
                     statFlatten,
+                    statObjs,
+                    statObjsRec,
+                    methObjsRec,
                     validateStat,
                     validateStat') where
 
@@ -92,6 +95,48 @@ statCallees s (SCase    _ c cs md)      = exprCallees s c ++
                                           (fromMaybe [] $ fmap (statCallees s) md)
 statCallees _ _                         = []
 
+
+-- Objects referred tp by the statement
+statObjs :: (?spec::Spec, ?scope::Scope) => Statement -> [Obj]
+statObjs (SVarDecl _ v)             = (ObjVar ?scope v) : (concatMap exprObjs $ maybeToList $ varInit v)
+statObjs (SReturn  _ mr)            = concatMap exprObjs $ maybeToList mr
+statObjs (SSeq     _ ss)            = concatMap statObjs ss
+statObjs (SPar     _ ps)            = concatMap (statObjs . snd) ps
+statObjs (SForever _ s)             = statObjs s
+statObjs (SDo      _ s c)           = statObjs s ++ exprObjs c
+statObjs (SWhile   _ c s)           = statObjs s ++ exprObjs c
+statObjs (SFor     _ (mi, c, i) s)  = statObjs s ++ exprObjs c ++ statObjs i ++ (concatMap statObjs $ maybeToList mi)
+statObjs (SChoice  _ ss)            = concatMap statObjs ss
+statObjs (SInvoke  _ m as)          = (let (t,meth) = getMethod ?scope m in ObjMethod t meth):
+                                      concatMap exprObjs as
+statObjs (SAssert  _ c)             = exprObjs c
+statObjs (SAssume  _ c)             = exprObjs c
+statObjs (SAssign  _ l r)           = exprObjs l ++ exprObjs r
+statObjs (SITE     _ c t me)        = exprObjs c ++ statObjs t ++ (concatMap statObjs $ maybeToList me)
+statObjs (SCase    _ c cs md)       = exprObjs c ++
+                                      concatMap (\(e,s) -> exprObjs e ++ statObjs s) cs ++
+                                      concatMap statObjs (maybeToList md)
+statObjs (SMagic   _ (Left g))      = [ObjGoal (scopeTm ?scope) (getGoal ?scope g)]
+statObjs (SMagic   _ (Right e))     = exprObjs e
+statObjs _                          = []
+
+-- recursive version
+statObjsRec :: (?spec::Spec, ?scope::Scope) => Statement -> [Obj]
+statObjsRec s =
+    let os = statObjs s
+        mos = filter (\o -> case o of
+                                 ObjMethod _ _ -> True
+                                 _             -> False) os
+        os' = concatMap (\(ObjMethod t m) -> methObjsRec t m) mos
+    in os ++ os'
+
+-- Recursively compute objects referenced in the body of the method
+methObjsRec :: (?spec::Spec) => Template -> Method -> [Obj]
+methObjsRec t m = 
+    let ?scope = ScopeMethod t m
+    in case methBody m of
+            Left (ms1,ms2) -> concatMap statObjsRec $ maybeToList ms1 ++ maybeToList ms2
+            Right s        -> statObjsRec s
 
 -- List of subprocesses spawned by the statement:
 -- Computed by recursing through fork statements
