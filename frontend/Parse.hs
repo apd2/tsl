@@ -78,7 +78,8 @@ reservedNames = ["after",
                  "uncontrollable", 
                  "using", 
                  "void",
-                 "while"]
+                 "while",
+                 "wait"]
 
 lexer = T.makeTokenParser (emptyDef {T.commentStart      = "/*"
                                     ,T.commentEnd        = "*/"
@@ -322,6 +323,7 @@ statement =  withPos $
          <|> sfor
          <|> schoice
          <|> spause
+         <|> swait
          <|> sstop
          <|> sbreak
          <|> sassert
@@ -342,6 +344,7 @@ swhile   = SWhile nopos <$ reserved "while" <*> (parens expr) <*> statement
 sfor     = SFor nopos <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe statement <* semi) <*> (expr <* semi) <*> statement) <*> statement
 schoice  = SChoice nopos <$ reserved "choice" <*> (braces $ many $ statement <* semi)
 spause   = SPause nopos <$ reserved "pause"
+swait    = SWait nopos <$ reserved "wait" <*> (parens expr)
 sstop    = SStop nopos <$ reserved "stop"
 sbreak   = SBreak nopos <$ reserved "break"
 sinvoke  = SInvoke nopos <$ isinvoke <*> methname <*> (parens $ commaSep expr)

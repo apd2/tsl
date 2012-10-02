@@ -59,6 +59,8 @@ statSimplify' (SInvoke p mref as)   = -- Order of argument evaluation is undefin
                                       -- Go left-to-right
                                       let (ss, as') = unzip $ map exprSimplify as
                                       in (concat ss) ++ [SInvoke p mref $ as']
+statSimplify' (SWait p c)           = let (ss,c') = exprSimplify c
+                                      in ss ++ [SWait p c']
 statSimplify' (SAssert p c)         = let (ss,c') = exprSimplify c
                                       in ss ++ [SAssert p c']
 statSimplify' (SAssume p c)         = let (ss,c') = exprSimplify c
@@ -85,7 +87,9 @@ statSimplify' st                    = [st]
 ----------------------------------------------------------
 statToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA before (SSeq _ ss) = foldM statToCFA before ss
-statToCFA before (SPause _)  = ctxPause before
+statToCFA before (SPause _)  = ctxPause before I.true
+statToCFA before (SWait _ c) = do ci <- exprToIExpr c
+                                  ctxPause before ci
 statToCFA before (SStop _)   = do after <- ctxInsLocLab I.LFinal
                                   ctxInsTrans before after I.nop
                                   return after
@@ -114,14 +118,13 @@ statToCFA' before after (SPar _ ps) = do
     let pids  = map (childPID pid . fst) ps
     -- enable child processes
     aften <- foldM (\bef pid -> ctxInsTrans' bef $ mkEnVar pid Nothing I.=: I.true) before pids
-    -- pause and wait for all of them to reach final states
-    aftpause <- ctxPause aften
     let mkFinalCheck pid = I.disj $ map (\loc -> mkPCVar pid I.=== mkPC pid loc) $ pFinal p
                            where p = fromJustMsg ("mkFinalCheck: process " ++ pidToName pid ++ " unknown") $ 
                                      find ((== pid) . pPID) ?procs
-    aftwait <- ctxInsTrans' aftpause $ I.SAssume $ I.conj $ map mkFinalCheck pids
+    -- pause and wait for all of them to reach final states
+    aftwait <- ctxPause aften $ I.conj $ map mkFinalCheck pids
     -- Disable forked processes and bring them back to initial states
-    aftreset <- foldM (\bef pid -> ctxInsTrans' bef $ mkPCVar pid I.=: mkLoc (Just pid) Nothing I.cfaInitLoc) aftwait pids
+    aftreset <- foldM (\bef pid -> ctxInsTrans' bef $ mkPCVar pid I.=: mkPC pid I.cfaInitLoc) aftwait pids
     aftdisable <- foldM (\bef pid -> ctxInsTrans' bef $ mkEnVar pid Nothing I.=: I.false) aftreset pids
     ctxInsTrans aftdisable after I.nop
 
@@ -239,10 +242,8 @@ statToCFA' before after (SCase _ e cs mdef) = do
 statToCFA' before after (SMagic _ obj) = do
     -- magic block flag
     aftmag <- ctxInsTrans' before $ mkMagicVar I.=: I.true
-    -- pause
-    aftpause <- ctxPause aftmag
     -- wait for magic flag to be false
-    aftwait <- ctxInsTrans' aftpause $ I.SAssume $ mkMagicVar I.=== I.false
+    aftwait <- ctxPause aftmag $ mkMagicVar I.=== I.false
     aftass <- case obj of
                    Left _     -> return aftwait
                    Right cond -> statToCFA aftwait $ SAssert nopos cond
@@ -259,7 +260,7 @@ methInline before after meth args mlhs = do
                 Just lhs -> (liftM Just) $ exprToIExpr lhs
     -- set input arguments
     aftarg <- setArgs before meth args'
-    aftpause <- ctxPause aftarg
+    aftpause <- ctxPause aftarg $ I.true
     -- set return location
     retloc <- ctxInsLoc
     ctxPutRetLoc retloc
@@ -277,7 +278,7 @@ methInline before after meth args mlhs = do
 
     -- copy out arguments
     aftout <- copyOutArgs retloc meth args'
-    aftpause <- ctxPause aftout 
+    aftpause <- ctxPause aftout $ I.true
     -- nop-transition to after
     ctxInsTrans aftpause after I.nop
     -- restore context
@@ -300,8 +301,7 @@ taskCall before after meth args mlhs = do
     -- trigger task
     afttag <- ctxInsTrans' aftarg $ envar I.=: I.true
     -- pause and wait for task to complete
-    aftpause <- ctxPause afttag
-    aftwait  <- ctxInsTrans' aftpause $ I.SAssume $ envar I.=== I.false
+    aftwait <- ctxPause afttag $ envar I.=== I.false
     -- copy out arguments and retval
     aftout <- copyOutArgs aftwait meth args'
     case (mlhs, mkRetVar (Just pid) meth) of

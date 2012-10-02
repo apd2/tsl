@@ -66,6 +66,7 @@ statMapExpr' f s (SDo      p b c)       = SDo      p b (mapExpr f s c)
 statMapExpr' f s (SWhile   p c b)       = SWhile   p (mapExpr f s c) b
 statMapExpr' f s (SFor     p (i,c,u) b) = SFor     p (i, mapExpr f s c, u) b
 statMapExpr' f s (SInvoke  p m as)      = SInvoke  p m (map (mapExpr f s) as)
+statMapExpr' f s (SWait    p e)         = SWait    p (mapExpr f s e)
 statMapExpr' f s (SAssert  p e)         = SAssert  p (mapExpr f s e)
 statMapExpr' f s (SAssume  p e)         = SAssume  p (mapExpr f s e)
 statMapExpr' f s (SAssign  p l r)       = SAssign  p (mapExpr f s l) (mapExpr f s r)
@@ -86,6 +87,7 @@ statCallees s (SWhile   _ c b)          = exprCallees s c ++ statCallees s b
 statCallees s (SFor     _ (i,c,u) b)    = (fromMaybe [] $ fmap (statCallees s) i) ++ exprCallees s c ++ statCallees s u ++ statCallees s b
 statCallees s (SChoice  _ ss)           = concatMap (statCallees s) ss
 statCallees s (SInvoke  p mref as)      = (p,getMethod s mref):(concatMap (exprCallees s) as)
+statCallees s (SWait    _ e)            = exprCallees s e
 statCallees s (SAssert  _ e)            = exprCallees s e
 statCallees s (SAssume  _ e)            = exprCallees s e
 statCallees s (SAssign  _ l r)          = exprCallees s l ++ exprCallees s r
@@ -96,7 +98,7 @@ statCallees s (SCase    _ c cs md)      = exprCallees s c ++
 statCallees _ _                         = []
 
 
--- Objects referred tp by the statement
+-- Objects referred to by the statement
 statObjs :: (?spec::Spec, ?scope::Scope) => Statement -> [Obj]
 statObjs (SVarDecl _ v)             = (ObjVar ?scope v) : (concatMap exprObjs $ maybeToList $ varInit v)
 statObjs (SReturn  _ mr)            = concatMap exprObjs $ maybeToList mr
@@ -109,6 +111,7 @@ statObjs (SFor     _ (mi, c, i) s)  = statObjs s ++ exprObjs c ++ statObjs i ++ 
 statObjs (SChoice  _ ss)            = concatMap statObjs ss
 statObjs (SInvoke  _ m as)          = (let (t,meth) = getMethod ?scope m in ObjMethod t meth):
                                       concatMap exprObjs as
+statObjs (SWait    _ c)             = exprObjs c
 statObjs (SAssert  _ c)             = exprObjs c
 statObjs (SAssume  _ c)             = exprObjs c
 statObjs (SAssign  _ l r)           = exprObjs l ++ exprObjs r
@@ -250,6 +253,16 @@ validateStat' _ (SStop p) = do
                                   Function          -> err p $ "stop inside function"
                                   Procedure         -> err p $ "stop inside procedure"
                                   Task Controllable -> err p $ "stop inside controllable task"
+                                  _                 -> return ()
+         ScopeProcess _ pr -> return ()
+
+validateStat' _ (SWait p e) = do
+    validateExpr' e
+    case ?scope of
+         ScopeMethod  _ m -> case methCat m of
+                                  Function          -> err p $ "wait inside function"
+                                  Procedure         -> err p $ "wait inside procedure"
+                                  Task Controllable -> err p $ "wait inside controllable task"
                                   _                 -> return ()
          ScopeProcess _ pr -> return ()
 

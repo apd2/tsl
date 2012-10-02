@@ -11,6 +11,7 @@ module ISpec(Type(..),
              (===),
              Loc,
              LocLabel(..),
+             isDelayLabel,
              CFA,
              newCFA,
              cfaInitLoc,
@@ -117,11 +118,18 @@ nop = SAssume $ true
 
 -- Control-flow automaton
 type Loc = G.Node
-data LocLabel = LNone | LPause | LFinal deriving (Eq)
+data LocLabel = LNone 
+              | LPause Expr
+              | LFinal 
 type CFA = G.Gr LocLabel Statement
 
-newCFA :: CFA
-newCFA = G.insNode (1,LPause) $ G.insNode (0,(LPause)) G.empty
+isDelayLabel :: LocLabel -> Bool
+isDelayLabel (LPause _) = True
+isDelayLabel LFinal     = True
+isDelayLabel LNone      = False
+
+newCFA :: Expr -> CFA
+newCFA initcond = G.insNode (cfaInitLoc,LPause initcond) $ G.insNode (cfaErrLoc,(LPause false)) G.empty
 
 cfaErrLoc :: Loc
 cfaErrLoc = 0

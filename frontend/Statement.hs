@@ -1,5 +1,5 @@
 module Statement(Statement(SVarDecl,SReturn,SSeq,SPar,SForever,SDo,
-                           SWhile,SFor,SChoice,SPause,SStop,SBreak,SInvoke,
+                           SWhile,SFor,SChoice,SPause,SWait,SStop,SBreak,SInvoke,
                            SAssert,SAssume,SAssign,SITE,SCase,SMagic),
                  stmtVar,
                  sSeq) where
@@ -24,6 +24,7 @@ data Statement = SVarDecl {stpos::Pos, svar::Var}
                | SFor     {stpos::Pos, limits::(Maybe Statement, Expr, Statement), body::Statement}
                | SChoice  {stpos::Pos, statements::[Statement]}
                | SPause   {stpos::Pos}
+               | SWait    {stpos::Pos, cond::Expr}
                | SStop    {stpos::Pos}
                | SBreak   {stpos::Pos}
                | SInvoke  {stpos::Pos, mname::MethodRef, args::[Expr]}
@@ -44,6 +45,7 @@ instance PP Statement where
     pp (SFor _ (init, cond, upd) s) = (text "for" <+> (parens $ pp init <> semi <+> pp cond <> semi <+> pp upd)) $+$ pp s
     pp (SChoice _ ss)               = text "choice" $+$ (braces' $ vcat $ map ((<> semi) . pp) ss)
     pp (SPause _)                   = text "pause"
+    pp (SWait _ cond)               = text "wait" <> (parens $ pp cond)
     pp (SStop _)                    = text "stop"
     pp (SBreak _)                   = text "break"
     pp (SInvoke _ m args)           = pp m <+> (parens $ hsep $ punctuate comma $ map pp args)

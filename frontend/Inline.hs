@@ -141,9 +141,6 @@ mkMagicVar = I.EVar mkMagicVarName
 mkMagicVarDecl :: I.Var
 mkMagicVarDecl = I.Var mkMagicVarName I.Bool
 
-mkLoc :: Maybe PID -> Maybe Method -> I.Loc -> I.Expr
-mkLoc mpid mmeth loc = I.EConst $ I.EnumVal $ mkVarNameS mpid mmeth (show loc)
-
 type NameMap = M.Map Ident I.Expr
 
 methodLMap :: PID -> Method -> NameMap 
@@ -206,10 +203,10 @@ ctxInsTrans' from stat = do
     ctxInsTrans from to stat
     return to
 
-ctxPause :: I.Loc -> State CFACtx I.Loc
-ctxPause loc = do after <- ctxInsLocLab I.LPause
-                  ctxInsTrans loc after I.nop
-                  return after
+ctxPause :: I.Loc -> I.Expr -> State CFACtx I.Loc
+ctxPause loc cond = do after <- ctxInsLocLab (I.LPause cond)
+                       ctxInsTrans loc after I.nop
+                       return after
 
 ctxPutBrkLoc :: I.Loc -> State CFACtx ()
 ctxPutBrkLoc loc = modify $ (\ctx -> ctx {ctxBrkLoc = loc})
