@@ -73,7 +73,7 @@ instance Eq TypeSpec where
     (==) (ArraySpec _ t1 l1)     (ArraySpec _ t2 l2)     = t1 == t2 && l1 == l2
     (==) (UserTypeSpec _ n1)     (UserTypeSpec _ n2)     = n1 == n2
     (==) (TemplateTypeSpec _ n1) (TemplateTypeSpec _ n2) = n1 == n2
-    (==) _                         _                     = False
+    (==) _                       _                       = False
 
 
 instance PP TypeSpec where

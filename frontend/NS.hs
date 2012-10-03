@@ -192,10 +192,10 @@ objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c]
           d = fmap (ObjTypeDecl s)   $ find ((== n) . name) (specType ?spec)
           c = fmap (ObjConst    s)   $ find ((== n) . name) (specConst ?spec)
           t = fmap ObjTemplate       $ find ((== n) . name) (specTemplate ?spec)
-          e = fmap (uncurry ObjEnum) $ find ((== n) . name . snd) (concat $ map (\d -> case tspec d of
-                                                                                            EnumSpec _ es -> map (Type s (tspec d),) es
-                                                                                            _             -> []) $ 
-                                                                                specType ?spec)
+          e = fmap (uncurry ObjEnum) $ find ((== n) . name . snd) (concatMap (\d -> case tspec d of
+                                                                                         EnumSpec _ es -> map (Type s (tspec d),) es
+                                                                                         _             -> []) $ 
+                                                                             specType ?spec)
 
 objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,pr,m,d,c,e,par]
     where -- search for the name in the local scope
@@ -208,10 +208,10 @@ objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,pr,m,d,c,e,par]
           m  = fmap (ObjMethod   t) $ find ((== n) . name) (tmMethod t) 
           d  = fmap (ObjTypeDecl s) $ find ((== n) . name) (tmTypeDecl t)
           c  = fmap (ObjConst    s) $ find ((== n) . name) (tmConst t)
-          e  = fmap (uncurry ObjEnum) $ find ((== n) . name . snd) (concat $ map (\d -> case tspec d of
-                                                                                             EnumSpec _ es -> map (Type s (tspec d),) es
-                                                                                             _             -> []) $ 
-                                                                                 tmTypeDecl t)
+          e  = fmap (uncurry ObjEnum) $ find ((== n) . name . snd) (concatMap (\d -> case tspec d of
+                                                                                          EnumSpec _ es -> map (Type s (tspec d),) es
+                                                                                          _             -> []) $ 
+                                                                              tmTypeDecl t)
           g = fmap (ObjGoal      t) $ find ((== n) . name) (tmGoal t)
           -- search parent templates
           par = listToMaybe $ catMaybes $ map (\d -> objLookup (ObjTemplate $ getTemplate $ drvTemplate d) n) (tmDerive t)
@@ -288,7 +288,7 @@ getTemplate n = fromJustMsg ("getTemplate failed: " ++ show n) $ lookupTemplate 
 checkTemplate :: (?spec::Spec, MonadError String me) => Ident -> me (Template)
 checkTemplate n = do
     case lookupTemplate n of
-         Nothing -> err (pos n) $ "Unknown template name: " ++ (show n)
+         Nothing -> err (pos n) $ "Unknown template name: " ++ show n
          Just t  -> return t
 
 -- Type lookup
@@ -391,6 +391,6 @@ specNamespace :: (?spec::Spec) => [Obj]
 specNamespace = map ObjTemplate (specTemplate ?spec) ++ 
                 map (ObjTypeDecl ScopeTop) (specType ?spec) ++ 
                 map (ObjConst    ScopeTop) (specConst ?spec) ++ 
-                (concat $ map (\d -> case tspec d of
-                                          EnumSpec _ es -> map (ObjEnum (Type ScopeTop $ tspec d)) es
-                                          _             -> []) (specType ?spec))
+                (concatMap (\d -> case tspec d of
+                                       EnumSpec _ es -> map (ObjEnum (Type ScopeTop $ tspec d)) es
+                                       _             -> []) (specType ?spec))

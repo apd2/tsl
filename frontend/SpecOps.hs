@@ -36,7 +36,6 @@ import ExprOps
 --   - variables automatically tainted as invisible because they are accessed from invisible context 
 --     (process or invisible task) cannot be read inside uncontrollable visible transitions (which
 --     correspond to executable driver code)
--- * No circular dependencies among wires variables
 
 
 -----------------------------------------------------------------------------
@@ -235,10 +234,9 @@ flattenConst :: Spec -> Template -> Const -> Spec
 flattenConst s t c = s{specConst = c':(specConst s)}
     where c' = Const (pos c) (tspec c) (flattenName t c) (constVal c)
 
-
 -- Move enums from templates to the top level
 flattenTDecls :: Spec -> Spec
-flattenTDecls s = s''{specTemplate = map (\t -> t{tmConst = []}) (specTemplate s'')}
+flattenTDecls s = s''{specTemplate = map (\t -> t{tmTypeDecl = []}) (specTemplate s'')}
     where s'  = let ?spec = s 
                 in specMapTSpec tspecFlatten $ specMapExpr exprFlattenEnums s
           s'' = foldl' (\s t -> foldl' (\s d -> flattenTDecl s t d) s (tmTypeDecl t)) s' (specTemplate s')

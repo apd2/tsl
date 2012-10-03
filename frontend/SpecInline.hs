@@ -32,11 +32,51 @@ import Type
 import TypeOps
 import Inline
 
+-- Main function
+spec2Internal :: Spec -> I.Spec
+spec2Internal s = 
+    let ?spec = specSimplify s -- preprocessing
+    in let senum = mapMaybe (\d -> case tspec d of
+                                        EnumSpec _ es -> Just $ I.Enumeration (sname d) (map sname es)
+                                        _             -> Nothing) (specType ?spec)
+           (vars, tagenum, auxinit) = mkVars
+           -- Controllable transitions
+           ctran = mkMagicReturn : (map mkCTran $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain)
+           -- Uncontrollable processes
+           uproc = concatMap procTree $ tmProcess tmMain
+           cproc = map (\m -> let ?procs = [] in cfaToIProcess [sname m] $ taskToCFA [] m True) 
+                       $ filter ((== Task Controllable) . methCat)
+                       $ tmMethod tmMain
+           -- PC variables, associated enums and initial assignments.
+           -- Only create PC variables for processes with >1 states.
+           (pcvars, pcenums, pcinit) = unzip3 
+                                       $ mapMaybe (\p -> let pid = pPID p
+                                                             enum = pPCEnum p
+                                                             var  = I.Var (mkPCVarName pid) (I.Enum $ I.enumName enum)
+                                                             init = mkPCVar pid I.=== mkPC pid I.cfaInitLoc
+                                                         in if null $ I.enumEnums enum then Nothing else Just (var, enum, init))
+                                                  uproc
+           (pidvar, pidenum) = mkPIDVarDecl $ map pPID $ cproc ++ uproc
+           -- Uncontrollable transitions
+           utran = concatMap pBody uproc
+       in I.Spec { I.specEnum   = pidenum : tagenum : (senum ++ pcenums)
+                 , I.specVar    = pidvar : (pcvars ++ vars)
+                 , I.specCTran  = ctran
+                 , I.specUTran  = mkIdleTran : utran
+                 , I.specWire   = mkWires
+                 , I.specInit   = I.conj $ [mkInit, auxinit] ++ pcinit
+                 , I.specGoal   = map mkGoal $ tmGoal tmMain
+                 , I.specFair   = mkFair $ cproc ++ uproc
+                 }
+
+
+------------------------------------------------------------------------------
 -- Preprocess all statements and expressions before inlining.  
 -- In the preprocessed spec:
 -- * Method calls can only appear in top-level expressions
 -- * No method calls in return statements
 -- * Local variables are declared and initialised separately
+------------------------------------------------------------------------------
 
 specSimplify :: Spec -> Spec
 specSimplify s = let ?spec = s
@@ -55,39 +95,6 @@ methSimplify :: (?spec::Spec) => Template -> Method -> Method
 methSimplify tm m = let ?scope = ScopeMethod tm m
                         ?uniq = newUniq
                     in m { methBody = Right $ statSimplify $ fromRight $ methBody m}
-
-spec2Internal :: Spec -> I.Spec
-spec2Internal s = 
-    let ?spec = specSimplify s -- preprocessing
-    in let senum = mapMaybe (\d -> case tspec d of
-                                        EnumSpec _ es -> Just $ I.Enumeration (sname d) (map sname es)
-                                        _             -> Nothing) (specType ?spec)
-           (vars, tagenum, auxinit) = mkVars
-           -- Controllable transitions
-           ctran = mkMagicReturn : (map mkCTran $ filter ((== Task Controllable) . methCat) $ (tmMethod tmMain))
-           -- Uncontrollable processes
-           uproc = concatMap procTree $ tmProcess tmMain
-           cproc = map (\m -> let ?procs = [] in cfaToIProcess [sname m] $ taskToCFA [] m True) 
-                       $ filter ((== Task Controllable) . methCat)
-                       $ tmMethod tmMain
-           -- PC variables, associated enums and initial assignments.
-           -- Only create PC variables for processes with >1 states.
-           (pcvars, pcenums, pcinit) = unzip3 
-                                       $ mapMaybe (\p -> let pid = pPID p
-                                                             enum = pPCEnum p
-                                                             var  = I.Var (mkPCVarName pid) (I.Enum $ I.enumName enum)
-                                                             init = mkPCVar pid I.=== mkPC pid I.cfaInitLoc
-                                                         in if null $ I.enumEnums enum then Nothing else Just (var, enum, init))
-                                                  uproc
-           -- Uncontrollable transitions
-           utran = concatMap pBody uproc
-       in I.Spec (tagenum : (senum ++ pcenums))
-                 (vars ++ pcvars) 
-                 ctran
-                 utran
-                 mkWires
-                 (I.conj ([mkInit, auxinit] ++ pcinit))
-                 (map mkGoal (tmGoal tmMain))
 
 ----------------------------------------------------------------------
 -- Wires
@@ -134,12 +141,17 @@ orderWires' g | G.noNodes g == 0  = []
 -- Fair sets
 ----------------------------------------------------------------------
 
--- magic==true && cont == false
+mkFair :: (?spec::Spec) => [ProcTrans] -> [I.Expr]
+mkFair procs = fsched : fproc
+    where -- Fair scheduling:  GF (not ($magic==true && $cont == false))
+          fsched = I.conj [mkMagicVar I.=== I.true, mkContVar I.=== I.false]
 
--- tag != idle
-
--- enabling variable = true
-
+          -- For each state s of uncontrollable process pid with wait condition cond:
+          -- GF (not (pc=s && cond && lastpid == pid)) 
+          fproc = concatMap (\p -> let pid = pPID p
+                                   in map (\(loc,cond) -> I.conj [mkPCVar pid I.=== mkPC pid loc, cond, mkPIDVar I.=== mkPIDEnum pid]) 
+                                          $ pPauses p) 
+                            procs 
 
 ----------------------------------------------------------------------
 -- Init and goal conditions
@@ -177,6 +189,15 @@ mkCond e =
 
 
 ----------------------------------------------------------------------
+-- Idle transition
+----------------------------------------------------------------------
+
+mkIdleTran :: (?spec::Spec) => I.Transition
+mkIdleTran =
+    let (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc (I.SAssume $ mkContVar I.=== I.false) (I.newCFA I.true)
+    in utranSuffix pidIdle False (I.Transition I.cfaInitLoc aftguard cfa0)
+
+----------------------------------------------------------------------
 -- Controllable transitions
 ----------------------------------------------------------------------
 
@@ -185,7 +206,7 @@ mkCond e =
 contGuard = I.SAssume $ I.conj $ [mkMagicVar I.=== I.true, mkContVar I.=== I.true]
 
 mkCTran :: (?spec::Spec) => Method -> I.Transition
-mkCTran m = I.Transition I.cfaInitLoc after cfa2
+mkCTran m = I.Transition I.cfaInitLoc after cfa4
     where (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc contGuard (I.newCFA I.true)
           -- tag
           (cfa1, afttag)   = I.cfaInsTrans' aftguard (mkTagVar I.=: tagMethod m) cfa0
@@ -193,7 +214,9 @@ mkCTran m = I.Transition I.cfaInitLoc after cfa2
           (cfa2, aftargs)  = foldl' (\(cfa,loc) arg -> I.cfaInsTrans' loc (mkVar Nothing (Just m) arg I.=: I.ENonDet) cfa)
                                     (cfa1, afttag) $ filter ((==ArgIn) . argDir) (methArg m)
           -- switch to uncontrollable state
-          (cfa3, after)    = I.cfaInsTrans' aftargs (mkContVar I.=: I.false) cfa2
+          (cfa3, aftcont)  = I.cfaInsTrans' aftargs (mkContVar I.=: I.false)           cfa2
+          -- $pid = $pidcont
+          (cfa4, after)    = I.cfaInsTrans' aftcont (mkPIDVar  I.=: mkPIDEnum pidCont) cfa3
 
 mkMagicReturn :: (?spec::Spec) => I.Transition
 mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
@@ -208,7 +231,7 @@ mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
 mkVars :: (?spec::Spec) => ([I.Var], I.Enumeration, I.Expr)
 mkVars = (mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ pvars), 
           tenum, 
-          I.conj $ teninit ++  peninit ++ [taginit, maginit, continit])
+          I.conj $ teninit ++ peninit ++ [taginit, maginit, continit, pidinit])
     where
     -- tag: one enumerator per controllable task
     (tvar, tenum) = mkTagVarDecl
@@ -222,7 +245,7 @@ mkVars = (mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cv
     -- local variables and input arguments of functions and procedures
     fvars = concatMap (\m -> (let ?scope = ScopeMethod tmMain m in map (mkVarDecl Nothing (Just m)) (methVar m)) ++
                              (let ?scope = ScopeTemplate tmMain in map (mkVarDecl Nothing (Just m)) 
-                                                                   (filter ((==ArgIn) . argDir) (methArg m))))
+                                                                       (filter ((==ArgIn) . argDir) (methArg m))))
                       $ filter ((flip elem) [Function, Procedure] . methCat) 
                       $ tmMethod tmMain
 
@@ -251,6 +274,7 @@ mkVars = (mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cv
     taginit  = mkTagVar   I.=== tagIdle
     maginit  = mkMagicVar I.=== I.false
     continit = mkContVar  I.=== I.false
+    pidinit  = mkPIDVar   I.=== mkPIDEnum pidIdle
 
     taskVars :: Maybe PID -> Method -> [I.Var]
     taskVars mpid m = 
@@ -436,19 +460,22 @@ forkedProcsRec s stat =
 ---------------------------------------------------------------
 
 cfaToIProcess :: PID -> I.CFA -> ProcTrans
-cfaToIProcess pid cfa = ProcTrans pid trans' final pcenum
+cfaToIProcess pid cfa = ProcTrans pid trans' final pcenum wait
     where
     -- compute a set of transitions for each location labelled with pause or final
     trans = concatMap (locTrans cfa . fst)
                       $ filter (I.isDelayLabel . snd)
                       $ G.labNodes cfa
     -- filter out unreachable transitions
-    r = reachable $ S.singleton I.cfaInitLoc
-    trans' = map (utranSuffix pid) $ filter (\t -> S.member (I.tranFrom t) r) trans
+    r = S.toList $ reachable $ S.singleton I.cfaInitLoc
+    trans' = map (utranSuffix pid True) $ filter (\t -> elem (I.tranFrom t) r) trans
     final = filter (\loc -> case I.cfaLocLabel loc cfa of
                                  I.LFinal -> True
-                                 _        -> False) $ S.toList r
-    pcenum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) $ S.toList r
+                                 _        -> False) r
+    pcenum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) r
+    wait   = map (\loc -> case I.cfaLocLabel loc cfa of
+                               I.LFinal      -> (loc, I.true)
+                               I.LPause cond -> (loc, cond)) r
 
     reachable :: S.Set I.Loc -> S.Set I.Loc
     reachable locs = if S.null $ locs' S.\\ locs
@@ -471,19 +498,24 @@ locTrans cfa loc =
     
 -- Insert constraints over PC and cont variables after the last location of 
 -- the transition
-utranSuffix :: PID -> I.Transition -> I.Transition
-utranSuffix pid (I.Transition from to cfa) = 
+utranSuffix :: PID -> Bool -> I.Transition -> I.Transition
+utranSuffix pid updatepc (I.Transition from to cfa) = 
     let -- If this is a loop transition, split the initial node
         (init, final, cfa1) = if from == to
                                  then splitLoc from cfa
                                  else (from, to, cfa)
-        (cfa2, loc1)  = I.cfaInsTrans' final (I.SAssume $ mkPCVar pid I.=== mkPC pid from) cfa1
-        (cfa3, aftpc) = I.cfaInsTrans' loc1  (mkPCVar pid I.=: mkPC pid to)                cfa2
+        -- update PC id requested
+        (cfa3, aftpc) = if updatepc
+                           then let (cfa2, loc1) = I.cfaInsTrans' final (I.SAssume $ mkPCVar pid I.=== mkPC pid from) cfa1
+                                in I.cfaInsTrans' loc1 (mkPCVar pid I.=: mkPC pid to) cfa2
+                           else (cfa1, final)
         -- if tag==idle && magic==true, non-deterministically set cont:=true
-        (cfa4, loc3)  = I.cfaInsTrans' aftpc (I.SAssume $ I.conj [mkTagVar I.=== tagIdle, mkMagicVar I.=== I.true]) cfa3
-        (cfa5, after) = I.cfaInsTrans' loc3  (mkContVar I.=: I.false)                      cfa4
-        cfa6          = I.cfaInsTrans  aftpc after I.nop                                   cfa5
-    in I.Transition init after cfa6
+        (cfa4, loc3)    = I.cfaInsTrans' aftpc (I.SAssume $ I.conj [mkTagVar I.=== tagIdle, mkMagicVar I.=== I.true]) cfa3
+        (cfa5, aftcont) = I.cfaInsTrans' loc3  (mkContVar I.=: I.false)                      cfa4
+        cfa6            = I.cfaInsTrans  aftpc aftcont I.nop                                 cfa5
+        -- set $pid
+        (cfa7, after)   = I.cfaInsTrans' aftcont (mkPIDVar I.=: mkPIDEnum pid)               cfa6
+    in I.Transition init after cfa7
 
 -- Split location into 2, one containing all outgoing edges and one containing
 -- all incoming edges of the original location

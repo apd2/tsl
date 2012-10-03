@@ -1,5 +1,7 @@
-module ISpec(Type(..),
+module ISpec(Field(..),
+             Type(..),
              Val(..),
+             TVal(..),
              Enumeration(..),
              Var(..),
              Goal(..),
@@ -158,6 +160,7 @@ data Spec = Spec { specEnum         :: [Enumeration]
                  , specWire         :: Transition
                  , specInit         :: Expr
                  , specGoal         :: [Goal] 
+                 , specFair         :: [Expr]           -- sets of states f s.t. GF(-f)
                  }
 
 wp :: Expr -> [Transition] -> Expr
