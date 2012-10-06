@@ -3,6 +3,7 @@ module ISpec(Field(..),
              Val(..),
              TVal(..),
              Enumeration(..),
+             VarCategory(..),
              Var(..),
              Goal(..),
              Expr(..),
@@ -27,8 +28,6 @@ module ISpec(Field(..),
              nop,
              Transition(..),
              wp,
-             isTmpVar,
-             exprVars,
              Spec(..)) where
 
 import Data.List
@@ -66,7 +65,11 @@ data Enumeration = Enumeration { enumName  :: String
                                , enumEnums :: [String]
                                }
 
-data Var = Var { varName :: String
+data VarCategory = VarState
+                 | VarTmp
+
+data Var = Var { varCat  :: VarCategory
+               , varName :: String
                , varType :: Type
                }
 
@@ -85,10 +88,8 @@ data Expr = EVar    String
           | EIndex  Expr Expr
           | EUnOp   UOp Expr
           | EBinOp  BOp Expr Expr
-          | ECond   [(Expr, Expr)]
           | ESlice  Expr Slice
           | EStruct String [Expr]
-          | ENonDet
 
 (===) :: Expr -> Expr -> Expr
 e1 === e2 = EBinOp Eq e1 e2
@@ -165,9 +166,3 @@ data Spec = Spec { specEnum         :: [Enumeration]
 
 wp :: Expr -> [Transition] -> Expr
 wp _ _ = error "Not implemented: wp"
-
-isTmpVar :: Var -> Bool
-isTmpVar _ = error "Not implemented: isTmpVar"
-
-exprVars :: Expr -> [Var]
-exprVars _ = error "Not implemented: exprVars"

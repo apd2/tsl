@@ -41,7 +41,7 @@ spec2Internal s =
                                         _             -> Nothing) (specType ?spec)
            (vars, tagenum, auxinit) = mkVars
            -- Controllable transitions
-           ctran = mkMagicReturn : (map mkCTran $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain)
+           (ctran, cvars) = unzip $ map mkCTran $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain
            -- Uncontrollable processes
            uproc = concatMap procTree $ tmProcess tmMain
            cproc = map (\m -> let ?procs = [] in cfaToIProcess [sname m] $ taskToCFA [] m True) 
@@ -52,7 +52,7 @@ spec2Internal s =
            (pcvars, pcenums, pcinit) = unzip3 
                                        $ mapMaybe (\p -> let pid = pPID p
                                                              enum = pPCEnum p
-                                                             var  = I.Var (mkPCVarName pid) (I.Enum $ I.enumName enum)
+                                                             var  = I.Var I.VarState (mkPCVarName pid) (I.Enum $ I.enumName enum)
                                                              init = mkPCVar pid I.=== mkPC pid I.cfaInitLoc
                                                          in if null $ I.enumEnums enum then Nothing else Just (var, enum, init))
                                                   uproc
@@ -60,8 +60,11 @@ spec2Internal s =
            -- Uncontrollable transitions
            utran = concatMap pBody uproc
        in I.Spec { I.specEnum   = pidenum : tagenum : (senum ++ pcenums)
-                 , I.specVar    = pidvar : (pcvars ++ vars)
-                 , I.specCTran  = ctran
+                 , I.specVar    = pidvar : (pcvars ++ vars) ++ 
+                                  concat cvars ++ 
+                                  concatMap pVar cproc ++ 
+                                  concatMap pVar uproc
+                 , I.specCTran  = mkMagicReturn : ctran
                  , I.specUTran  = mkIdleTran : utran
                  , I.specWire   = mkWires
                  , I.specInit   = I.conj $ [mkInit, auxinit] ++ pcinit
@@ -107,15 +110,18 @@ mkWires =
         stat = let ?scope = ScopeTemplate tmMain
                    ?uniq  = newUniq
                in statSimplify $ SSeq nopos $ map (\w -> SAssign nopos (ETerm nopos [name w]) (fromJust $ wireRHS w)) wires
-        ctx = CFACtx { ctxPID    = []
-                     , ctxScope  = ScopeTemplate tmMain
-                     , ctxCFA    = I.newCFA I.true
-                     , ctxRetLoc = error "return from a wire assignment"
-                     , ctxBrkLoc = error "break outside a loop"
-                     , ctxLHS    = Nothing
-                     , ctxGNMap  = globalNMap
-                     , ctxLNMap  = M.empty}
-        proc = let ?procs = [] in cfaToIProcess [] $ ctxCFA $ execState (statToCFA I.cfaInitLoc stat) ctx
+        ctx = CFACtx { ctxPID     = []
+                     , ctxScope   = ScopeTemplate tmMain
+                     , ctxCFA     = I.newCFA I.true
+                     , ctxRetLoc  = error "return from a wire assignment"
+                     , ctxBrkLoc  = error "break outside a loop"
+                     , ctxLHS     = Nothing
+                     , ctxGNMap   = globalNMap
+                     , ctxLNMap   = M.empty
+                     , ctxLastVar = 0
+                     , ctxVar     = []}
+        proc = let ?procs = [] in cfaToIProcess [] $ let ctx' = execState (statToCFA I.cfaInitLoc stat) ctx
+                                                     in (ctxCFA ctx', ctxVar ctx')
     in case pBody proc of
             [t] -> t
             _   -> error "mkWires: Invalid wire expression"
@@ -183,7 +189,7 @@ mkCond e =
                    [t] -> I.wp I.true [t]
                    _   -> error "mkCond: Invalid init block"
     in  -- make sure that precondition only depends on state variables
-        case filter I.isTmpVar $ I.exprVars pre of
+        case pVar iproc of
              [] -> pre
              _  -> error "mkCond: tmp variable in precondition"
 
@@ -205,14 +211,19 @@ mkIdleTran =
 -- a controllable state
 contGuard = I.SAssume $ I.conj $ [mkMagicVar I.=== I.true, mkContVar I.=== I.true]
 
-mkCTran :: (?spec::Spec) => Method -> I.Transition
-mkCTran m = I.Transition I.cfaInitLoc after cfa4
+mkCTran :: (?spec::Spec) => Method -> (I.Transition, [I.Var])
+mkCTran m = (I.Transition I.cfaInitLoc after cfa4, vs)
     where (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc contGuard (I.newCFA I.true)
           -- tag
           (cfa1, afttag)   = I.cfaInsTrans' aftguard (mkTagVar I.=: tagMethod m) cfa0
           -- arguments
-          (cfa2, aftargs)  = foldl' (\(cfa,loc) arg -> I.cfaInsTrans' loc (mkVar Nothing (Just m) arg I.=: I.ENonDet) cfa)
-                                    (cfa1, afttag) $ filter ((==ArgIn) . argDir) (methArg m)
+          ((cfa2, aftargs), _, vs)  = let ?scope = ScopeMethod tmMain m
+                                      in foldl' (\((cfa,loc),last,vs) arg -> 
+                                                  let n    = mkVarNameS Nothing (Just m) ("$tmp" ++ show (last+1))
+                                                      v    = I.Var I.VarTmp n (mkType $ typ arg)
+                                                      cfa' = I.cfaInsTrans' loc (mkVar Nothing (Just m) arg I.=: I.EVar n) cfa
+                                                  in (cfa', last+1, v:vs))
+                                                ((cfa1, afttag), 0, []) $ filter ((==ArgIn) . argDir) (methArg m)
           -- switch to uncontrollable state
           (cfa3, aftcont)  = I.cfaInsTrans' aftargs (mkContVar I.=: I.false)           cfa2
           -- $pid = $pidcont
@@ -289,8 +300,8 @@ mkVars = (mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cv
 -- Convert process to CFA
 -- For a forked process the mparpid argument is the PID of the process in 
 -- whose syntactic scope the present process is located.
-procToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Process -> I.CFA
-procToCFA pid proc = ctxCFA ctx'
+procToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Process -> (I.CFA, [I.Var])
+procToCFA pid proc = (ctxCFA ctx', ctxVar ctx')
     where ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeProcess tmMain proc
                        , ctxCFA    = I.newCFA I.true
@@ -298,12 +309,14 @@ procToCFA pid proc = ctxCFA ctx'
                        , ctxBrkLoc = error "break outside a loop"
                        , ctxLHS    = Nothing
                        , ctxGNMap  = globalNMap
-                       , ctxLNMap  = procLMap pid proc}
+                       , ctxLNMap  = procLMap pid proc
+                       , ctxLastVar = 0
+                       , ctxVar     = []}
           ctx' = execState (statToCFA I.cfaInitLoc (procStatement proc)) ctx
 
 -- Convert forked process to CFA
-fprocToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> NameMap -> Scope -> Statement -> I.CFA
-fprocToCFA pid lmap parscope stat = ctxCFA ctx'
+fprocToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
+fprocToCFA pid lmap parscope stat = (ctxCFA ctx', ctxVar ctx')
     where -- Add process-local variables to nmap
           ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = parscope
@@ -312,14 +325,16 @@ fprocToCFA pid lmap parscope stat = ctxCFA ctx'
                        , ctxBrkLoc = error "break outside a loop"
                        , ctxLHS    = Nothing
                        , ctxGNMap  = globalNMap
-                       , ctxLNMap  = lmap}
+                       , ctxLNMap  = lmap
+                       , ctxLastVar = 0
+                       , ctxVar     = []}
           ctx' = execState (statToCFA I.cfaInitLoc stat) ctx
 
 -- Convert controllable or uncontrollable task to CFA.
 -- The ctl argument indicates that a controllable transition is to be
 -- generated (using tag instead of enabling variable)
-taskToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Method -> Bool -> I.CFA
-taskToCFA pid meth ctl = ctxCFA ctx'
+taskToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Method -> Bool -> (I.CFA, [I.Var])
+taskToCFA pid meth ctl = (ctxCFA ctx', ctxVar ctx')
     where stat = fromRight $ methBody meth
           ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeMethod tmMain meth
@@ -330,7 +345,9 @@ taskToCFA pid meth ctl = ctxCFA ctx'
                        , ctxBrkLoc = error "break outside a loop"
                        , ctxLHS    = mkRetVar (Just pid) meth
                        , ctxGNMap  = globalNMap
-                       , ctxLNMap  = methodLMap pid meth}
+                       , ctxLNMap  = methodLMap pid meth
+                       , ctxLastVar = 0
+                       , ctxVar     = []}
           ctx' = if ctl
                     then execState (do -- reset tag to idle on return
                                        retloc  <- ctxInsLoc
@@ -459,8 +476,8 @@ forkedProcsRec s stat =
 -- CFA to LTS transformation
 ---------------------------------------------------------------
 
-cfaToIProcess :: PID -> I.CFA -> ProcTrans
-cfaToIProcess pid cfa = ProcTrans pid trans' final pcenum wait
+cfaToIProcess :: PID -> (I.CFA,[I.Var]) -> ProcTrans
+cfaToIProcess pid (cfa,vs) = ProcTrans pid trans' vs final pcenum wait
     where
     -- compute a set of transitions for each location labelled with pause or final
     trans = concatMap (locTrans cfa . fst)

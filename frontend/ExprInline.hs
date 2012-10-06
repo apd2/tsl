@@ -148,4 +148,3 @@ exprToIExpr e@(EStruct _ tname (Left fs))= do scope <- gets ctxScope
                                               return $ I.EStruct (sname $ head tname) fs'
 exprToIExpr (EStruct _ tname (Right fs)) = do fs' <- mapM exprToIExpr fs
                                               return $ I.EStruct (sname $ head tname) fs'
-exprToIExpr (ENonDet _)                  = return I.ENonDet

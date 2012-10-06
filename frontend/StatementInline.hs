@@ -212,6 +212,12 @@ statToCFA' before after (SAssign _ lhs (EApply _ mref args)) = do
          Task Uncontrollable -> taskCall before after meth args (Just lhs)
          _                   -> methInline before after meth args (Just lhs)
 
+statToCFA' before after (SAssign _ lhs (ENonDet _)) = do
+    scope <- gets ctxScope
+    lhs'  <- exprToIExpr lhs
+    v     <- ctxInsTmpVar $ mkType $ let ?scope = scope in typ lhs
+    ctxInsTrans before after $ lhs' I.=: I.EVar (I.varName v)
+
 statToCFA' before after (SAssign _ lhs rhs) = do
     lhs' <- exprToIExpr lhs
     rhs' <- exprToIExpr rhs

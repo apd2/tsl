@@ -32,6 +32,7 @@ tmMain = head $ specTemplate ?spec
 
 data ProcTrans = ProcTrans { pPID    :: PID
                            , pBody   :: [I.Transition]
+                           , pVar    :: [I.Var]
                            , pFinal  :: [I.Loc]            -- final locations
                            , pPCEnum :: I.Enumeration
                            , pPauses :: [(I.Loc, I.Expr)]  -- process locations and corresponding wait conditions
@@ -72,7 +73,7 @@ mkVarS :: Maybe PID -> Maybe Method -> String -> I.Expr
 mkVarS mpid mmeth s = I.EVar $ mkVarNameS mpid mmeth s
 
 mkVarDecl :: (?spec::Spec, WithName a, WithType a) => Maybe PID -> Maybe Method -> a -> I.Var
-mkVarDecl mpid mmeth x = I.Var (mkVarName mpid mmeth x) (mkType $ typ x)
+mkVarDecl mpid mmeth x = I.Var I.VarState (mkVarName mpid mmeth x) (mkType $ typ x)
 
 -- Variable that stores return value of a task
 mkRetVar :: Maybe PID -> Method -> Maybe I.Expr
@@ -83,7 +84,8 @@ mkRetVar mpid meth = case methRettyp meth of
 mkRetVarDecl :: (?spec::Spec) => Maybe PID -> Method -> Maybe I.Var
 mkRetVarDecl mpid meth = case methRettyp meth of
                               Nothing -> Nothing
-                              Just t  -> Just $ I.Var (mkVarNameS mpid (Just meth) "$ret") 
+                              Just t  -> Just $ I.Var I.VarState
+                                                      (mkVarNameS mpid (Just meth) "$ret") 
                                                       (mkType $ Type (ScopeTemplate tmMain) t)
 
 mkEnVarName :: PID -> Maybe Method -> String
@@ -93,7 +95,7 @@ mkEnVar :: PID -> Maybe Method -> I.Expr
 mkEnVar pid mmeth = I.EVar $ mkEnVarName pid mmeth
 
 mkEnVarDecl :: PID -> Maybe Method -> I.Var
-mkEnVarDecl pid mmeth = I.Var (mkEnVarName pid mmeth) I.Bool
+mkEnVarDecl pid mmeth = I.Var I.VarState (mkEnVarName pid mmeth) I.Bool
 
 mkPCVarName :: PID -> String
 mkPCVarName pid = mkVarNameS (Just pid) Nothing "$pc"
@@ -124,7 +126,7 @@ mkPIDEnum :: PID -> I.Expr
 mkPIDEnum = I.EConst . I.EnumVal . mkPIDEnumeratorName
 
 mkPIDVarDecl :: [PID] -> (I.Var, I.Enumeration)
-mkPIDVarDecl pids = (I.Var mkPIDVarName (I.Enum "$pidenum"), enum)
+mkPIDVarDecl pids = (I.Var I.VarState mkPIDVarName (I.Enum "$pidenum"), enum)
     where enum = I.Enumeration "$pidenum" $ map mkPIDEnumeratorName $ pidIdle:pidCont:pids
 
 mkTagVarName :: String
@@ -134,7 +136,7 @@ mkTagVar :: I.Expr
 mkTagVar = I.EVar mkTagVarName
 
 mkTagVarDecl :: (?spec::Spec) => (I.Var, I.Enumeration)
-mkTagVarDecl = (I.Var mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" tags)
+mkTagVarDecl = (I.Var I.VarState mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" tags)
     where tags = "$idle" :
                  (map sname
                       $ filter ((== Task Controllable) . methCat)
@@ -154,7 +156,7 @@ mkContVar :: I.Expr
 mkContVar = I.EVar mkContVarName
 
 mkContVarDecl :: (?spec::Spec) => I.Var
-mkContVarDecl = I.Var mkContVarName I.Bool
+mkContVarDecl = I.Var I.VarState mkContVarName I.Bool
 
 mkMagicVarName :: String
 mkMagicVarName = "$magic"
@@ -163,7 +165,7 @@ mkMagicVar :: I.Expr
 mkMagicVar = I.EVar mkMagicVarName
 
 mkMagicVarDecl :: I.Var
-mkMagicVarDecl = I.Var mkMagicVarName I.Bool
+mkMagicVarDecl = I.Var I.VarState mkMagicVarName I.Bool
 
 type NameMap = M.Map Ident I.Expr
 
@@ -233,14 +235,16 @@ mkVal NondetVal      = I.NondetVal
 -- State maintained during CFA construction
 -----------------------------------------------------------
 
-data CFACtx = CFACtx { ctxPID    :: PID           -- PID of the process being constructed
-                     , ctxScope  :: Scope         -- current syntactic scope
-                     , ctxCFA    :: I.CFA         -- CFA constructed so far
-                     , ctxRetLoc :: I.Loc         -- return location
-                     , ctxBrkLoc :: I.Loc         -- break location
-                     , ctxLHS    :: Maybe I.Expr  -- LHS expression
-                     , ctxGNMap  :: NameMap       -- global variable visible in current scope
-                     , ctxLNMap  :: NameMap       -- local variable map
+data CFACtx = CFACtx { ctxPID     :: PID           -- PID of the process being constructed
+                     , ctxScope   :: Scope         -- current syntactic scope
+                     , ctxCFA     :: I.CFA         -- CFA constructed so far
+                     , ctxRetLoc  :: I.Loc         -- return location
+                     , ctxBrkLoc  :: I.Loc         -- break location
+                     , ctxLHS     :: Maybe I.Expr  -- LHS expression
+                     , ctxGNMap   :: NameMap       -- global variable visible in current scope
+                     , ctxLNMap   :: NameMap       -- local variable map
+                     , ctxLastVar :: Int           -- counter used to generate unique variable names
+                     , ctxVar     :: [I.Var]       -- temporary vars
                      }
 
 ctxInsLoc :: State CFACtx I.Loc
@@ -265,6 +269,20 @@ ctxInsTrans' from stat = do
     to <- ctxInsLoc
     ctxInsTrans from to stat
     return to
+
+ctxInsTmpVar :: I.Type -> State CFACtx I.Var
+ctxInsTmpVar t = do
+    last  <- gets ctxLastVar
+    pid   <- gets ctxPID
+    scope <- gets ctxScope
+    let m = case scope of
+                 ScopeMethod _ meth -> Just meth
+                 _                  -> Nothing
+        name = mkVarNameS (Just pid) m ("$tmp" ++ show (last + 1))
+        v = I.Var I.VarTmp name t
+    modify $ (\ctx -> ctx { ctxLastVar = last + 1
+                          , ctxVar     = v:(ctxVar ctx)})
+    return v
 
 ctxPause :: I.Loc -> I.Expr -> State CFACtx I.Loc
 ctxPause loc cond = do after <- ctxInsLocLab (I.LPause cond)
