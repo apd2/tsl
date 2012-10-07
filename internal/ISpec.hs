@@ -47,8 +47,6 @@ data Type = Bool
           | Struct   [Field]
           | Ptr      Type
           | Array    Type Int
-          | FlexType
-
 
 -- Value
 data Val = BoolVal   Bool

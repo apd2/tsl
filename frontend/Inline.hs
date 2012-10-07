@@ -207,7 +207,6 @@ mkType t =
          Type s (EnumSpec   _ es)  -> I.Enum $ getEnumName $ name $ head es
          Type s (PtrSpec    _ t)   -> I.Ptr $ mkType $ Type s t
          Type s (ArraySpec  _ t l) -> let ?scope = s in I.Array (mkType $ Type s t) (fromInteger $ evalInt l)
-         Type s (FlexTypeSpec _)   -> I.FlexType
 
 
 getEnumName :: (?spec::Spec) => Ident -> String

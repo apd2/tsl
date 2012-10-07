@@ -1,9 +1,6 @@
 module Predicate() where
 
-data Predicate = PAtom { pOp  :: RelOp
-                       , p1   :: Expr
-                       , p2   :: Expr
-                       }
+data Predicate = PAtom {pOp :: RelOp, p1 :: Expr, p2 :: Expr}
 
 pAtom :: RelOp -> Expr -> Expr -> Predicate
 pAtom op l r = norm $ Predicate op l r
@@ -36,9 +33,8 @@ exprToFormula (EBinOp Or e1 e2)        = FBin Disj (exprToFormula e1) (exprToFor
 exprToFormula (EBinOp Imp e1 e2)       = FBin Impl (exprToFormula e1) (exprToFormula e2)
 
 
-         | ENonDet
-
 expandPtr :: Expr -> Cascade
+
 combine :: BOp -> Cascade -> Cascade -> Formula
 
 type Cascade = Either [(Formula, Cascade)] Expr
