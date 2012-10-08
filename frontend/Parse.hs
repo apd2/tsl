@@ -130,12 +130,12 @@ methname = withPos $ MethodRef nopos <$> sepBy1 ident dot
 
 varDecl = withPos $ Var nopos <$> typeSpec 
                               <*> ident 
-                              <*> optionMaybe (reservedOp "=" *> expr)
+                              <*> optionMaybe (reservedOp "=" *> detexpr)
 
 typeDef = withPos $ TypeDecl nopos <$ reserved "typedef" <*> typeSpec <*> ident
 
-slice = brackets $ (,) <$> expr <*> (colon *> expr)
-index = brackets expr
+slice = brackets $ (,) <$> detexpr <*> (colon *> detexpr)
+index = brackets detexpr
 field = dot *> ident
 ptrfield = reservedOp "->" *> ident
 
@@ -143,12 +143,12 @@ ptrfield = reservedOp "->" *> ident
 constant = withPos $ Const nopos <$  reserved "const" 
                                      <*> typeSpec 
                                      <*> ident 
-                                     <*> (reservedOp "=" *> expr)
+                                     <*> (reservedOp "=" *> detexpr)
 
 data TypeMod = ModPtr | ModDim Expr
 
 typeSpec = mkType <$> (withPos $ sintType <|> uintType <|> boolType <|> userType <|> enumType <|> structType) 
-                  <*> (many $ (,) <$> ((ModDim <$> brackets expr) <|> (ModPtr <$ reservedOp "*")) <*> getPosition)
+                  <*> (many $ (,) <$> ((ModDim <$> brackets detexpr) <|> (ModPtr <$ reservedOp "*")) <*> getPosition)
 
 mkType :: TypeSpec -> [(TypeMod, SourcePos)] -> TypeSpec
 mkType t [] = t
@@ -278,8 +278,8 @@ twire        = withPos $ Wire nopos <$> (option False (True <$ reserved "export"
                                     <*  reserved "wire" 
                                     <*> typeSpec 
                                     <*> (ident <* reservedOp "=")
-                                    <*> optionMaybe (reservedOp "=" *> expr)
-tinitBlock   = withPos $ Init nopos <$ reserved "init" <*> expr
+                                    <*> optionMaybe (reservedOp "=" *> detexpr)
+tinitBlock   = withPos $ Init nopos <$ reserved "init" <*> detexpr
 tprocessDecl = withPos $ Process nopos <$  reserved "process" 
                                        <*> ident 
                                        <*> statement
@@ -294,7 +294,7 @@ tmethodDecl  = withPos $ Method nopos <$> (option False (True <$ reserved "expor
                                                <|> Right <$> statement)
 tgoalDecl    = withPos $ Goal nopos <$  reserved "goal" 
                                     <*> (ident <* reservedOp "=") 
-                                    <*> expr
+                                    <*> detexpr
 
 methCateg =  (Function <$ reserved "function")
          <|> (Procedure <$ reserved "procedure")
@@ -341,60 +341,75 @@ spar     = SPar nopos <$ reserved "fork" <*> (braces $ many $ (,) <$> (ident <* 
 sforever = SForever nopos <$ reserved "forever" <*> statement
 sdo      = SDo nopos <$ reserved "do" <*> statement <* reserved "while" <*> (parens expr)
 swhile   = SWhile nopos <$ reserved "while" <*> (parens expr) <*> statement
-sfor     = SFor nopos <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe statement <* semi) <*> (expr <* semi) <*> statement) <*> statement
+sfor     = SFor nopos <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe statement <* semi) <*> (detexpr <* semi) <*> statement) <*> statement
 schoice  = SChoice nopos <$ reserved "choice" <*> (braces $ many $ statement <* semi)
 spause   = SPause nopos <$ reserved "pause"
-swait    = SWait nopos <$ reserved "wait" <*> (parens expr)
+swait    = SWait nopos <$ reserved "wait" <*> (parens detexpr)
 sstop    = SStop nopos <$ reserved "stop"
 sbreak   = SBreak nopos <$ reserved "break"
 sinvoke  = SInvoke nopos <$ isinvoke <*> methname <*> (parens $ commaSep expr)
     where isinvoke = try $ lookAhead $ methname *> symbol "("
-sassert  = SAssert nopos <$ reserved "assert" <*> (parens expr)
-sassume  = SAssume nopos <$ reserved "assume" <*> (parens expr)
-sassign  = SAssign nopos <$ isassign <*> expr <* reservedOp "=" <*> expr
+sassert  = SAssert nopos <$ reserved "assert" <*> (parens detexpr)
+sassume  = SAssume nopos <$ reserved "assume" <*> (parens detexpr)
+sassign  = SAssign nopos <$ isassign <*> detexpr <* reservedOp "=" <*> expr
     where isassign = try $ lookAhead $ expr *> symbol "="
 site     = SITE nopos <$ reserved "if" <*> (parens expr) <*> statement <*> optionMaybe (reserved "else" *> statement)
-scase    = (fmap uncurry (SCase nopos <$ reserved "case" <*> (parens expr))) <*> (braces $ (,) <$> (many $ (,) <$> expr <* colon <*> statement <* semi) 
-                                                                                 <*> optionMaybe (reserved "default" *> colon *> statement <* semi))
+scase    = (fmap uncurry (SCase nopos <$ reserved "case" <*> (parens detexpr))) 
+           <*> (braces $ (,) <$> (many $ (,) <$> detexpr <* colon <*> statement <* semi) 
+                             <*> optionMaybe (reserved "default" *> colon *> statement <* semi))
 smagic   = SMagic nopos <$ ismagic
                         <*> ((braces $ reservedOp "...") 
-                         *> ((Left <$ reserved "using" <*> ident) <|> (Right <$ reserved "post" <*> expr)))
+                         *> ((Left <$ reserved "using" <*> ident) <|> (Right <$ reserved "post" <*> detexpr)))
     where ismagic = try $ lookAhead $ symbol "{" *> reservedOp "..."
 
 ------------------------------------------------------------------
 -- Expression
 ------------------------------------------------------------------
 
-term = parens expr <|> term'
+term    = parens expr <|> term'
+detterm = parens detexpr <|> detterm'
+
 
 term' = withPos $
-       ( estruct
-     <|> eapply
+       ( estruct True
+     <|> eapply  True
 --     <|> try etern
-     <|> elit
-     <|> ebool
-     <|> eterm
-     <|> ecase
-     <|> econd)
+     <|> elit    True
+     <|> ebool   True
+     <|> eterm   True
+     <|> ecase   True
+     <|> econd   True)
 
-estruct = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
+detterm' = withPos $
+          ( estruct False
+        <|> eapply  False
+ --     <|> try etern
+        <|> elit    False
+        <|> ebool   False
+        <|> eterm   False
+        <|> ecase   False
+        <|> econd   False)
+
+estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
-          anonfields = commaSep1 expr
-          namedfields = commaSep1 $ ((,) <$ reservedOp "." <*> ident <* reservedOp "=" <*> expr)
-eapply  = EApply nopos <$ isapply <*> methname <*> (parens $ commaSep expr)
+          anonfields = commaSep1 (expr' det)
+          namedfields = commaSep1 $ ((,) <$ reservedOp "." <*> ident <* reservedOp "=" <*> (expr' det))
+eapply  det = EApply nopos <$ isapply <*> methname <*> (parens $ commaSep (expr' det))
     where isapply = try $ lookAhead $ methname *> symbol "("
-eterm   = ETerm nopos <$> staticsym
-ebool   = EBool nopos <$> ((True <$ reserved "true") <|> (False <$ reserved "false"))
-elit    = lexeme elit'
-etern   = ETernOp nopos <$> expr <* reservedOp "?" <*> expr <* colon <*> expr
-ecase   = (fmap uncurry (ECase nopos <$ reserved "case" <*> (parens expr))) <*> (braces $ (,) <$> (many $ (,) <$> expr <* colon <*> expr <* semi) 
-                                                                                              <*> optionMaybe (reserved "default" *> colon *> expr <* semi))
-econd   = (fmap uncurry (ECond nopos <$ reserved "cond")) <*> (braces $ (,) <$> (many $ (,) <$> expr <* colon <*> expr <* semi) 
-                                                                            <*> optionMaybe (reserved "default" *> colon *> expr <* semi))
+eterm   det = ETerm nopos <$> staticsym
+ebool   det = EBool nopos <$> ((True <$ reserved "true") <|> (False <$ reserved "false"))
+elit    det = lexeme elit'
+etern   det = ETernOp nopos <$> (expr' det) <* reservedOp "?" <*> (expr' det) <* colon <*> (expr' det)
+ecase   det = (fmap uncurry (ECase nopos <$ reserved "case" <*> (parens detexpr))) 
+              <*> (braces $ (,) <$> (many $ (,) <$> detexpr <* colon <*> (expr' det) <* semi) 
+                                <*> optionMaybe (reserved "default" *> colon *> (expr' det) <* semi))
+econd   det = (fmap uncurry (ECond nopos <$ reserved "cond")) 
+               <*> (braces $ (,) <$> (many $ (,) <$> detexpr <* colon <*> (expr' det) <* semi) 
+                                 <*> optionMaybe (reserved "default" *> colon *> (expr' det) <* semi))
 
-elit' = (lookAhead $ char '\'' <|> digit) *> (do w         <- width
-                                                 ((s,r),v) <- sradval
-                                                 mkLit w s r v)
+elit'   = (lookAhead $ char '\'' <|> digit) *> (do w         <- width
+                                                   ((s,r),v) <- sradval
+                                                   mkLit w s r v)
 
 width = optionMaybe (try $ ((fmap fromIntegral parseDec) <* (lookAhead $ char '\'')))
 sradval =  ((,) <$> ((False, Rad2)  <$ (try $ string "'b"))  <*> parseBin)
@@ -446,10 +461,15 @@ msb 0 = 0
 msb 1 = 0
 msb n = 1 + (msb $ n `shiftR` 1)
 
+expr' True  = expr
+expr' False = detexpr
 
-expr =  (withPos $ ENonDet nopos <$ reservedOp "*")
+expr =  (reservedOp "*" *> unexpected "unexpected * in deterministic expression")
     <|> buildExpressionParser table term
     <?> "expression"
+
+detexpr =  buildExpressionParser table detterm
+       <?> "expression (deterministic)"
 
 table = [[postSlice, postIndex, postField, postPField]
         ,[prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus, prefix "*" Deref, prefix "&" AddrOf]

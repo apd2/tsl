@@ -228,7 +228,6 @@ mkVal (StructVal fs) = I.StructVal $ M.fromList $ map (\(n,TVal t v) -> (sname n
 mkVal (EnumVal   n)  = I.EnumVal $ sname n
 mkVal (PtrVal    e)  = error $ "Not implemented: mkVal PtrVal"
 mkVal (ArrayVal  vs) = I.ArrayVal $ map (\(TVal t v) -> I.TVal (mkType t) (mkVal v)) vs
-mkVal NondetVal      = I.NondetVal
 
 -----------------------------------------------------------
 -- State maintained during CFA construction

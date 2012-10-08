@@ -6,6 +6,7 @@ module StatementInline(statSimplify,
 import Control.Monad
 import Control.Monad.State
 import Data.List
+import Data.Maybe
 
 import Util hiding (name)
 import Inline
@@ -88,7 +89,7 @@ statSimplify' st                    = [st]
 statToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA before (SSeq _ ss) = foldM statToCFA before ss
 statToCFA before (SPause _)  = ctxPause before I.true
-statToCFA before (SWait _ c) = do ci <- exprToIExpr c
+statToCFA before (SWait _ c) = do ci <- exprToIExprDet c
                                   ctxPause before ci
 statToCFA before (SStop _)   = do after <- ctxInsLocLab I.LFinal
                                   ctxInsTrans before after I.nop
@@ -108,7 +109,8 @@ statToCFA' before after (SReturn _ rval) = do
                  Nothing -> return I.nop
                  Just v  -> case lhs of
                                  Nothing  -> return I.nop
-                                 Just lhs -> do vi <- exprToIExpr v
+                                 Just lhs -> do ScopeMethod _ m <- gets ctxScope
+                                                vi <- exprToIExpr v (fromJust $ methRettyp m)
                                                 return $ lhs I.=: vi
     ctxInsTrans before ret stat
 
@@ -139,7 +141,7 @@ statToCFA' before after (SForever _ stat) = do
 
 statToCFA' before after (SDo _ stat cond) = do
     brkLoc <- gets ctxBrkLoc
-    cond' <- exprToIExpr cond
+    cond' <- exprToIExpr cond (BoolSpec nopos)
     ctxInsTrans before after (I.SAssume $ I.EUnOp Not cond')
     -- after condition has been checked, before the body
     befbody <- ctxInsTrans' before (I.SAssume cond')
@@ -152,7 +154,7 @@ statToCFA' before after (SDo _ stat cond) = do
 
 statToCFA' before after (SWhile _ cond stat) = do
     brkLoc <- gets ctxBrkLoc
-    cond' <- exprToIExpr cond
+    cond' <- exprToIExpr cond (BoolSpec nopos)
     ctxPutBrkLoc after
     aftbody <- statToCFA before stat
     ctxPutBrkLoc brkLoc
@@ -163,7 +165,7 @@ statToCFA' before after (SWhile _ cond stat) = do
 
 statToCFA' before after (SFor _ (minit, cond, inc) body) = do
     brkLoc <- gets ctxBrkLoc
-    cond' <- exprToIExpr cond
+    cond' <- exprToIExpr cond (BoolSpec nopos)
     aftinit <- case minit of
                     Nothing   -> return before
                     Just init -> statToCFA before init
@@ -196,12 +198,12 @@ statToCFA' before after (SInvoke _ mref as) = do
          _                   -> methInline before after meth as Nothing
 
 statToCFA' before after (SAssert _ cond) = do
-    cond' <- exprToIExpr cond
+    cond' <- exprToIExprDet cond
     ctxInsTrans before after (I.SAssume cond')
     ctxInsTrans before I.cfaErrLoc (I.SAssume $ I.EUnOp Not cond')
 
 statToCFA' before after (SAssume _ cond) = do
-    cond' <- exprToIExpr cond
+    cond' <- exprToIExprDet cond
     ctxInsTrans before after (I.SAssume cond')
 
 statToCFA' before after (SAssign _ lhs (EApply _ mref args)) = do
@@ -212,15 +214,10 @@ statToCFA' before after (SAssign _ lhs (EApply _ mref args)) = do
          Task Uncontrollable -> taskCall before after meth args (Just lhs)
          _                   -> methInline before after meth args (Just lhs)
 
-statToCFA' before after (SAssign _ lhs (ENonDet _)) = do
-    scope <- gets ctxScope
-    lhs'  <- exprToIExpr lhs
-    v     <- ctxInsTmpVar $ mkType $ let ?scope = scope in typ lhs
-    ctxInsTrans before after $ lhs' I.=: I.EVar (I.varName v)
-
 statToCFA' before after (SAssign _ lhs rhs) = do
-    lhs' <- exprToIExpr lhs
-    rhs' <- exprToIExpr rhs
+    scope <- gets ctxScope
+    lhs' <- exprToIExprDet lhs
+    rhs' <- let ?scope = scope in exprToIExpr rhs (tspec lhs)
     ctxInsTrans before after $ lhs' I.=: rhs'
 
 statToCFA' before after (SITE _ cond sthen mselse) = do
@@ -260,12 +257,11 @@ methInline before after meth args mlhs = do
     -- save current context
     befctx <- get
     let pid = ctxPID befctx
-    args' <- mapM exprToIExpr args
     lhs <- case mlhs of
                 Nothing  -> return Nothing
-                Just lhs -> (liftM Just) $ exprToIExpr lhs
+                Just lhs -> (liftM Just) $ exprToIExprDet lhs
     -- set input arguments
-    aftarg <- setArgs before meth args'
+    aftarg <- setArgs before meth args
     aftpause <- ctxPause aftarg $ I.true
     -- set return location
     retloc <- ctxInsLoc
@@ -283,7 +279,7 @@ methInline before after meth args mlhs = do
     ctxInsTrans aftbody retloc I.nop
 
     -- copy out arguments
-    aftout <- copyOutArgs retloc meth args'
+    aftout <- copyOutArgs retloc meth args
     aftpause <- ctxPause aftout $ I.true
     -- nop-transition to after
     ctxInsTrans aftpause after I.nop
@@ -297,39 +293,40 @@ methInline before after meth args mlhs = do
 taskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
 taskCall before after meth args mlhs = do
     pid <- gets ctxPID
-    args' <- mapM exprToIExpr args
     lhs <- case mlhs of
                 Nothing  -> return Nothing
-                Just lhs -> (liftM Just) $ exprToIExpr lhs
+                Just lhs -> (liftM Just) $ exprToIExprDet lhs
     let envar = mkEnVar pid (Just meth)
     -- set input arguments
-    aftarg <- setArgs before meth args'
+    aftarg <- setArgs before meth args
     -- trigger task
     afttag <- ctxInsTrans' aftarg $ envar I.=: I.true
     -- pause and wait for task to complete
     aftwait <- ctxPause afttag $ envar I.=== I.false
     -- copy out arguments and retval
-    aftout <- copyOutArgs aftwait meth args'
+    aftout <- copyOutArgs aftwait meth args
     case (mlhs, mkRetVar (Just pid) meth) of
          (Nothing, _)          -> ctxInsTrans aftout after I.nop
-         (Just lhs, Just rvar) -> do lhs' <- exprToIExpr lhs
+         (Just lhs, Just rvar) -> do lhs' <- exprToIExprDet lhs
                                      ctxInsTrans aftout after $ lhs' I.=: rvar
 
 
 -- Common part of methInline and taskCall
 
 -- assign input arguments to a method
-setArgs :: I.Loc -> Method -> [I.Expr] -> State CFACtx I.Loc 
+setArgs :: (?spec::Spec) => I.Loc -> Method -> [Expr] -> State CFACtx I.Loc 
 setArgs before meth args = do
     pid <- gets ctxPID
-    foldM (\bef (farg,aarg) -> ctxInsTrans' bef $ (mkVar (Just pid) (Just meth) farg) I.=: aarg) 
+    foldM (\bef (farg,aarg) -> do aarg' <- exprToIExpr aarg (tspec farg)
+                                  ctxInsTrans' bef $ (mkVar (Just pid) (Just meth) farg) I.=: aarg') 
           before $ filter (\(a,_) -> argDir a == ArgIn) $ zip (methArg meth) args
 
 -- copy out arguments
-copyOutArgs :: I.Loc -> Method -> [I.Expr] -> State CFACtx I.Loc
+copyOutArgs :: (?spec::Spec) => I.Loc -> Method -> [Expr] -> State CFACtx I.Loc
 copyOutArgs loc meth args = do
     pid <- gets ctxPID
-    foldM (\loc (farg,aarg) -> ctxInsTrans' loc $ aarg I.=: (mkVar (Just pid) (Just meth) farg)) loc $ 
+    foldM (\loc (farg,aarg) -> do aarg' <- exprToIExprDet aarg
+                                  ctxInsTrans' loc $ aarg' I.=: (mkVar (Just pid) (Just meth) farg)) loc $ 
           filter (\(a,_) -> argDir a == ArgOut) $ zip (methArg meth) args
 
 

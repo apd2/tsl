@@ -55,7 +55,6 @@ data Val = BoolVal   Bool
          | EnumVal   String
          | PtrVal    LExpr
          | ArrayVal  [TVal]
-         | NondetVal
 
 data TVal = TVal {ttyp::Type, tval::Val}
 
