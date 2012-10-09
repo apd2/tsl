@@ -19,7 +19,7 @@ import {-# SOURCE #-} ExprOps
 import ExprValidate
 
 varMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Var -> Var
-varMapExpr f s v = Var (pos v) (tspecMapExpr f s $ tspec v) (name v) (fmap (mapExpr f s) $ varInit v)
+varMapExpr f s v = Var (pos v) (varMem v) (tspecMapExpr f s $ tspec v) (name v) (fmap (mapExpr f s) $ varInit v)
 
 
 instance (?spec::Spec, ?scope::Scope) => WithType Var where

@@ -3,6 +3,7 @@
 module ExprOps(mapExpr,
                exprCallees,
                isLExpr,
+               isMemExpr,
                isLocalLHS,
                isConstExpr,
                eval,
@@ -33,6 +34,7 @@ import MethodOps
 import Const
 import NS
 import Val
+import Var
 import StatementOps
 
 -- Map function over subexpression of expression
@@ -178,6 +180,28 @@ isLExpr (EIndex  _       e _) = isLExpr e
 isLExpr (ESlice  _       e _) = isLExpr e
 isLExpr (EUnOp   _ Deref e  ) = True
 isLExpr _                     = False
+
+-- Mem-expression: like L-expression, but must additionally
+-- refer to an in memory variable (i.e., the & operator must
+-- make sense)
+isMemExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+isMemExpr (ETerm _ n)           = case getTerm ?scope n of
+                                     ObjConst _ _ -> False
+                                     ObjEnum  _ _ -> False
+                                     ObjWire  _ _ -> False
+                                     ObjVar   _ v -> varMem v
+                                     _            -> True
+isMemExpr (EField  _       e f) = isMemExpr e &&
+                                  case objGet (ObjType $ typ e) f of
+                                       ObjWire  _ _ -> False
+                                       _            -> True
+isMemExpr (EPField _       e _) = True
+isMemExpr (EIndex  _       e _) = isMemExpr e
+isMemExpr (ESlice  _       e _) = isMemExpr e
+isMemExpr (EUnOp   _ Deref e  ) = True
+isMemExpr _                     = False
+
+
 
 -- Check that L-expr refers to a local variable (used in checking side-effect 
 -- freedom of expressions)

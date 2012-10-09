@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, UndecidableInstances #-}
 
-module Var(Var(Var,varInit,varType,varName)) where
+module Var(Var(Var,varMem,varInit,varType,varName)) where
 
 import Text.PrettyPrint
 
@@ -11,13 +11,14 @@ import Type
 import Expr
 
 data Var = Var { vpos      :: Pos
+               , varMem    :: Bool
                , varType   :: TypeSpec
                , varName   :: Ident
                , varInit   :: Maybe Expr}
 
 instance PP Var where
-    pp (Var _ t n Nothing)  = pp t <+> pp n
-    pp (Var _ t n (Just i)) = pp t <+> pp n <+> char '=' <+> pp i
+    pp (Var _ m t n Nothing)  = (if m then text "mem" else empty) <+> pp t <+> pp n
+    pp (Var _ m t n (Just i)) = (if m then text "mem" else empty) <+> pp t <+> pp n <+> char '=' <+> pp i
 
 instance WithPos Var where
     pos       = vpos

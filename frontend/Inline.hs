@@ -72,8 +72,8 @@ mkVar mpid mmeth x = I.EVar $ mkVarName mpid mmeth x
 mkVarS :: Maybe PID -> Maybe Method -> String -> I.Expr
 mkVarS mpid mmeth s = I.EVar $ mkVarNameS mpid mmeth s
 
-mkVarDecl :: (?spec::Spec, WithName a, WithType a) => Maybe PID -> Maybe Method -> a -> I.Var
-mkVarDecl mpid mmeth x = I.Var I.VarState (mkVarName mpid mmeth x) (mkType $ typ x)
+mkVarDecl :: (?spec::Spec, WithName a, WithType a) => Bool -> Maybe PID -> Maybe Method -> a -> I.Var
+mkVarDecl mem mpid mmeth x = I.Var mem I.VarState (mkVarName mpid mmeth x) (mkType $ typ x)
 
 -- Variable that stores return value of a task
 mkRetVar :: Maybe PID -> Method -> Maybe I.Expr
@@ -84,7 +84,8 @@ mkRetVar mpid meth = case methRettyp meth of
 mkRetVarDecl :: (?spec::Spec) => Maybe PID -> Method -> Maybe I.Var
 mkRetVarDecl mpid meth = case methRettyp meth of
                               Nothing -> Nothing
-                              Just t  -> Just $ I.Var I.VarState
+                              Just t  -> Just $ I.Var False
+                                                      I.VarState
                                                       (mkVarNameS mpid (Just meth) "$ret") 
                                                       (mkType $ Type (ScopeTemplate tmMain) t)
 
@@ -95,7 +96,7 @@ mkEnVar :: PID -> Maybe Method -> I.Expr
 mkEnVar pid mmeth = I.EVar $ mkEnVarName pid mmeth
 
 mkEnVarDecl :: PID -> Maybe Method -> I.Var
-mkEnVarDecl pid mmeth = I.Var I.VarState (mkEnVarName pid mmeth) I.Bool
+mkEnVarDecl pid mmeth = I.Var False I.VarState (mkEnVarName pid mmeth) I.Bool
 
 mkPCVarName :: PID -> String
 mkPCVarName pid = mkVarNameS (Just pid) Nothing "$pc"
@@ -126,7 +127,7 @@ mkPIDEnum :: PID -> I.Expr
 mkPIDEnum = I.EConst . I.EnumVal . mkPIDEnumeratorName
 
 mkPIDVarDecl :: [PID] -> (I.Var, I.Enumeration)
-mkPIDVarDecl pids = (I.Var I.VarState mkPIDVarName (I.Enum "$pidenum"), enum)
+mkPIDVarDecl pids = (I.Var False I.VarState mkPIDVarName (I.Enum "$pidenum"), enum)
     where enum = I.Enumeration "$pidenum" $ map mkPIDEnumeratorName $ pidIdle:pidCont:pids
 
 mkTagVarName :: String
@@ -136,7 +137,7 @@ mkTagVar :: I.Expr
 mkTagVar = I.EVar mkTagVarName
 
 mkTagVarDecl :: (?spec::Spec) => (I.Var, I.Enumeration)
-mkTagVarDecl = (I.Var I.VarState mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" tags)
+mkTagVarDecl = (I.Var False I.VarState mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" tags)
     where tags = "$idle" :
                  (map sname
                       $ filter ((== Task Controllable) . methCat)
@@ -156,7 +157,7 @@ mkContVar :: I.Expr
 mkContVar = I.EVar mkContVarName
 
 mkContVarDecl :: (?spec::Spec) => I.Var
-mkContVarDecl = I.Var I.VarState mkContVarName I.Bool
+mkContVarDecl = I.Var False I.VarState mkContVarName I.Bool
 
 mkMagicVarName :: String
 mkMagicVarName = "$magic"
@@ -165,7 +166,7 @@ mkMagicVar :: I.Expr
 mkMagicVar = I.EVar mkMagicVarName
 
 mkMagicVarDecl :: I.Var
-mkMagicVarDecl = I.Var I.VarState mkMagicVarName I.Bool
+mkMagicVarDecl = I.Var False I.VarState mkMagicVarName I.Bool
 
 type NameMap = M.Map Ident I.Expr
 
@@ -277,7 +278,7 @@ ctxInsTmpVar t = do
                  ScopeMethod _ meth -> Just meth
                  _                  -> Nothing
         name = mkVarNameS (Just pid) m ("$tmp" ++ show (last + 1))
-        v = I.Var I.VarTmp name t
+        v = I.Var False I.VarTmp name t
     modify $ (\ctx -> ctx { ctxLastVar = last + 1
                           , ctxVar     = v:(ctxVar ctx)})
     return v

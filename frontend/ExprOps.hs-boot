@@ -15,6 +15,7 @@ evalInt :: (?spec::Spec, ?scope::Scope) => ConstExpr -> Integer
 
 isConstExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isLExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+isMemExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isLocalLHS :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 exprNoSideEffects :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 exprObjs :: (?spec::Spec, ?scope::Scope) => Expr -> [Obj]

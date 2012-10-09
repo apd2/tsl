@@ -65,7 +65,8 @@ data Enumeration = Enumeration { enumName  :: String
 data VarCategory = VarState
                  | VarTmp
 
-data Var = Var { varCat  :: VarCategory
+data Var = Var { varMem  :: Bool
+               , varCat  :: VarCategory
                , varName :: String
                , varType :: Type
                }

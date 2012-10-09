@@ -59,6 +59,7 @@ reservedNames = ["after",
                  "import",
                  "init",
                  "invisible", 
+                 "mem",
                  "out",
                  "pause",
                  "break",
@@ -128,7 +129,8 @@ ident = withPos $ Ident nopos <$> (identifier <|> (quote <$> stringLit))
 staticsym = sepBy1 ident (reservedOp "::")
 methname = withPos $ MethodRef nopos <$> sepBy1 ident dot
 
-varDecl = withPos $ Var nopos <$> typeSpec 
+varDecl = withPos $ Var nopos <$> option False (True <$ reserved "mem")
+                              <*> typeSpec 
                               <*> ident 
                               <*> optionMaybe (reservedOp "=" *> detexpr)
 

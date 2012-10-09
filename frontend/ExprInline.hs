@@ -34,7 +34,7 @@ exprSimplify :: (?spec::Spec, ?scope::Scope, ?uniq::Uniq) => Expr -> ([Statement
 exprSimplify e@(EApply p mref as)  = (ss, e')
     where (argss, as') = unzip $ map exprSimplify as
           tmp = tmpName p ?uniq
-          decl = SVarDecl p (Var p (tspec e) tmp Nothing)
+          decl = SVarDecl p (Var p False (tspec e) tmp Nothing)
           asn = SAssign p (ETerm p [tmp]) (EApply p mref as')
           ss = (concat argss) ++ [decl,asn]
           e' = ETerm p [tmp]
@@ -83,7 +83,7 @@ condSimplify :: (?spec::Spec, ?scope::Scope, ?uniq::Uniq) => Pos -> Either TypeS
 condSimplify p mlhs cs mdef = 
     let (sdecl, lhs) = case mlhs of
                             Left t  -> let tmp = tmpName p ?uniq
-                                       in ([SVarDecl p $ Var p t tmp Nothing], ETerm p [tmp])
+                                       in ([SVarDecl p $ Var p False t tmp Nothing], ETerm p [tmp])
                             Right e -> ([],e)
         (ss,conds) = unzip $ map exprSimplify (fst $ unzip cs)
         negations = map (\es -> map (\e -> EUnOp (pos e) Not e) es) (inits conds)

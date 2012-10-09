@@ -119,9 +119,9 @@ exprToFormula (EBinOp Or e1 e2)        = FBinOp Disj (exprToFormula e1) (exprToF
 exprToFormula (EBinOp Imp e1 e2)       = FBinOp Impl (exprToFormula e1) (exprToFormula e2)
 
 -- Weakest precondition of a formula wrt a statement
-wps :: Formula -> Statement -> Formula
-wps f (SAssume e)     = FBinOp Conj f (exprToFormula e)
-wps f (SAssign e1 e2) = 
+--wps :: Formula -> Statement -> Formula
+--wps f (SAssume e)     = FBinOp Conj f (exprToFormula e)
+--wps f (SAssign e1 e2) = 
 
 
 --wp(e1 op e2, e3:=e4)  = wp(e1, e3:=e4)  op wp(e2, e3:=e4)

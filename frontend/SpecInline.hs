@@ -52,7 +52,7 @@ spec2Internal s =
            (pcvars, pcenums, pcinit) = unzip3 
                                        $ mapMaybe (\p -> let pid = pPID p
                                                              enum = pPCEnum p
-                                                             var  = I.Var I.VarState (mkPCVarName pid) (I.Enum $ I.enumName enum)
+                                                             var  = I.Var False I.VarState (mkPCVarName pid) (I.Enum $ I.enumName enum)
                                                              init = mkPCVar pid I.=== mkPC pid I.cfaInitLoc
                                                          in if null $ I.enumEnums enum then Nothing else Just (var, enum, init))
                                                   uproc
@@ -220,7 +220,7 @@ mkCTran m = (I.Transition I.cfaInitLoc after cfa4, vs)
           ((cfa2, aftargs), _, vs)  = let ?scope = ScopeMethod tmMain m
                                       in foldl' (\((cfa,loc),last,vs) arg -> 
                                                   let n    = mkVarNameS Nothing (Just m) ("$tmp" ++ show (last+1))
-                                                      v    = I.Var I.VarTmp n (mkType $ typ arg)
+                                                      v    = I.Var False I.VarTmp n (mkType $ typ arg)
                                                       cfa' = I.cfaInsTrans' loc (mkVar Nothing (Just m) arg I.=: I.EVar n) cfa
                                                   in (cfa', last+1, v:vs))
                                                 ((cfa1, afttag), 0, []) $ filter ((==ArgIn) . argDir) (methArg m)
@@ -248,15 +248,20 @@ mkVars = (mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cv
     (tvar, tenum) = mkTagVarDecl
 
     -- global variables
-    gvars = let ?scope = ScopeTemplate tmMain in map (mkVarDecl Nothing Nothing . gvarVar) $ tmVar tmMain
+    gvars = let ?scope = ScopeTemplate tmMain 
+                in map (\v -> mkVarDecl (varMem $ gvarVar v)Nothing Nothing (gvarVar v)) $ tmVar tmMain
 
     -- wires
-    wires = let ?scope = ScopeTemplate tmMain in map (mkVarDecl Nothing Nothing) $ tmWire tmMain
+    wires = let ?scope = ScopeTemplate tmMain 
+                in map (mkVarDecl False Nothing Nothing) $ tmWire tmMain
 
     -- local variables and input arguments of functions and procedures
-    fvars = concatMap (\m -> (let ?scope = ScopeMethod tmMain m in map (mkVarDecl Nothing (Just m)) (methVar m)) ++
-                             (let ?scope = ScopeTemplate tmMain in map (mkVarDecl Nothing (Just m)) 
-                                                                       (filter ((==ArgIn) . argDir) (methArg m))))
+    fvars = concatMap (\m -> (let ?scope = ScopeMethod tmMain m 
+                                  in map (\v -> mkVarDecl (varMem v) Nothing (Just m) v) (methVar m)) 
+                              ++
+                             (let ?scope = ScopeTemplate tmMain 
+                                  in map (mkVarDecl False Nothing (Just m)) 
+                                         (filter ((==ArgIn) . argDir) (methArg m))))
                       $ filter ((flip elem) [Function, Procedure] . methCat) 
                       $ tmMethod tmMain
 
@@ -289,8 +294,8 @@ mkVars = (mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cv
 
     taskVars :: Maybe PID -> Method -> [I.Var]
     taskVars mpid m = 
-        (let ?scope = ScopeTemplate tmMain in map (mkVarDecl mpid (Just m)) (methVar m)) ++ 
-        (let ?scope = ScopeMethod tmMain m in map (mkVarDecl mpid (Just m)) (methArg m)) ++
+        (let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) mpid (Just m) v) (methVar m)) ++ 
+        (let ?scope = ScopeMethod tmMain m in map (mkVarDecl False mpid (Just m)) (methArg m)) ++
         maybeToList (mkRetVarDecl mpid m)
 
 ----------------------------------------------------------------------

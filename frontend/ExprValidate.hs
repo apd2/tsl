@@ -89,7 +89,7 @@ validateExpr' (EUnOp p Deref e) = do
 
 validateExpr' (EUnOp p AddrOf e) = do
     validateExpr' e
-    assert (isLExpr e) p $ "Cannot take address of expression " ++ show e ++ ", which is not an L-value"
+    assert (isMemExpr e) p $ "Cannot take address of expression " ++ show e
 
 validateExpr' (EBinOp p op e1 e2) = do
     validateExpr' e1
