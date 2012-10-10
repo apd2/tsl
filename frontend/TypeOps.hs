@@ -150,7 +150,6 @@ typeComparable x y =
             (_                  , _)                  -> False
 
 
-
 typeWidth :: (?spec::Spec, WithType a) => a -> Int
 typeWidth x = case tspec $ typ' x of
                    SIntSpec _ w -> w

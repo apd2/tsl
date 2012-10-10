@@ -328,6 +328,3 @@ copyOutArgs loc meth args = do
     foldM (\loc (farg,aarg) -> do aarg' <- exprToIExprDet aarg
                                   ctxInsTrans' loc $ aarg' I.=: (mkVar (Just pid) (Just meth) farg)) loc $ 
           filter (\(a,_) -> argDir a == ArgOut) $ zip (methArg meth) args
-
-
-

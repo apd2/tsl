@@ -19,7 +19,7 @@ data ArithBOp = ABAnd
               | AMul
               deriving(Eq)
 
--- Arithmetic term
+-- Arithmetic (scalar) term
 data Term = TVar    String
           | TInt    Integer
           | TEnum   String
@@ -29,7 +29,7 @@ data Term = TVar    String
           | TIndex  Term Term
           | TUnOp   ArithUOp Term
           | TBinOp  ArithBOp Term Term
-          | TSlice  Term (Term,Term)
+          | TSlice  Term (Int,Int)
 
 -- Relational operations
 data RelOp = REq 
@@ -77,24 +77,24 @@ data Formula = FTrue
              | FPred     Predicate
              | FBinOp    BoolOp Formula Formula
              | FNot      Formula
-             | FReplace  Predicate Formula
+             | FReplace  Formula Predicate Formula
 
 
 -- Intermediate data structure that represents the value of
 -- an arithmetic expression depending on pointer predicates
 -- or other conditions
-data Cascade = CasCase [(Formula, Cascade)] 
-             | CasTerm Expr
+data Cascade a = CasTree  [(Formula, Cascade a)] 
+               | CasLeaf a
 
-ctrue :: Cascade
-ctrue = CasTerm TTrue
+ctrue :: Cascade Expr
+ctrue = CasLeaf true
 
--- Convert arithmetic expression to arithmetic term
-exprExpandPtr :: (?pdb::PredicateDB) => Expr -> Cascade
-exprExpandPtr e = error "Not implemented: exprExpandPtr" 
+-- Expand each pointer dereference operation in the expression
+-- using predicates in the DB.
+exprExpandPtr :: (?pdb::PredicateDB) => Expr -> Cascade Expr
 
 -- Compare two cascades
-combine :: RelOp -> Cascade -> Cascade -> Formula
+combine :: RelOp -> Cascade Expr -> Cascade Expr -> Formula
 combine op c1 c2 = error "Not implemented: combine"
 
 -- op is a relational operator
@@ -118,25 +118,67 @@ exprToFormula (EBinOp And e1 e2)       = FBinOp Conj (exprToFormula e1) (exprToF
 exprToFormula (EBinOp Or e1 e2)        = FBinOp Disj (exprToFormula e1) (exprToFormula e2)
 exprToFormula (EBinOp Imp e1 e2)       = FBinOp Impl (exprToFormula e1) (exprToFormula e2)
 
+
 -- Weakest precondition of a formula wrt a statement
---wps :: Formula -> Statement -> Formula
---wps f (SAssume e)     = FBinOp Conj f (exprToFormula e)
---wps f (SAssign e1 e2) = 
+updateFormStat :: Formula -> Statement -> Formula
+updateFormStat f (SAssume e)     = FBinOp Conj f (exprToFormula e)
+updateFormStat f (SAssign e1 e2) = foldl' (\f (e1,e2) -> updateFormAsn e1 e2 f) f $ zip sc1 sc2
+    where sc1 = exprScalars e1 
+          sc2 = exprScalars e2
+
+-- Formula update by assignment statement
+updateFormAsn :: Expr -> Expr -> Formula -> Formula
+updateFormAsn lhs rhs f = 
+    foldl' (\f p -> FReplace f p (updatePredAsn lhs rhs p)) f $ formPreds f
+
+-- Predicate update by assignment statement
+updatePredAsn :: Expr -> Expr -> Predicate -> Formula
+updatePredAsn lhs rhs p = pSubstScalCas p sc'
+    sc' = map (updateScalAsn lhs rhs) $ pScalars p
+ 
+-- Takes lhs and rhs of assignment statement and a term
+-- Computes possible overlaps of the lhs with the term and
+-- corresponding next-state values of the term expressed as concatenation 
+-- of slices of the rhs and the original term.
+updateScalAsn :: Expr -> Expr -> Term -> Cascade [Expr]
+updateScalAsn e                rhs (TSlice t s) = casSlice (updateScalAsn e rhs t) s
+updateScalAsn (ESlice e (l,h)) rhs t            = 
+    casMap (\b -> if b
+                     then (if l == 0 then [] else [termToExpr $ TSlice t (0,l-1)] ++
+                           [ESlice rhs (l,h)] ++
+                           if h == w - 1 then [] else [termToExpr $ TSlice t (h+1, w - 1)])
+                     else [termToExpr t]) 
+           $ lhsTermEq e t
+    where w = exprWidth e
+updateScalAsn lhs              rhs t            = 
+    casMap (\b -> if b then [rhs] else [termToExpr t]) $ lhsTermEq lhs t
 
 
---wp(e1 op e2, e3:=e4)  = wp(e1, e3:=e4)  op wp(e2, e3:=e4)
---
---wp(e, e3:=e4) -> -- find which part of e might be changed and
---                 -- to what subexpressions of e4
---                 overlap(e, e3, e4)::Cascade Expr
---                 -- for each element in the cascade,
---                 -- expand the RHS
---                 rhs -> 
---
---combinerhs :: (Expr, Expr) -> Cascade Formula
----- expand pointers in order
---
+-- Takes lhs expression and a term and computes the condition 
+-- when the expression is a synonym of the term.
+lhsTermEq :: Expr -> Term -> Cascade Bool
+lhsTermEq (EVar n1)       (TVar n2)        | n1 == n2 = CasLeaf True
+lhsTermEq (EField e f1)   (TField t f2)    | f1 == f2 = lhsTermEq e t
+lhsTermEq (EIndex ae ie)  (TIndex at it)              = 
+    casMap (\b -> if b 
+                     then case exprToFormula $ (termToExpr it) === ie of
+                               FTrue  -> CasLeaf True
+                               FFalse -> CasLeaf False
+                               f      -> CasTree [(f, CasLeaf True), (FNot f, CasLeaf False)]
+                     else CasLeaf False)
+           $ lhsTermEq ae at
+lhsTermEq (EUnOp Deref e) t                 | typeMatch etyp ttyp && isMemTerm t = 
+    case exprToFormula $ e === EUnOp AddrOf (termToExpr t) of
+         FTrue  -> CasLeaf True
+         FFalse -> CasLeaf False
+         f      -> CasTree [(f, CasLeaf True), (FNot f, CasLeaf False)]
+    where Ptr etyp = typ e
+          ttyp     = typ t
+lhsTermEq _              _                           = CasLeaf False
 
----- Weakest precondition of a formula wrt a transition
---wpt :: (?spec::Spec) => Formula -> Transition -> Formula
---
+
+-- Extract scalar terms from predicate
+pScalars :: Predicate -> [Term]
+
+-- Substitute all scalar terms in a predicate with cascades of scalar expressions.
+pSubstScalCas :: Predicate -> [Cascade [Expr]] -> Formula
