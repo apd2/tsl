@@ -220,8 +220,11 @@ mkCTran m = (I.Transition I.cfaInitLoc after cfa4, vs)
           ((cfa2, aftargs), _, vs)  = let ?scope = ScopeMethod tmMain m
                                       in foldl' (\((cfa,loc),last,vs) arg -> 
                                                   let n    = mkVarNameS Nothing (Just m) ("$tmp" ++ show (last+1))
-                                                      v    = I.Var False I.VarTmp n (mkType $ typ arg)
-                                                      cfa' = I.cfaInsTrans' loc (mkVar Nothing (Just m) arg I.=: I.EVar n) cfa
+                                                      t    = mkType $ typ arg
+                                                      v    = I.Var False I.VarTmp n t
+                                                      asns = zipWith I.SAssign (I.scalars (mkVar Nothing (Just m) arg) t)
+                                                                               (I.scalars (I.EVar n) t)
+                                                      cfa' = I.cfaInsTransMany' loc asns cfa
                                                   in (cfa', last+1, v:vs))
                                                 ((cfa1, afttag), 0, []) $ filter ((==ArgIn) . argDir) (methArg m)
           -- switch to uncontrollable state

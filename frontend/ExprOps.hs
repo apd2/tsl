@@ -89,9 +89,9 @@ eval' (ELit _ w _ _ v) _      = IntVal v
 eval' (EBool _ b) _           = BoolVal b
 eval' (EField _ e f) _        = let StructVal v = val $ eval e
                                 in val $ v M.! f
-eval' (EIndex _ a i) _        = let ArrayVal av = val $ eval a
-                                    iv          = evalInt i
-                                in val $ av !! (fromInteger iv)
+--eval' (EIndex _ a i) _        = let ArrayVal av = val $ eval a
+--                                    iv          = evalInt i
+--                                in val $ av !! (fromInteger iv)
 eval' (EUnOp _ Not e) t       = BoolVal $ not $ evalBool e
 eval' (EUnOp _ BNeg e) t      = IntVal $ foldl' (\v idx -> complementBit v idx) (evalInt e) [0..typeWidth t - 1]
 eval' (EUnOp _ AddrOf e) t    = PtrVal e
@@ -120,6 +120,10 @@ eval' (EBinOp  _ op e1 e2) t | elem op [BAnd,BOr,BXor] =
                                                           True  -> setBit v idx
                                                           False -> v) 
                                           0 [0..typeWidth t - 1]
+eval' (EBinOp  _ op e1 e2) t | op == BConcat = 
+                                let i1 = abs $ evalInt e1
+                                    i2 = abs $ evalInt e2
+                                in IntVal $ i1 + (i2 `shiftL` typeWidth e1)
 eval' (EBinOp _ op e1 e2) t | elem op [Plus,BinMinus,Mod,Mul] = 
                                let i1 = evalInt e1
                                    i2 = evalInt e2
@@ -228,7 +232,7 @@ isConstExpr (EBool _ _)              = True
 isConstExpr (EApply _ _ _)           = False -- TODO: constant functions
 isConstExpr (EField _ s _)           = isConstExpr s
 isConstExpr (EPField _ _ _)          = False
-isConstExpr (EIndex _ a i)           = isConstExpr a && isConstExpr i
+isConstExpr (EIndex _ a i)           = False --isConstExpr a && isConstExpr i
 isConstExpr (EUnOp _ _ e)            = isConstExpr e
 isConstExpr (EBinOp _ _ e1 e2)       = isConstExpr e1 && isConstExpr e2
 isConstExpr (ETernOp _ e1 e2 e3)     = isConstExpr e1 && isConstExpr e2 && isConstExpr e3
@@ -341,6 +345,7 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
     typ (EUnOp   p AddrOf e)    = Type s (PtrSpec p t) where Type s t = typ' e
     typ (EBinOp  p op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] = Type ?scope $ BoolSpec p
                              | elem op [BAnd,BOr,BXor] = typ e1
+                             | op == BConcat = Type ?scope (UIntSpec p $ typeWidth e1 + typeWidth e2)
                              | elem op [Plus,Mul] = case (tspec e1, tspec e2) of
                                                          ((UIntSpec _ w1), (UIntSpec _ w2)) -> Type ?scope $ UIntSpec p (max w1 w2)
                                                          _                                  -> Type ?scope $ SIntSpec p (max (typeWidth e1) (typeWidth e2))

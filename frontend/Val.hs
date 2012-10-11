@@ -15,7 +15,7 @@ data Val = BoolVal          Bool
          | StructVal        (M.Map Ident TVal)
          | EnumVal          Ident
          | PtrVal           LExpr
-         | ArrayVal         [TVal]
+--         | ArrayVal         [TVal]
          | NondetVal
 
 class WithVal a where
@@ -35,7 +35,7 @@ instance Eq Val where
     (==) (IntVal i1)    (IntVal i2)    = i1 == i2
     (==) (StructVal s1) (StructVal s2) = and $ map (uncurry (==)) (zip (map snd $ M.toList s1) (map snd $ M.toList s2))
     (==) (PtrVal p1)    (PtrVal p2)    = error $ "Eq PtrVal not implemented"
-    (==) (ArrayVal a1)  (ArrayVal a2)  = and $ map (uncurry (==)) (zip a1 a2)
+--    (==) (ArrayVal a1)  (ArrayVal a2)  = and $ map (uncurry (==)) (zip a1 a2)
     (==) _              _              = False
 
 instance Eq TVal where

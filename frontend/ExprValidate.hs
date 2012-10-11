@@ -98,7 +98,7 @@ validateExpr' (EBinOp p op e1 e2) = do
       then assert (typeComparable e1 e2) p $ "Operator " ++ show op ++ " applied to expressions " ++ show e1 ++ 
                                              " and " ++ show e2 ++ " that have uncomparable types"
       else return () 
-    if elem op [Lt,Gt,Lte,Gte,BinMinus,BAnd,BOr,BXor,Mod,Mul]
+    if elem op [Lt,Gt,Lte,Gte,BinMinus,BAnd,BOr,BXor,BConcat,Mod,Mul]
        then do assert (isInt e1) p $ "First operand " ++ show e1 ++ " of " ++ show op ++ " is of non-integral type"
                assert (isInt e2) p $ "Second operand " ++ show e2 ++ " of " ++ show op ++ " is of non-integral type"
        else return ()

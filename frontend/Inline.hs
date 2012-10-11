@@ -228,7 +228,7 @@ mkVal (IntVal    i)  = I.IntVal  i
 mkVal (StructVal fs) = I.StructVal $ M.fromList $ map (\(n,TVal t v) -> (sname n, I.TVal (mkType t) (mkVal v))) $ M.toList fs
 mkVal (EnumVal   n)  = I.EnumVal $ sname n
 mkVal (PtrVal    e)  = error $ "Not implemented: mkVal PtrVal"
-mkVal (ArrayVal  vs) = I.ArrayVal $ map (\(TVal t v) -> I.TVal (mkType t) (mkVal v)) vs
+--mkVal (ArrayVal  vs) = I.ArrayVal $ map (\(TVal t v) -> I.TVal (mkType t) (mkVal v)) vs
 
 -----------------------------------------------------------
 -- State maintained during CFA construction
@@ -263,10 +263,19 @@ ctxInsLocLab lab = do
 ctxInsTrans :: I.Loc -> I.Loc -> I.Statement -> State CFACtx ()
 ctxInsTrans from to stat = modify $ (\ctx -> ctx {ctxCFA = I.cfaInsTrans from to stat $ ctxCFA ctx})
 
+ctxInsTransMany :: I.Loc -> I.Loc -> [I.Statement] -> State CFACtx ()
+ctxInsTransMany from to stats = modify $ (\ctx -> ctx {ctxCFA = I.cfaInsTransMany from to stats $ ctxCFA ctx})
+
 ctxInsTrans' :: I.Loc -> I.Statement -> State CFACtx I.Loc
 ctxInsTrans' from stat = do
     to <- ctxInsLoc
     ctxInsTrans from to stat
+    return to
+
+ctxInsTransMany' :: I.Loc -> [I.Statement] -> State CFACtx I.Loc
+ctxInsTransMany' from stats = do
+    to <- ctxInsLoc
+    ctxInsTransMany from to stats
     return to
 
 ctxInsTmpVar :: I.Type -> State CFACtx I.Var

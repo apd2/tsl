@@ -83,6 +83,7 @@ statSimplify' (SMagic p (Right e))  = let (ss,e') = exprSimplify e
 statSimplify' st                    = [st]
 
 
+
 ----------------------------------------------------------
 -- Convert statement to CFA
 ----------------------------------------------------------
@@ -103,16 +104,19 @@ statToCFA' :: (?spec::Spec, ?procs::[ProcTrans]) => I.Loc -> I.Loc -> Statement 
 statToCFA' before after (SVarDecl _ _) = ctxInsTrans before after I.nop
 statToCFA' before after (SReturn _ rval) = do
     -- add transition before before to return location
-    lhs <- gets ctxLHS
-    ret <- gets ctxRetLoc
-    stat <- case rval of 
-                 Nothing -> return I.nop
-                 Just v  -> case lhs of
-                                 Nothing  -> return I.nop
-                                 Just lhs -> do ScopeMethod _ m <- gets ctxScope
-                                                vi <- exprToIExpr v (fromJust $ methRettyp m)
-                                                return $ lhs I.=: vi
-    ctxInsTrans before ret stat
+    lhs   <- gets ctxLHS
+    ret   <- gets ctxRetLoc
+    scope <- gets ctxScope
+    case rval of 
+         Nothing -> ctxInsTrans before ret I.nop
+         Just v  -> case lhs of
+                         Nothing  -> ctxInsTrans before ret I.nop
+                         Just lhs -> do ScopeMethod _ m <- gets ctxScope
+                                        let t = fromJust $ methRettyp m
+                                        vi <- exprToIExprs v t
+                                        let asns = zipWith I.SAssign (I.scalars lhs (mkType $ Type scope t)) 
+                                                                     (concatMap (uncurry I.scalars) vi)
+                                        ctxInsTransMany before ret asns
 
 statToCFA' before after (SPar _ ps) = do
     pid <- gets ctxPID
@@ -216,9 +220,12 @@ statToCFA' before after (SAssign _ lhs (EApply _ mref args)) = do
 
 statToCFA' before after (SAssign _ lhs rhs) = do
     scope <- gets ctxScope
+    let ?scope = scope
+    let t = mkType $ typ lhs
     lhs' <- exprToIExprDet lhs
-    rhs' <- let ?scope = scope in exprToIExpr rhs (tspec lhs)
-    ctxInsTrans before after $ lhs' I.=: rhs'
+    rhs' <- exprToIExprs rhs (tspec lhs)
+    ctxInsTransMany before after $ zipWith I.SAssign (I.scalars lhs' t) 
+                                                     (concatMap (uncurry I.scalars) rhs')
 
 statToCFA' before after (SITE _ cond sthen mselse) = do
     befthen <- statToCFA before (SAssume nopos cond)
@@ -307,8 +314,9 @@ taskCall before after meth args mlhs = do
     aftout <- copyOutArgs aftwait meth args
     case (mlhs, mkRetVar (Just pid) meth) of
          (Nothing, _)          -> ctxInsTrans aftout after I.nop
-         (Just lhs, Just rvar) -> do lhs' <- exprToIExprDet lhs
-                                     ctxInsTrans aftout after $ lhs' I.=: rvar
+         (Just lhs, Just rvar) -> do let t = mkType $ Type (ScopeTemplate tmMain) (fromJust $ methRettyp meth)
+                                     lhs' <- exprToIExprDet lhs
+                                     ctxInsTransMany aftout after $ zipWith I.SAssign (I.scalars lhs' t) (I.scalars rvar t)
 
 
 -- Common part of methInline and taskCall
@@ -316,9 +324,11 @@ taskCall before after meth args mlhs = do
 -- assign input arguments to a method
 setArgs :: (?spec::Spec) => I.Loc -> Method -> [Expr] -> State CFACtx I.Loc 
 setArgs before meth args = do
-    pid <- gets ctxPID
-    foldM (\bef (farg,aarg) -> do aarg' <- exprToIExpr aarg (tspec farg)
-                                  ctxInsTrans' bef $ (mkVar (Just pid) (Just meth) farg) I.=: aarg') 
+    pid   <- gets ctxPID
+    foldM (\bef (farg,aarg) -> do aarg' <- exprToIExprs aarg (tspec farg)
+                                  let t = mkType $ Type (ScopeTemplate tmMain) (tspec farg)
+                                  ctxInsTransMany' bef $ zipWith I.SAssign (I.scalars (mkVar (Just pid) (Just meth) farg) t) 
+                                                                           (concatMap (uncurry I.scalars) aarg')) 
           before $ filter (\(a,_) -> argDir a == ArgIn) $ zip (methArg meth) args
 
 -- copy out arguments
@@ -326,5 +336,7 @@ copyOutArgs :: (?spec::Spec) => I.Loc -> Method -> [Expr] -> State CFACtx I.Loc
 copyOutArgs loc meth args = do
     pid <- gets ctxPID
     foldM (\loc (farg,aarg) -> do aarg' <- exprToIExprDet aarg
-                                  ctxInsTrans' loc $ aarg' I.=: (mkVar (Just pid) (Just meth) farg)) loc $ 
+                                  let t = mkType $ Type (ScopeTemplate tmMain) (tspec farg)
+                                  ctxInsTransMany' loc $ zipWith I.SAssign (I.scalars aarg' t) 
+                                                                           (I.scalars (mkVar (Just pid) (Just meth) farg) t)) loc $ 
           filter (\(a,_) -> argDir a == ArgOut) $ zip (methArg meth) args

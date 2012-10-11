@@ -41,6 +41,7 @@ data BOp = Eq
          | BAnd 
          | BOr 
          | BXor
+         | BConcat
          | Plus 
          | BinMinus 
          | Mod
@@ -60,6 +61,7 @@ instance PP BOp where
     pp BAnd     = text "&"
     pp BOr      = text "|"
     pp BXor     = text "^"
+    pp BConcat  = text "++"
     pp Plus     = text "+"
     pp BinMinus = text "-"
     pp Mod      = text "%"

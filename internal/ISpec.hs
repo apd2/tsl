@@ -7,6 +7,7 @@ module ISpec(Field(..),
              Var(..),
              Goal(..),
              Expr(..),
+             scalars,
              disj,
              conj,
              true,
@@ -22,7 +23,9 @@ module ISpec(Field(..),
              cfaInsLoc,
              cfaLocLabel,
              cfaInsTrans,
+             cfaInsTransMany,
              cfaInsTrans',
+             cfaInsTransMany',
              Statement(..),
              (=:),
              nop,
@@ -54,7 +57,7 @@ data Val = BoolVal   Bool
          | StructVal (M.Map String TVal)
          | EnumVal   String
          | PtrVal    LExpr
-         | ArrayVal  [TVal]
+--         | ArrayVal  [TVal]
 
 data TVal = TVal {ttyp::Type, tval::Val}
 
@@ -87,7 +90,13 @@ data Expr = EVar    String
           | EUnOp   UOp Expr
           | EBinOp  BOp Expr Expr
           | ESlice  Expr Slice
-          | EStruct String [Expr]
+          | ENonDet                -- internal use in predicate update computation only
+
+-- Extract all scalars from expression
+scalars :: Expr -> Type -> [Expr]
+scalars e (Struct fs)  = concatMap (\(Field n t) -> scalars (EField e n) t) fs
+scalars e (Array  t s) = concatMap (\i -> scalars (EIndex e (EConst $ IntVal $ fromIntegral i)) t) [0..s-1]
+scalars e t = [e]
 
 (===) :: Expr -> Expr -> Expr
 e1 === e2 = EBinOp Eq e1 e2
@@ -148,8 +157,18 @@ cfaLocLabel loc cfa = fromJustMsg "cfaLocLabel" $ G.lab cfa loc
 cfaInsTrans :: Loc -> Loc -> Statement -> CFA -> CFA
 cfaInsTrans from to stat cfa = G.insEdge (from,to,stat) cfa
 
+cfaInsTransMany :: Loc -> Loc -> [Statement] -> CFA -> CFA
+cfaInsTransMany from to stats cfa = cfaInsTrans aft to nop cfa'
+    where (cfa', aft) = foldl' (\(cfa, loc) stat -> let (cfa',loc') = cfaInsLoc LNone cfa
+                                                    in (cfaInsTrans loc loc' stat cfa', loc'))
+                               (cfa, from) stats
+
 cfaInsTrans' :: Loc -> Statement -> CFA -> (CFA, Loc)
 cfaInsTrans' from stat cfa = (cfaInsTrans from to stat cfa', to)
+    where (cfa', to) = cfaInsLoc LNone cfa
+
+cfaInsTransMany' :: Loc -> [Statement] -> CFA -> (CFA, Loc)
+cfaInsTransMany' from stats cfa = (cfaInsTransMany from to stats cfa', to)
     where (cfa', to) = cfaInsLoc LNone cfa
 
 data Spec = Spec { specEnum         :: [Enumeration]
