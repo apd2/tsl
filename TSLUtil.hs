@@ -13,7 +13,8 @@ module TSLUtil(mapFst,
                grCycle,
                Uniq, 
                newUniq, 
-               getUniq) where
+               getUniq,
+               bitWidth) where
 
 import Control.Monad.Error
 import Data.List
@@ -24,6 +25,7 @@ import Data.Graph.Inductive.Query.DFS
 import System.IO.Unsafe
 import Data.IORef
 
+import Util hiding (name)
 import Pos
 import Name
 
@@ -83,3 +85,6 @@ getUniq u = unsafePerformIO $
                writeIORef u (v+1)
                return (v+1)
 
+-- The number of bits required to encode range [0..i]
+bitWidth :: (Integral a) => a -> Int
+bitWidth i = log2 (fromIntegral $ i+1)

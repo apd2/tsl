@@ -168,7 +168,8 @@ exprToIExpr' (ETerm _ ssym) _ = do
                                   Just e  -> e
                                   Nothing -> error $ "exprToIExpr: unknown name: " ++ sname n
 
-exprToIExpr' (ELit _ _ _ _ v) _             = return $ I.EConst $ I.IntVal v
+exprToIExpr' (ELit _ w True _ v) _          = return $ I.EConst $ I.SIntVal w v
+exprToIExpr' (ELit _ w False _ v) _         = return $ I.EConst $ I.UIntVal w v
 exprToIExpr' (EBool _ b) _                  = return $ I.EConst $ I.BoolVal b
 exprToIExpr' (EField _ e f) _               = do e' <- exprToIExprDet e
                                                  return $ I.EField e' (sname f)

@@ -54,8 +54,11 @@ isRelBOp op = elem op [Eq,Neq,Lt,Gt,Lte,Gte]
 isBoolBOp :: BOp -> Bool
 isBoolBOp op = elem op [And,Or,Imp]
 
-isArithOp :: BOp -> Bool
-isArithOp op = elem op [BAnd,BOr,BXor,BConcat,Plus,BinMinus,Mod,Mul]
+isArithBOp :: BOp -> Bool
+isArithBOp op = elem op [BAnd,BOr,BXor,BConcat,Plus,BinMinus,Mod,Mul]
+
+isBitWiseBOp :: BOp -> Bool
+isBitWiseBOp op = elem op [BAnd,BOr,BXor]
 
 instance PP BOp where
     pp Eq       = text "=="
