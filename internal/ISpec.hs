@@ -54,7 +54,6 @@ data Type = Bool
 -- Value
 data Val = BoolVal   Bool
          | IntVal    Integer
-         | StructVal (M.Map String TVal)
          | EnumVal   String
          | PtrVal    LExpr
 --         | ArrayVal  [TVal]
@@ -90,7 +89,6 @@ data Expr = EVar    String
           | EUnOp   UOp Expr
           | EBinOp  BOp Expr Expr
           | ESlice  Expr Slice
-          | ENonDet                -- internal use in predicate update computation only
 
 -- Extract all scalars from expression
 scalars :: Expr -> Type -> [Expr]

@@ -116,8 +116,7 @@ exprExpandPtr e@(EConst _)           = CasLeaf e
 exprExpandPtr   (EField e f)         = casMap (\e -> CasLeaf $ EField e f) $ exprExpandPtr e
 exprExpandPtr   (EIndex a i)         = EIndex <$> exprExpandPtr a <*> exprExpandPtr i
 exprExpandPtr   (EUnOp Deref e)      = casMap (CasTree . 
-                                               (\ps -> map (\(p, lexpr) -> (FPred p, CasLeaf lexpr)) ps ++
-                                                       [(conj $ map (FNot . fst) ps, CasLeaf ENonDet)]) . 
+                                               (\ps -> map (\(p, lexpr) -> (FPred p, CasLeaf lexpr)) ps) . 
                                                pdbPtrPreds)
                                               $ exprExpandPtr e
 exprExpandPtr   (EBinOp op e1 e2)    = (EBinOp op) <$> exprExpandPtr e1 <*> exprExpandPtr e2
@@ -143,29 +142,37 @@ combineExpr op e1 e2 | typ e1 == Bool =
 
 -- Convert boolean expression without pointers to a formula
 boolExprToFormula :: Expr -> Formula
-boolExprToFormula
+boolExprToFormula e@(EVar n)                         = FPred $ pAtom (exprToTerm e) TTrue
+boolExprToFormula   (EConst (BoolVal True))          = FTrue
+boolExprToFormula   (EConst (BoolVal False))         = FFalse
+boolExprToFormula e@(EField s f)                     = FPred $ pAtom (exprToTerm e) TTrue
+boolExprToFormula e@(EIndex a i)                     = FPred $ pAtom (exprToTerm e) TTrue
+boolExprToFormula   (EUnOp Not e)                    = FNot $ boolExprToFormula e
+boolExprToFormula   (EBinOp op e1 e2) | isRelBOp op  = combineExpr (bopToRelOp op) e1 e2
+boolExprToFormula   (EBinOp op e1 e2) | isBoolBOp op = FBinOp (bopToBoolOp op) (boolExprToFormula e1) (boolExprToFormula e2)
 
-EVar    String
-EConst  Val
-EField  Expr String
-EIndex  Expr Expr
-EUnOp   UOp Expr
-EBinOp  BOp Expr Expr
-ESlice  Expr Slice
-ENonDet
+-- Convert scalar expression without pointers and boolean operators to a term
+exprToTerm :: Expr -> Term
+exprToTerm (EVar n)             = TVar   n
+exprToTerm (EConst (IntVal i))  = TInt   i
+exprToTerm (EConst (EnumVal e)) = TEnum  e
+exprToTerm (EField s f)         = TField (exprToTerm s) f
+exprToTerm (EIndex a i)         = TIndex (exprToTerm a) (exprToTerm i)
+exprToTerm (EUnOp AddrOf e)     = TAddr  (exprToTerm e)
+exprToTerm (EUnOp op e)         = TUnOp  (uopToArithOp op) (exprToTerm e)
+exprToTerm (EBinOp op e1 e2)    = TBinOp (bopToArithOp op) (exprToTerm e1) (exprToTerm e2)
+exprToTerm (ESlice e s)         = TSlice (exprToTerm e) s
 
 -- Convert boolean expression to a formula
 exprToFormula :: (?pdb::PredicateDB) => Expr -> Formula
-exprToFormula e@(EVar   _)               = combine REq (exprExpandPtr e) ctrue
-exprToFormula e@(EField _ _)             = combine REq (exprExpandPtr e) ctrue
-exprToFormula e@(EIndex _ _)             = combine REq (exprExpandPtr e) ctrue
-exprToFormula   (EConst (BoolVal True))  = FTrue
-exprToFormula   (EConst (BoolVal False)) = FFalse
-exprToFormula   (EUnOp  Not e)           = FNot $ exprToFormula e
-exprToFormula   (EBinOp op  e1 e2) | elem op [Eq, Neq, Lt, Gt, Lte, Gte] 
-                                         = combine (bopToRelOp op) (exprExpandPtr e1) (exprExpandPtr e2)
-exprToFormula   (EBinOp And e1 e2) | elem op [And, Or, Imp]
-                                         = FBinOp (bopToBoolOp op) (exprToFormula e1) (exprToFormula e2)
+exprToFormula e@(EVar   _)                       = combine REq (exprExpandPtr e) ctrue
+exprToFormula e@(EField _ _)                     = combine REq (exprExpandPtr e) ctrue
+exprToFormula e@(EIndex _ _)                     = combine REq (exprExpandPtr e) ctrue
+exprToFormula   (EConst (BoolVal True))          = FTrue
+exprToFormula   (EConst (BoolVal False))         = FFalse
+exprToFormula   (EUnOp  Not e)                   = FNot $ exprToFormula e
+exprToFormula   (EBinOp op e1 e2) | isRelBOp op  = combine (bopToRelOp op) (exprExpandPtr e1) (exprExpandPtr e2)
+exprToFormula   (EBinOp op e1 e2) | isBoolBOp op = FBinOp (bopToBoolOp op) (exprToFormula e1) (exprToFormula e2)
 
 
 -- Weakest precondition of a formula wrt a statement
@@ -270,5 +277,5 @@ tSubstCas   (TIndex _ _)         cas = (head cas              , tail cas)
 tSubstCas   (TUnOp  op t)        cas = mapFst (casMap (\e -> EUnOp (arithOpToUOp op) t)) $ tSubstCas t
 tSubstCas   (TBinOp op t1 t2)    cas = let (t1', cas1) = tSubstCas t1 cas
                                            (t2', cas2) = tSubstCas t2 cas1
-                                       in ((\e1 e2 -> EBinOp (arithOpToBOp op) e1 e2) <$> t1' <*> t2' , cas2)
+                                       in ((\e1 e2 -> EBinOp (arithOpToBOp op) e1 e2) <$> t1' <*> t2', cas2)
 tSubstCas   (TSlice t s)         cas = mapFst (casMap (\e -> eSlice e s)) $ tSubstCas t

@@ -179,7 +179,7 @@ procLMap :: PID -> Process -> NameMap
 procLMap pid p = M.fromList $ map (\v -> (name v, mkVar (Just pid) Nothing v)) (procVar p)
 
 globalNMap :: (?spec::Spec) => NameMap
-globalNMap = M.fromList $ gvars ++ wires ++ enums ++ consts
+globalNMap = M.fromList $ gvars ++ wires ++ enums
     where -- global variables
           gvars  = map (\v -> (name v, mkVar Nothing Nothing v)) $ tmVar tmMain
           -- wires
@@ -189,10 +189,12 @@ globalNMap = M.fromList $ gvars ++ wires ++ enums ++ consts
                                             EnumSpec _ es -> map (\e -> (name e, I.EConst $ I.EnumVal $ sname e)) es
                                             _             -> []) 
                              $ specType ?spec
-          -- consts
-          consts = let ?scope = ScopeTop
-                   in map (\c -> (name c, I.EConst $ mkVal $ val $ eval $ constVal c))
-                          $ specConst ?spec
+--          -- consts
+--          consts = let ?scope = ScopeTop
+--                   in mapMaybe (\c -> case constVal c of
+--                                           Just (StructVal _) -> Nothing
+--                                           v                  -> (name c, I.EConst $ mkVal $ val $ eval v))
+--                          $ specConst ?spec
 
 ----------------------------------------------------------------------
 -- Types
@@ -222,13 +224,13 @@ getEnumName n =
 -- Values
 ----------------------------------------------------------------------
 
-mkVal :: (?spec::Spec) => Val -> I.Val
-mkVal (BoolVal   b)  = I.BoolVal b
-mkVal (IntVal    i)  = I.IntVal  i
-mkVal (StructVal fs) = I.StructVal $ M.fromList $ map (\(n,TVal t v) -> (sname n, I.TVal (mkType t) (mkVal v))) $ M.toList fs
-mkVal (EnumVal   n)  = I.EnumVal $ sname n
-mkVal (PtrVal    e)  = error $ "Not implemented: mkVal PtrVal"
---mkVal (ArrayVal  vs) = I.ArrayVal $ map (\(TVal t v) -> I.TVal (mkType t) (mkVal v)) vs
+--mkVal :: (?spec::Spec) => Val -> I.Val
+--mkVal (BoolVal   b)  = I.BoolVal b
+--mkVal (IntVal    i)  = I.IntVal  i
+----mkVal (StructVal fs) = error "mkVal StructVal (this should have disappeared after exprSimplify)" 
+--mkVal (EnumVal   n)  = I.EnumVal $ sname n
+--mkVal (PtrVal    e)  = error "Not implemented: mkVal PtrVal"
+----mkVal (ArrayVal  vs) = I.ArrayVal $ map (\(TVal t v) -> I.TVal (mkType t) (mkVal v)) vs
 
 -----------------------------------------------------------
 -- State maintained during CFA construction

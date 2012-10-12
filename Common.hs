@@ -48,6 +48,15 @@ data BOp = Eq
          | Mul
          deriving(Eq)
 
+isRelBOp :: BOp -> Bool
+isRelBOp op = elem op [Eq,Neq,Lt,Gt,Lte,Gte] 
+
+isBoolBOp :: BOp -> Bool
+isBoolBOp op = elem op [And,Or,Imp]
+
+isArithOp :: BOp -> Bool
+isArithOp op = elem op [BAnd,BOr,BXor,BConcat,Plus,BinMinus,Mod,Mul]
+
 instance PP BOp where
     pp Eq       = text "=="
     pp Neq      = text "!="
