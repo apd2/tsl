@@ -4,7 +4,7 @@ module IType(Field(..),
              typeWidth,
              Enumeration(..)) where
 
-data Field = Field String Type
+data Field = Field String Type deriving (Eq)
 
 instance Typed Field where
     typ (Field _ t) = t
@@ -16,6 +16,7 @@ data Type = Bool
           | Struct   [Field]
           | Ptr      Type
           | Array    Type Int
+          deriving (Eq)
 
 twidth :: Type -> Int
 twidth (SInt w) = w

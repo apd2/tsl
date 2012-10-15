@@ -32,6 +32,6 @@ data Formula = FTrue
              | FPred    Predicate
              | FBinOp   BoolBOp Formula Formula
              | FNot     Formula
-             | FReplace Formula Predicate Formula
+--             | FReplace Formula Predicate Formula
 
 

@@ -15,6 +15,7 @@ import qualified Data.Map as M
 import qualified ISpec as I
 import qualified IExpr as I
 import qualified IType as I
+import qualified IVar  as I
 import TSLUtil
 import NS
 import Pos

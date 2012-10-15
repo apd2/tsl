@@ -17,6 +17,7 @@ import qualified ISpec as I
 import qualified IExpr as I
 import qualified CFA   as I
 import qualified IType as I
+import qualified IVar  as I
 import Pos
 import Name
 import NS

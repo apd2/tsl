@@ -1,8 +1,6 @@
 {-# LANGUAGE ImplicitParams #-}
 
-module ISpec(VarCategory(..),
-             Var(..),
-             Goal(..),
+module ISpec(Goal(..),
              Transition(..),
              wp,
              Spec(..),
