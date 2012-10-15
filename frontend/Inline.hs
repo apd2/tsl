@@ -9,6 +9,9 @@ import qualified Data.Map as M
 
 import Util hiding (name)
 import qualified ISpec as I
+import qualified IExpr as I
+import qualified CFA   as I
+import qualified IType as I
 import Name
 import NS
 import Method

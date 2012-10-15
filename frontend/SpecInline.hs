@@ -14,6 +14,9 @@ import Util hiding (name)
 import TSLUtil
 import Spec
 import qualified ISpec as I
+import qualified IExpr as I
+import qualified CFA   as I
+import qualified IType as I
 import Pos
 import Name
 import NS

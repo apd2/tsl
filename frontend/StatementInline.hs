@@ -26,6 +26,8 @@ import Type
 import ExprInline
 
 import qualified ISpec as I
+import qualified IExpr as I
+import qualified CFA   as I
 
 statSimplify :: (?spec::Spec, ?scope::Scope, ?uniq::Uniq) => Statement -> Statement
 statSimplify s = sSeq (pos s) $ statSimplify' s

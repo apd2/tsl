@@ -17,6 +17,7 @@ module Predicate(ArithUOp(..),
 
 import Common
 import ISpec
+import IExpr
 
 -- Arithmetic operations
 data ArithUOp = AUMinus 

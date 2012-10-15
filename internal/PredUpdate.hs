@@ -14,9 +14,18 @@ import Formula
 import ISpec
 import Common
 
+
+exprPredicate
+
+updatePredicate
+
+updateEnum
+
+
 -- Predicate database
 type PredicateDB = [Predicate]
 
+-- Find predicates of the form (e == AddrOf e')
 pdbPtrPreds :: (?pdb::PredicateDB) => Expr -> [(Predicate, Term)]
 pdbPtrPreds e = 
     mapMaybe (\p@(PAtom _ t1 t2) -> if t1 == t

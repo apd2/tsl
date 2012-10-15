@@ -11,6 +11,7 @@ import Data.List
 
 import TSLUtil
 import ISpec
+import IExpr
 import Formula
 
 -- Intermediate data structure that represents the value of
