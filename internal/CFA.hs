@@ -13,11 +13,13 @@ module CFA(Statement(..),
            cfaInsTrans,
            cfaInsTransMany,
            cfaInsTrans',
-           cfaInsTransMany') where
+           cfaInsTransMany',
+           cfaSuc) where
 
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.Tree as G
 import Data.List
+import Data.Tuple
 
 import Util hiding (name)
 import IExpr
@@ -76,3 +78,6 @@ cfaInsTrans' from stat cfa = (cfaInsTrans from to stat cfa', to)
 cfaInsTransMany' :: Loc -> [Statement] -> CFA -> (CFA, Loc)
 cfaInsTransMany' from stats cfa = (cfaInsTransMany from to stats cfa', to)
     where (cfa', to) = cfaInsLoc LNone cfa
+
+cfaSuc :: Loc -> CFA -> [(Statement,Loc)]
+cfaSuc loc cfa = map swap $ G.lsuc cfa loc

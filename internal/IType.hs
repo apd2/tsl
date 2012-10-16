@@ -36,4 +36,3 @@ typeWidth = twidth . typ
 data Enumeration = Enumeration { enumName  :: String
                                , enumEnums :: [String]
                                }
-

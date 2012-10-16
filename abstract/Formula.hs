@@ -1,5 +1,7 @@
 module Formula(BoolBOp(..),
                Formula(..),
+               fdisj,
+               fconj,
                bopToBoolOp,
                boolOpToBOp) where
 
@@ -32,6 +34,9 @@ data Formula = FTrue
              | FPred    Predicate
              | FBinOp   BoolBOp Formula Formula
              | FNot     Formula
---             | FReplace Formula Predicate Formula
 
+fdisj :: [Formula] -> Formula
+fdisj = error "Not implemented: fdisj"
 
+fconj :: [Formula] -> Formula
+fconj = error "Not implemented: fconj"

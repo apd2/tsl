@@ -7,6 +7,8 @@ module Predicate(ArithUOp(..),
                  bopToArithOp,
                  arithOpToBOp,
                  Term(..),
+                 tConcat,
+                 isMemTerm,
                  RelOp(..),
                  bopToRelOp,
                  relOpToBOp,
@@ -18,6 +20,12 @@ module Predicate(ArithUOp(..),
 import Common
 import ISpec
 import IExpr
+import IVar
+import IType
+
+-- Objects with canonical form
+class Canonical a where
+    norm :: a -> a
 
 -- Arithmetic operations
 data ArithUOp = AUMinus 
@@ -77,6 +85,24 @@ data Term = TVar    String
           | TSlice  Term (Int,Int)
           deriving (Eq)
 
+instance Canonical Term where
+    norm = error "Not implemented: norm Term"
+
+instance Typed Term where
+    typ  = error "Not implemented: typ Term"
+
+-- TODO: merge adjacent terms
+tConcat :: [Term] -> Term
+tConcat [t]        = t
+tConcat (t1:t2:ts) = tConcat $ (TBinOp ABConcat t1 t2):ts
+
+isMemTerm :: (?spec::Spec) => Term -> Bool
+isMemTerm (TVar n)     = varMem $ getVar n
+isMemTerm (TField t _) = isMemTerm t
+isMemTerm (TIndex t _) = isMemTerm t
+isMemTerm (TSlice t _) = isMemTerm t
+isMemTerm _        = False
+
 -- Relational operations
 data RelOp = REq
            | RNeq 
@@ -102,32 +128,30 @@ relOpToBOp RGt  = Gt
 relOpToBOp RLte = Lte
 relOpToBOp RGte = Gte
 
-
 -- Predicates
 data Predicate = PAtom {pOp :: RelOp, p1 :: Term, p2 :: Term}
 
 pAtom :: RelOp -> Term -> Term -> Predicate
 pAtom op l r = norm $ PAtom op l r
 
--- Objects with canonical form
-class Canonical a where
-    norm :: a -> a
-
 instance Canonical Predicate where
     norm p = error "Not implemented: norm Predicate"
 
 -- Convert scalar expression without pointers and boolean operators to a term
 exprToTerm :: Expr -> Term
-exprToTerm (EVar n)               = TVar   n
-exprToTerm (EConst (SIntVal w i)) = TSInt w i
-exprToTerm (EConst (UIntVal w i)) = TUInt w i
-exprToTerm (EConst (EnumVal e))   = TEnum  e
-exprToTerm (EField s f)           = TField (exprToTerm s) f
-exprToTerm (EIndex a i)           = TIndex (exprToTerm a) (exprToTerm i)
-exprToTerm (EUnOp AddrOf e)       = TAddr  (exprToTerm e)
-exprToTerm (EUnOp op e)           = TUnOp  (uopToArithOp op) (exprToTerm e)
-exprToTerm (EBinOp op e1 e2)      = TBinOp (bopToArithOp op) (exprToTerm e1) (exprToTerm e2)
-exprToTerm (ESlice e s)           = TSlice (exprToTerm e) s
+exprToTerm = norm . exprToTerm'
+
+exprToTerm' :: Expr -> Term
+exprToTerm' (EVar n)               = TVar   n
+exprToTerm' (EConst (SIntVal w i)) = TSInt w i
+exprToTerm' (EConst (UIntVal w i)) = TUInt w i
+exprToTerm' (EConst (EnumVal e))   = TEnum  e
+exprToTerm' (EField s f)           = TField (exprToTerm' s) f
+exprToTerm' (EIndex a i)           = TIndex (exprToTerm' a) (exprToTerm' i)
+exprToTerm' (EUnOp AddrOf e)       = TAddr  (exprToTerm' e)
+exprToTerm' (EUnOp op e)           = TUnOp  (uopToArithOp op) (exprToTerm' e)
+exprToTerm' (EBinOp op e1 e2)      = TBinOp (bopToArithOp op) (exprToTerm' e1) (exprToTerm' e2)
+exprToTerm' (ESlice e s)           = TSlice (exprToTerm' e) s
 
 termToExpr :: Term -> Expr
 termToExpr (TVar n)          = EVar   n

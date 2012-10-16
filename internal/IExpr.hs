@@ -2,10 +2,12 @@
 
 module IExpr(Val(..),
              Expr(..),
-             scalars,
+             exprSlice,
+             exprScalars,
              (===),
              disj,
              conj,
+             econcat,
              true,
              false,
              Slice,
@@ -34,6 +36,8 @@ instance (?spec::Spec) => Typed Val where
     typ (UIntVal w _) = UInt w
     typ (EnumVal n)   = Enum $ enumName $ getEnum n
     typ (PtrVal e)    = Ptr $ typ e
+
+type Slice = (Int, Int)
 
 data Expr = EVar    String
           | EConst  Val
@@ -65,12 +69,17 @@ instance (?spec::Spec) => Typed Expr where
                           | op == Mod          = typ e1
     typ (ESlice _ (l,h))                       = UInt $ h - l + 1
 
+-- TODO: optimise slicing of concatenations
+exprSlice :: (?spec::Spec) => Expr -> Slice -> Expr
+exprSlice e                  (l,h) | l == 0 && h == typeWidth e - 1 = e
+exprSlice (ESlice e (l',h')) (l,h)                                  = exprSlice e (l'+l,l'+h)
+exprSlice e                  s                                      = ESlice e s
 
--- Extract all scalars from expression
-scalars :: Expr -> Type -> [Expr]
-scalars e (Struct fs)  = concatMap (\(Field n t) -> scalars (EField e n) t) fs
-scalars e (Array  t s) = concatMap (\i -> scalars (EIndex e (EConst $ UIntVal (bitWidth $ s-1) $ fromIntegral i)) t) [0..s-1]
-scalars e t            = [e]
+---- Extract all scalars from expression
+exprScalars :: Expr -> Type -> [Expr]
+exprScalars e (Struct fs)  = concatMap (\(Field n t) -> exprScalars (EField e n) t) fs
+exprScalars e (Array  t s) = concatMap (\i -> exprScalars (EIndex e (EConst $ UIntVal (bitWidth $ s-1) $ fromIntegral i)) t) [0..s-1]
+exprScalars e t            = [e]
 
 (===) :: Expr -> Expr -> Expr
 e1 === e2 = EBinOp Eq e1 e2
@@ -83,9 +92,10 @@ conj :: [Expr] -> Expr
 conj [] = false
 conj es = foldl' (\e1 e2 -> EBinOp And e1 e2) (head es) (tail es)
 
+econcat :: [Expr] -> Expr
+econcat = error "Not implemented: econcat"
+
 true = EConst $ BoolVal True
 false = EConst $ BoolVal False
-
-type Slice = (Int, Int)
 
 type LExpr = Expr

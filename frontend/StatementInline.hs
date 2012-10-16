@@ -116,8 +116,8 @@ statToCFA' before after (SReturn _ rval) = do
                          Just lhs -> do ScopeMethod _ m <- gets ctxScope
                                         let t = fromJust $ methRettyp m
                                         vi <- exprToIExprs v t
-                                        let asns = zipWith I.SAssign (I.scalars lhs (mkType $ Type scope t)) 
-                                                                     (concatMap (uncurry I.scalars) vi)
+                                        let asns = zipWith I.SAssign (I.exprScalars lhs (mkType $ Type scope t)) 
+                                                                     (concatMap (uncurry I.exprScalars) vi)
                                         ctxInsTransMany before ret asns
 
 statToCFA' before after (SPar _ ps) = do
@@ -226,8 +226,8 @@ statToCFA' before after (SAssign _ lhs rhs) = do
     let t = mkType $ typ lhs
     lhs' <- exprToIExprDet lhs
     rhs' <- exprToIExprs rhs (tspec lhs)
-    ctxInsTransMany before after $ zipWith I.SAssign (I.scalars lhs' t) 
-                                                     (concatMap (uncurry I.scalars) rhs')
+    ctxInsTransMany before after $ zipWith I.SAssign (I.exprScalars lhs' t) 
+                                                     (concatMap (uncurry I.exprScalars) rhs')
 
 statToCFA' before after (SITE _ cond sthen mselse) = do
     befthen <- statToCFA before (SAssume nopos cond)
@@ -318,7 +318,7 @@ taskCall before after meth args mlhs = do
          (Nothing, _)          -> ctxInsTrans aftout after I.nop
          (Just lhs, Just rvar) -> do let t = mkType $ Type (ScopeTemplate tmMain) (fromJust $ methRettyp meth)
                                      lhs' <- exprToIExprDet lhs
-                                     ctxInsTransMany aftout after $ zipWith I.SAssign (I.scalars lhs' t) (I.scalars rvar t)
+                                     ctxInsTransMany aftout after $ zipWith I.SAssign (I.exprScalars lhs' t) (I.exprScalars rvar t)
 
 
 -- Common part of methInline and taskCall
@@ -329,8 +329,8 @@ setArgs before meth args = do
     pid   <- gets ctxPID
     foldM (\bef (farg,aarg) -> do aarg' <- exprToIExprs aarg (tspec farg)
                                   let t = mkType $ Type (ScopeTemplate tmMain) (tspec farg)
-                                  ctxInsTransMany' bef $ zipWith I.SAssign (I.scalars (mkVar (Just pid) (Just meth) farg) t) 
-                                                                           (concatMap (uncurry I.scalars) aarg')) 
+                                  ctxInsTransMany' bef $ zipWith I.SAssign (I.exprScalars (mkVar (Just pid) (Just meth) farg) t) 
+                                                                           (concatMap (uncurry I.exprScalars) aarg')) 
           before $ filter (\(a,_) -> argDir a == ArgIn) $ zip (methArg meth) args
 
 -- copy out arguments
@@ -339,6 +339,6 @@ copyOutArgs loc meth args = do
     pid <- gets ctxPID
     foldM (\loc (farg,aarg) -> do aarg' <- exprToIExprDet aarg
                                   let t = mkType $ Type (ScopeTemplate tmMain) (tspec farg)
-                                  ctxInsTransMany' loc $ zipWith I.SAssign (I.scalars aarg' t) 
-                                                                           (I.scalars (mkVar (Just pid) (Just meth) farg) t)) loc $ 
+                                  ctxInsTransMany' loc $ zipWith I.SAssign (I.exprScalars aarg' t) 
+                                                                           (I.exprScalars (mkVar (Just pid) (Just meth) farg) t)) loc $ 
           filter (\(a,_) -> argDir a == ArgOut) $ zip (methArg meth) args

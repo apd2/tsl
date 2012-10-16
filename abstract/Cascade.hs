@@ -3,7 +3,9 @@ module Cascade(Cascade(..),
                FCascade,
                ECascade,
                BCascade,
-               fcasToFormula) where
+               TCascade,
+               fcasToFormula,
+               fcasPrune) where
 
 import Data.Functor
 import Control.Applicative
@@ -13,6 +15,7 @@ import TSLUtil
 import ISpec
 import IExpr
 import Formula
+import Predicate
 
 -- Intermediate data structure that represents the value of
 -- an arithmetic expression depending on pointer predicates
@@ -40,9 +43,14 @@ instance Applicative Cascade where
 type FCascade = Cascade Formula
 type BCascade = Cascade Bool
 type ECascade = Cascade Expr
+type TCascade = Cascade Term
 
 fcasToFormula :: FCascade -> Formula
 fcasToFormula (CasLeaf f)      = f
 fcasToFormula (CasTree [])     = FFalse
-fcasToFormula (CasTree (b:bs)) = foldl' (\f (c,cas) -> FBinOp Disj f (FBinOp Conj c (fcasToFormula cas))) 
-                                      (FBinOp Conj (fst b) (fcasToFormula $ snd b)) bs
+fcasToFormula (CasTree (b:bs)) = foldl' (\f (c,cas) -> fdisj [f, fconj [c, fcasToFormula cas]]) 
+                                        (fconj [fst b, fcasToFormula $ snd b]) bs
+
+-- Recursively prune false leaves
+fcasPrune :: FCascade -> FCascade
+fcasPrune cas = error "Not implemented: fcasPrune"
