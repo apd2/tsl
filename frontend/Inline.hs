@@ -224,18 +224,6 @@ getEnumName n =
                      _             -> False) 
          $ specType ?spec
 
-----------------------------------------------------------------------
--- Values
-----------------------------------------------------------------------
-
---mkVal :: (?spec::Spec) => Val -> I.Val
---mkVal (BoolVal   b)  = I.BoolVal b
---mkVal (IntVal    i)  = I.IntVal  i
-----mkVal (StructVal fs) = error "mkVal StructVal (this should have disappeared after exprSimplify)" 
---mkVal (EnumVal   n)  = I.EnumVal $ sname n
---mkVal (PtrVal    e)  = error "Not implemented: mkVal PtrVal"
-----mkVal (ArrayVal  vs) = I.ArrayVal $ map (\(TVal t v) -> I.TVal (mkType t) (mkVal v)) vs
-
 -----------------------------------------------------------
 -- State maintained during CFA construction
 -----------------------------------------------------------

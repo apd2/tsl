@@ -133,7 +133,7 @@ bexprToFormulaPlus e@(EBinOp op e1 e2) | op == Eq || op == Neq =
                   EUnOp Deref e1' -> fcasToFormula $ fcasPrune $ (addrPred op) <$> (exprExpandPtr e1') <*> (exprExpandPtr e2)
                   _               -> FFalse
         f2 = case e2 of
-                  EUnOp Deref e2' -> fcasToFormula $ fcasPrune $ (addrPred op) <$> (exprExpandPtr e1) <*> (exprExpandPtr e2')
+                  EUnOp Deref e2' -> fcasToFormula $ fcasPrune $ (addrPred op) <$> (exprExpandPtr e2') <*> (exprExpandPtr e1)
                   _               -> FFalse
     in fdisj $ (bexprToFormula e):[f1,f2]
 
@@ -147,7 +147,7 @@ addrPred op x y =
     let tx = exprToTerm x
         ty = exprToTerm y
         fp = FPred $ pAtom REq tx (TAddr ty)
-    in if any ((==ty) . snd) $ pdbPtrPreds x 
+    in if (not $ isMemTerm ty) || (any ((==ty) . snd) $ pdbPtrPreds x)
           then FFalse
           else if op == Eq
                   then fp 
@@ -196,8 +196,14 @@ exprExpandPtr   (ESlice e s)      = fmap (\e -> ESlice e s) $ exprExpandPtr e
 -- Compute update functions for a list of variables wrt to a transition
 varUpdateTrans :: (AllOps c v a, ?spec::Spec, ?m::c) => [TAbsVar] -> Transition -> State (PDB c v) [a]
 varUpdateTrans vs t = do
+    -- Main transition
     cache <- varUpdateLoc vs (tranFrom t) (tranCFA t) M.empty
-    return $ fst $ cache M.! (tranFrom t)
+    -- Wire update transition
+    let wt = specWire ?spec
+        -- prefill cache with the result computed for the main transition
+        prefill = M.singleton (tranTo wt) (cache M.! tranFrom t)
+    cache' <- varUpdateLoc vs (tranFrom wt) (tranCFA wt) M.empty
+    return $ fst $ cache' M.! (tranFrom wt)
 
 -- Cache of variable update functions for intermediate locations inside a transition:
 -- [a] is the list of variable update functions, 
@@ -224,7 +230,7 @@ varUpdateStat :: (AllOps c v a, ?spec::Spec, ?m::c) => Statement -> ([a], [TAbsV
 varUpdateStat (SAssume e) (rels, vs) = do
     pdb <- get
     let ?pdb = pdb
-    let f = bexprToFormula e
+    let f = bexprToFormulaPlus e
     (rel,vs') <- compileFormula f
     return (map (and rel) rels, S.toList $ S.fromList $ vs ++ vs')
 varUpdateStat (SAssign e1 e2) (rels, vs) = 

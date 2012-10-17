@@ -107,6 +107,8 @@ methSimplify tm m = let ?scope = ScopeMethod tm m
 -- Wires
 ----------------------------------------------------------------------
 
+-- Generate transition that assigns all wire variables.  It will be
+-- implicitly prepended to all "regular" transitions.
 mkWires :: (?spec::Spec) => I.Transition
 mkWires = 
     let wires = orderWires
