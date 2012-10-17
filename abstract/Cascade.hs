@@ -53,4 +53,9 @@ fcasToFormula (CasTree (b:bs)) = foldl' (\f (c,cas) -> fdisj [f, fconj [c, fcasT
 
 -- Recursively prune false leaves
 fcasPrune :: FCascade -> FCascade
-fcasPrune cas = error "Not implemented: fcasPrune"
+fcasPrune (CasLeaf f)  = CasLeaf f
+fcasPrune (CasTree bs) = if null bs' then CasLeaf FFalse else CasTree bs'
+    where bs' = filter (\(f,cas) -> case cas of 
+                                         CasLeaf FFalse -> False
+                                         _              -> True)
+                       $ map (mapSnd fcasPrune) bs

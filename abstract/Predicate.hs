@@ -129,7 +129,7 @@ relOpToBOp RLte = Lte
 relOpToBOp RGte = Gte
 
 -- Predicates
-data Predicate = PAtom {pOp :: RelOp, p1 :: Term, p2 :: Term}
+data Predicate = PAtom {pOp :: RelOp, p1 :: Term, p2 :: Term} deriving (Eq)
 
 pAtom :: RelOp -> Term -> Term -> Predicate
 pAtom op l r = norm $ PAtom op l r

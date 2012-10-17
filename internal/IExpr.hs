@@ -93,8 +93,10 @@ conj :: [Expr] -> Expr
 conj [] = false
 conj es = foldl' (\e1 e2 -> EBinOp And e1 e2) (head es) (tail es)
 
+-- TODO: merge adjacent expressions
 econcat :: [Expr] -> Expr
-econcat = error "Not implemented: econcat"
+econcat [e]        = e
+econcat (e1:e2:es) = econcat $ (EBinOp BConcat e1 e2):es
 
 true = EConst $ BoolVal True
 false = EConst $ BoolVal False
