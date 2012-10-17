@@ -14,7 +14,8 @@ module CFA(Statement(..),
            cfaInsTransMany,
            cfaInsTrans',
            cfaInsTransMany',
-           cfaSuc) where
+           cfaSuc,
+           cfaAddNullPtrTrans) where
 
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.Tree as G
@@ -81,3 +82,13 @@ cfaInsTransMany' from stats cfa = (cfaInsTransMany from to stats cfa', to)
 
 cfaSuc :: Loc -> CFA -> [(Statement,Loc)]
 cfaSuc loc cfa = map swap $ G.lsuc cfa loc
+
+-- Add error transitions for all potential null-pointer dereferences
+cfaAddNullPtrTrans :: CFA -> Expr -> CFA
+cfaAddNullPtrTrans cfa nul = foldl' (addNullPtrTrans1 nul) cfa (G.labEdges cfa)
+
+addNullPtrTrans1 :: Expr -> CFA -> (Loc,Loc,Statement) -> CFA
+addNullPtrTrans1 nul cfa (from , _, SAssign e1 e2) = cfaInsTrans from cfaErrLoc cond cfa
+    where cond = SAssume $ disj $ map (=== nul) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)
+    
+addNullPtrTrans1 _   cfa (_    , _, SAssume _)     = cfa

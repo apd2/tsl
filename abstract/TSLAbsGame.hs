@@ -41,15 +41,25 @@ tslAbsGame spec = AbsGame { gameGoals       = tslGameGoals       spec
 
 
 tslGameGoals :: (AllOps c v a) => Spec -> State (PDB c v) [(String,a)]
-tslGameGoals spec = mapM (\g -> do c <- bexprAbstract spec (goalCond g)
-                                   return (goalName g, c))
-                         $ specGoal spec
+tslGameGoals spec = do
+    let ?spec = spec
+    c <- gets pdbCtx
+    let ?m = c
+    mapM (\g -> do c <- tranPrecondition (goalCond g)
+                   return (goalName g, c))
+         $ specGoal spec
 
 tslGameFair :: (AllOps c v a) => Spec -> State (PDB c v) [a]
 tslGameFair spec = mapM (bexprAbstract spec) $ specFair spec
 
 tslGameInit :: (AllOps c v a) => Spec -> State (PDB c v) a
-tslGameInit spec = bexprAbstract spec (specInit spec)
+tslGameInit spec = do 
+    let ?spec = spec
+    c <- gets pdbCtx
+    let ?m = c
+    pre   <- tranPrecondition (fst $ specInit spec)
+    extra <- bexprAbstract spec (snd $ specInit spec)
+    return $ pre .& extra
 
 tslGameVarUpdateC :: (AllOps c v a) => Spec -> [TAbsVar] -> State (PDB c v) [a]
 tslGameVarUpdateC spec vars = do
@@ -193,6 +203,19 @@ exprExpandPtr   (ESlice e s)      = fmap (\e -> ESlice e s) $ exprExpandPtr e
 -- Predicate/variable update functions
 ----------------------------------------------------------------------------
 
+-- Compute precondition of transition, i.e., variable
+-- update function for empty set of variables
+tranPrecondition :: (AllOps c v a, ?spec::Spec, ?m::c) => Transition -> State (PDB c v) a
+tranPrecondition tran = do
+    cache <- varUpdateLoc [] (tranFrom tran) (tranCFA tran) (M.singleton (tranTo tran) ([t],[]))
+    return $ head $ fst $ cache M.! (tranFrom tran)
+
+-- Cache of variable update functions for intermediate locations inside a transition:
+-- [a] is the list of variable update functions, 
+-- [TAbsVar] is the list of variables that these functions depend on (these variable must 
+-- be recomputed at the next iteration)
+type Cache a = M.Map Loc ([a],[TAbsVar])
+
 -- Compute update functions for a list of variables wrt to a transition
 varUpdateTrans :: (AllOps c v a, ?spec::Spec, ?m::c) => [TAbsVar] -> Transition -> State (PDB c v) [a]
 varUpdateTrans vs t = do
@@ -204,12 +227,6 @@ varUpdateTrans vs t = do
         prefill = M.singleton (tranTo wt) (cache M.! tranFrom t)
     cache' <- varUpdateLoc vs (tranFrom wt) (tranCFA wt) M.empty
     return $ fst $ cache' M.! (tranFrom wt)
-
--- Cache of variable update functions for intermediate locations inside a transition:
--- [a] is the list of variable update functions, 
--- [TAbsVar] is the list of variables that these functions depend on (these variable must 
--- be recomputed at the next iteration)
-type Cache a = M.Map Loc ([a],[TAbsVar])
 
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA.  Record the result in a cache that will be used to recursively

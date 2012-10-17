@@ -12,5 +12,3 @@ data Var = Var { varMem  :: Bool
 
 instance Typed Var where
     typ = varType
-
-

@@ -2,7 +2,6 @@
 
 module ISpec(Goal(..),
              Transition(..),
-             wp,
              Spec(..),
              getVar,
              getEnum) where
@@ -25,7 +24,7 @@ data Transition = Transition { tranFrom :: Loc
                              }
 
 data Goal = Goal { goalName :: String
-                 , goalCond :: Expr
+                 , goalCond :: Transition
                  }
 
 data Spec = Spec { specEnum  :: [Enumeration]
@@ -33,9 +32,9 @@ data Spec = Spec { specEnum  :: [Enumeration]
                  , specCTran :: [Transition]
                  , specUTran :: [Transition]
                  , specWire  :: Transition
-                 , specInit  :: Expr
+                 , specInit  :: (Transition, Expr) -- initial state constraint (constraint_on_spec_variables,constraints_on_aux_variables)
                  , specGoal  :: [Goal] 
-                 , specFair  :: [Expr]           -- sets of states f s.t. GF(-f)
+                 , specFair  :: [Expr]             -- sets of states f s.t. GF(-f)
                  }
 
 getVar :: (?spec::Spec) => String -> Var
@@ -45,6 +44,3 @@ getVar n = fromJustMsg ("getVar: variable " ++ n ++ " not found")
 getEnum :: (?spec::Spec) => String -> Enumeration
 getEnum e = fromJustMsg ("getEnum: enumerator " ++ e ++ " not found")
                         $ find (elem e . enumEnums) $ specEnum ?spec
-
-wp :: Expr -> [Transition] -> Expr
-wp _ _ = error "Not implemented: wp"

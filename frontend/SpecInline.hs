@@ -71,7 +71,7 @@ spec2Internal s =
                  , I.specCTran  = mkMagicReturn : ctran
                  , I.specUTran  = mkIdleTran : utran
                  , I.specWire   = mkWires
-                 , I.specInit   = I.conj $ [mkInit, auxinit] ++ pcinit
+                 , I.specInit   = (mkInit, I.conj $ (auxinit : pcinit))
                  , I.specGoal   = map mkGoal $ tmGoal tmMain
                  , I.specFair   = mkFair $ cproc ++ uproc
                  }
@@ -126,7 +126,7 @@ mkWires =
                      , ctxLNMap   = M.empty
                      , ctxLastVar = 0
                      , ctxVar     = []}
-        proc = let ?procs = [] in cfaToIProcess [] $ let ctx' = execState (statToCFA I.cfaInitLoc stat) ctx
+        proc = let ?procs = [] in cfaToIProcess [] $ let ctx' = execState (procStatToCFA stat) ctx
                                                      in (ctxCFA ctx', ctxVar ctx')
     in case pBody proc of
             [t] -> t
@@ -169,7 +169,7 @@ mkFair procs = fsched : fproc
 -- Init and goal conditions
 ----------------------------------------------------------------------
 
-mkInit :: (?spec::Spec) => I.Expr
+mkInit :: (?spec::Spec) => I.Transition
 mkInit = mkCond cond
     where -- conjunction of initial variable assignments
           ass = mapMaybe (\v -> case varInit $ gvarVar v of
@@ -182,7 +182,7 @@ mkGoal :: (?spec::Spec) => Goal -> I.Goal
 mkGoal g = I.Goal (sname g) (mkCond $ goalCond g)
 
 
-mkCond :: (?spec::Spec) => Expr -> I.Expr
+mkCond :: (?spec::Spec) => Expr -> I.Transition
 mkCond e = 
     let -- simplify and convert into a statement
         (ss, cond') = let ?scope = ScopeTemplate tmMain 
@@ -191,14 +191,9 @@ mkCond e =
         stat = SSeq nopos (ss ++ [SAssume nopos cond'])
         iproc = let ?procs = [] in cfaToIProcess [] $ fprocToCFA [] M.empty (ScopeTemplate tmMain) stat
         -- precondition
-        pre = case pBody iproc of
-                   [t] -> I.wp I.true [t]
-                   _   -> error "mkCond: Invalid init block"
-    in  -- make sure that precondition only depends on state variables
-        case pVar iproc of
-             [] -> pre
-             _  -> error "mkCond: tmp variable in precondition"
-
+    in case pBody iproc of
+            [t] -> t
+            _   -> error "mkCond: Invalid condition"
 
 ----------------------------------------------------------------------
 -- Idle transition
@@ -249,7 +244,7 @@ mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
 ----------------------------------------------------------------------
 
 mkVars :: (?spec::Spec) => ([I.Var], I.Enumeration, I.Expr)
-mkVars = (mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ pvars), 
+mkVars = (mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ pvars), 
           tenum, 
           I.conj $ teninit ++ peninit ++ [taginit, maginit, continit, pidinit])
     where
@@ -326,7 +321,7 @@ procToCFA pid proc = (ctxCFA ctx', ctxVar ctx')
                        , ctxLNMap  = procLMap pid proc
                        , ctxLastVar = 0
                        , ctxVar     = []}
-          ctx' = execState (statToCFA I.cfaInitLoc (procStatement proc)) ctx
+          ctx' = execState (procStatToCFA (procStatement proc)) ctx
 
 -- Convert forked process to CFA
 fprocToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
@@ -342,7 +337,7 @@ fprocToCFA pid lmap parscope stat = (ctxCFA ctx', ctxVar ctx')
                        , ctxLNMap  = lmap
                        , ctxLastVar = 0
                        , ctxVar     = []}
-          ctx' = execState (statToCFA I.cfaInitLoc stat) ctx
+          ctx' = execState (procStatToCFA stat) ctx
 
 -- Convert controllable or uncontrollable task to CFA.
 -- The ctl argument indicates that a controllable transition is to be
@@ -368,7 +363,7 @@ taskToCFA pid meth ctl = (ctxCFA ctx', ctxVar ctx')
                                        ctxInsTrans retloc I.cfaInitLoc $ mkTagVar I.=: tagIdle
                                        ctxPutRetLoc retloc
                                        -- wait for tag
-                                       aftbody <- statToCFA I.cfaInitLoc stat
+                                       aftbody <- procStatToCFA stat
                                        ctxInsTrans aftbody retloc I.nop) 
                                    ctx
                     else execState (do -- reset $en to false on return
@@ -376,7 +371,7 @@ taskToCFA pid meth ctl = (ctxCFA ctx', ctxVar ctx')
                                        ctxInsTrans retloc I.cfaInitLoc $ (mkEnVar pid (Just meth)) I.=: I.false
                                        ctxPutRetLoc retloc
                                        -- wait for $en
-                                       aftbody <- statToCFA I.cfaInitLoc stat
+                                       aftbody <- procStatToCFA stat
                                        ctxInsTrans aftbody retloc I.nop) 
                                    ctx
 

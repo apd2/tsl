@@ -11,7 +11,8 @@ module IExpr(Val(..),
              true,
              false,
              Slice,
-             LExpr) where
+             LExpr,
+             exprPtrSubexpr) where
 
 import Data.Maybe
 import Data.List
@@ -99,3 +100,13 @@ true = EConst $ BoolVal True
 false = EConst $ BoolVal False
 
 type LExpr = Expr
+
+-- Subexpressions dereferenced inside the expression
+exprPtrSubexpr :: Expr -> [Expr]
+exprPtrSubexpr (EField e _)     = exprPtrSubexpr e
+exprPtrSubexpr (EIndex a i)     = exprPtrSubexpr a ++ exprPtrSubexpr i
+exprPtrSubexpr (EUnOp Deref e)  = e:(exprPtrSubexpr e)
+exprPtrSubexpr (EUnOp _ e)      = exprPtrSubexpr e
+exprPtrSubexpr (EBinOp _ e1 e2) = exprPtrSubexpr e1 ++ exprPtrSubexpr e2
+exprPtrSubexpr (ESlice e s)     = exprPtrSubexpr e
+exprPtrSubexpr e                = []

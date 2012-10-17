@@ -1,7 +1,7 @@
 {-# LANGUAGE ImplicitParams #-}
 
 module StatementInline(statSimplify, 
-                       statToCFA) where
+                       procStatToCFA) where
 
 import Control.Monad
 import Control.Monad.State
@@ -342,3 +342,13 @@ copyOutArgs loc meth args = do
                                   ctxInsTransMany' loc $ zipWith I.SAssign (I.exprScalars aarg' t) 
                                                                            (I.exprScalars (mkVar (Just pid) (Just meth) farg) t)) loc $ 
           filter (\(a,_) -> argDir a == ArgOut) $ zip (methArg meth) args
+
+----------------------------------------------------------
+-- Top-level function: convert process statement to CFA
+----------------------------------------------------------
+
+procStatToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => Statement -> State CFACtx I.Loc
+procStatToCFA stat = do
+    after <- statToCFA I.cfaInitLoc stat
+    modify $ (\ctx -> ctx {ctxCFA = I.cfaAddNullPtrTrans (ctxCFA ctx) mkNullVar})
+    return after

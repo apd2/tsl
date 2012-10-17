@@ -172,6 +172,15 @@ mkMagicVar = I.EVar mkMagicVarName
 mkMagicVarDecl :: I.Var
 mkMagicVarDecl = I.Var False I.VarState mkMagicVarName I.Bool
 
+mkNullVarName :: String
+mkNullVarName = "$null"
+
+mkNullVar :: I.Expr
+mkNullVar = I.EVar mkNullVarName
+
+mkNullVarDecl :: I.Var
+mkNullVarDecl = I.Var False I.VarState mkNullVarName (I.Ptr I.Bool)
+
 type NameMap = M.Map Ident I.Expr
 
 methodLMap :: PID -> Method -> NameMap 
