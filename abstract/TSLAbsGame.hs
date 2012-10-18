@@ -156,7 +156,7 @@ addrPred :: (AllOps c v a, ?spec::Spec, ?pdb::PDB c v) => BOp -> Expr -> Expr ->
 addrPred op x y =
     let tx = exprToTerm x
         ty = exprToTerm y
-        fp = FPred $ pAtom REq tx (TAddr ty)
+        fp = fAtom REq tx (TAddr ty)
     in if (not $ isMemTerm ty) || (any ((==ty) . snd) $ pdbPtrPreds x)
           then FFalse
           else if op == Eq
@@ -165,11 +165,11 @@ addrPred op x y =
 
 -- Convert boolean expression without pointers to a formula
 bexprToFormula' :: (?spec::Spec) => Expr -> Formula
-bexprToFormula' e@(EVar n)                         = FPred $ pAtom REq (exprToTerm e) TTrue
+bexprToFormula' e@(EVar n)                         = fAtom REq (exprToTerm e) TTrue
 bexprToFormula'   (EConst (BoolVal True))          = FTrue
 bexprToFormula'   (EConst (BoolVal False))         = FFalse
-bexprToFormula' e@(EField s f)                     = FPred $ pAtom REq (exprToTerm e) TTrue
-bexprToFormula' e@(EIndex a i)                     = FPred $ pAtom REq (exprToTerm e) TTrue
+bexprToFormula' e@(EField s f)                     = fAtom REq (exprToTerm e) TTrue
+bexprToFormula' e@(EIndex a i)                     = fAtom REq (exprToTerm e) TTrue
 bexprToFormula'   (EUnOp Not e)                    = FNot $ bexprToFormula' e
 bexprToFormula'   (EBinOp op e1 e2) | isRelBOp op  = combineExpr (bopToRelOp op) e1 e2
 bexprToFormula'   (EBinOp op e1 e2) | isBoolBOp op = FBinOp (bopToBoolOp op) (bexprToFormula' e1) (bexprToFormula' e2)
@@ -185,7 +185,7 @@ combineExpr op e1 e2 | typ e1 == Bool =
                 EConst (BoolVal False) -> if op == REq then FNot $ bexprToFormula' e1 else bexprToFormula' e1
                 _                      -> let f = FBinOp Equiv (bexprToFormula' e1) (bexprToFormula' e2)
                                           in if op == REq then f else FNot f
-                     | otherwise      = FPred $ pAtom op (exprToTerm e1) (exprToTerm e2)
+                     | otherwise      = fAtom op (exprToTerm e1) (exprToTerm e2)
 
 -- Expand each pointer dereference operation in the expression
 -- using predicates in the DB.

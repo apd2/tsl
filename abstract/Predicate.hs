@@ -13,7 +13,6 @@ module Predicate(ArithUOp(..),
                  bopToRelOp,
                  relOpToBOp,
                  Predicate(..),
-                 pAtom,
                  exprToTerm,
                  termToExpr) where
 
@@ -30,7 +29,7 @@ class Canonical a where
 -- Arithmetic operations
 data ArithUOp = AUMinus 
               | ABNeg
-              deriving (Eq)
+              deriving (Eq,Ord)
 
 uopToArithOp :: UOp -> ArithUOp
 uopToArithOp UMinus = AUMinus
@@ -48,7 +47,7 @@ data ArithBOp = ABAnd
               | ABinMinus 
               | AMod
               | AMul
-              deriving(Eq)
+              deriving(Eq,Ord)
 
 bopToArithOp :: BOp -> ArithBOp
 bopToArithOp BAnd       = ABAnd       
@@ -83,13 +82,13 @@ data Term = TVar    String
           | TUnOp   ArithUOp Term
           | TBinOp  ArithBOp Term Term
           | TSlice  Term (Int,Int)
-          deriving (Eq)
+          deriving (Eq,Ord)
 
 instance Canonical Term where
-    norm = error "Not implemented: norm Term"
+    norm = id
 
-instance Typed Term where
-    typ  = error "Not implemented: typ Term"
+instance (?spec::Spec) => Typed Term where
+    typ = typ . termToExpr
 
 -- TODO: merge adjacent terms
 tConcat :: [Term] -> Term
@@ -130,12 +129,6 @@ relOpToBOp RGte = Gte
 
 -- Predicates
 data Predicate = PAtom {pOp :: RelOp, p1 :: Term, p2 :: Term} deriving (Eq)
-
-pAtom :: RelOp -> Term -> Term -> Predicate
-pAtom op l r = norm $ PAtom op l r
-
-instance Canonical Predicate where
-    norm p = error "Not implemented: norm Predicate"
 
 -- Convert scalar expression without pointers and boolean operators to a term
 exprToTerm :: Expr -> Term
