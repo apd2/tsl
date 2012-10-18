@@ -12,7 +12,7 @@ class WithPos a where
     atPos :: a -> Pos -> a
 
 spos :: (WithPos a) => a -> String
-spos x = show $ pos x
+spos x = show $ fst $ pos x
 
 nopos::Pos 
 nopos = (initialPos "",initialPos "")

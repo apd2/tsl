@@ -1,4 +1,4 @@
-template ns16450
+template ns16450(uart_os os)
 
 derive uart_dev;
 

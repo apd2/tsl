@@ -2,6 +2,7 @@ module Formula(BoolBOp(..),
                Formula(..),
                fdisj,
                fconj,
+               fAtom,
                bopToBoolOp,
                boolOpToBOp) where
 
@@ -57,4 +58,9 @@ fconj fs = case conjuncts'' of
           conjuncts'' = case conjuncts' of 
                              [] -> [FTrue] 
                              _  -> conjuncts'
+
+fAtom :: RelOp -> Term -> Term -> Formula
+fAtom REq l r | l < r     = FPred $ PAtom REq l r
+              | otherwise = FPred $ PAtom REq r l
+fAtom RNeq l r = FNot $ fAtom REq l r
 

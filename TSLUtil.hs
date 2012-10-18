@@ -46,7 +46,7 @@ snd3 (x,y,z) = y
 trd3 (x,y,z) = z
 
 err :: (MonadError String me) => Pos -> String -> me a
-err p e = throwError $ show p ++ ": " ++ e
+err p e = throwError $ show (fst p) ++ ": " ++ e
 
 assert :: (MonadError String me) => Bool -> Pos -> String -> me ()
 assert b p m = 

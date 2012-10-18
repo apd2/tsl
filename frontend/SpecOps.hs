@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module SpecOps(specNamespace) where
+module SpecOps(specNamespace,
+               validateSpec) where
 
 import Data.List
 import Data.Maybe

@@ -466,11 +466,12 @@ msb n = 1 + (msb $ n `shiftR` 1)
 expr' True  = expr
 expr' False = detexpr
 
-expr =  (reservedOp "*" *> unexpected "unexpected * in deterministic expression")
+expr = (withPos $ ENonDet nopos <$ reservedOp "*")
     <|> buildExpressionParser table term
     <?> "expression"
 
-detexpr =  buildExpressionParser table detterm
+detexpr =  (reservedOp "*" *> unexpected "unexpected * in deterministic expression")
+       <|> buildExpressionParser table detterm
        <?> "expression (deterministic)"
 
 table = [[postSlice, postIndex, postField, postPField]

@@ -18,8 +18,9 @@ import Data.List
 import Data.Maybe
 import qualified Data.Map as M
 import Text.PrettyPrint
+import Debug.Trace
 
-import Util hiding(name)
+import Util hiding(name,trace)
 import PP
 import TSLUtil
 import Pos
@@ -187,7 +188,7 @@ instance (?spec::Spec) => WithTypeSpec Obj where
 
 
 objLookup :: (?spec::Spec) => Obj -> Ident -> Maybe Obj
-objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c]
+objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c,e]
     where s = ScopeTop
           d = fmap (ObjTypeDecl s)   $ find ((== n) . name) (specType ?spec)
           c = fmap (ObjConst    s)   $ find ((== n) . name) (specConst ?spec)

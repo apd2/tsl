@@ -1,5 +1,20 @@
 import <uart_class.tsl>
 
+const uint<4> TIOCM_LE   = 0;
+const uint<4> TIOCM_DTR  = 1;
+const uint<4> TIOCM_RTS  = 2;
+const uint<4> TIOCM_ST   = 3;
+const uint<4> TIOCM_SR   = 4;
+const uint<4> TIOCM_CTS  = 5;
+const uint<4> TIOCM_CAR  = 6;
+const uint<4> TIOCM_RNG  = 7;
+const uint<4> TIOCM_DSR  = 8;
+const uint<4> TIOCM_CD   = TIOCM_CAR;
+const uint<4> TIOCM_RI   = TIOCM_RNG;
+const uint<4> TIOCM_OUT1 = 13;
+const uint<4> TIOCM_OUT2 = 14;
+const uint<4> TIOCM_LOOP = 15;
+
 /* OS-specific UART-related types (for equivalent class-specific types, see uart_class.tsl) */
 typedef uint<4> uart_data_bits_t;
 
@@ -26,13 +41,14 @@ template linux_uart_drv(uart_dev dev)
 
 // Note: together with the uart_os template, we derive its
 // dev port (see uart_os definition in uart_class.tsl)
-derive uart_os(dev); 
+derive uart_os; 
 
 // configuration requested by the OS
 cuart_data_bits_t data_bits;
 cuart_stop_bits_t stop_bits;
 cuart_par_t       parity;
 cuart_baud_t      speed;
+bool break_send;
 bool rts;
 bool dtr;
 bool out1;
@@ -46,7 +62,7 @@ uint<16> sendq_head;
 uint<16> sendq_tail;
 // device has sent up to this point, which can be between sendq_head and sendq_tail.
 // note the "invisible" attribute.
-invisible uint<16> sendq_dev_head;
+uint<16> sendq_dev_head;
 
 // receiver enabled
 bool rx_enabled = false;
@@ -64,14 +80,14 @@ init (config_in_progress == true) &&
      (sendq_dev_head == 0);
 
 // Process that models how the OS invokes driver entry points
-process uart_os {
+process p_uart_os {
     tty_probe();
     fork {
-        config();
-        transmit();
-        tx_control();
-        rx_control();
-        monitor_config();
+        pconfig:   config();
+        ptransmit: transmit();
+        ptxctl:    tx_control();
+        prxctl:    rx_control();
+        pmonitor:  monitor_config();
     };
     tty_shutdown();
 };
@@ -210,11 +226,11 @@ after {
 
 task uncontrollable void set_mctrl(uint<32> mctrl)
 before{
-    rts  = mctrl[TIOCM_RTS:TIOCM_RTS];
-    dtr  = mctrl[TIOCM_DTR:TIOCM_DTR];
-    out1 = mctrl[TIOCM_OUT1:TIOCM_OUT2];
-    out2 = mctrl[TIOCM_OUT2:TIOCM_OUT2];
-    loop = mctrl[TIOCM_LOOP:TIOCM_LOOP];
+    rts  = (mctrl[TIOCM_RTS:TIOCM_RTS] == 1);
+    dtr  = (mctrl[TIOCM_DTR:TIOCM_DTR] == 1);
+    out1 = (mctrl[TIOCM_OUT1:TIOCM_OUT2] == 1);
+    out2 = (mctrl[TIOCM_OUT2:TIOCM_OUT2] == 1);
+    loop = (mctrl[TIOCM_LOOP:TIOCM_LOOP] == 1);
     config_in_progress = true;
 }
 after {
@@ -241,7 +257,7 @@ after {
 task uncontrollable void send(uint<8> c)
 before {
     // cannot enqueue more if the circular buffer is almost full
-    assume((sendq_tail + 1) % UART_SENDQ_SIZE != sendq_head);
+    assume(((sendq_tail + 1) % UART_SENDQ_SIZE) != sendq_head);
     sendq_push(c);
 };
 

@@ -117,6 +117,7 @@ typeMatch x y =
             (PtrSpec _ ptx      , PtrSpec _ pty)      -> typeIso (Type sx ptx) (Type sy pty)
             (ArraySpec _  atx lx, ArraySpec _ aty ly) -> typeMatch (Type sx atx) (Type sy aty) &&
                                                          (let ?scope = sx in evalInt lx) == (let ?scope = sy in evalInt ly)
+            (_                  , FlexTypeSpec _)     -> True
             (_                  , _)                  -> False
 
 

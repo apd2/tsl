@@ -6,7 +6,9 @@ module Spec(Spec(Spec,specTemplate,specType,specConst),
 import Data.List
 import Data.Maybe
 import Control.Monad.Error
+import qualified Text.PrettyPrint as P
 
+import PP
 import TSLUtil
 import Util hiding (name)
 import Name
@@ -19,5 +21,12 @@ import Method
 data Spec = Spec { specTemplate :: [Template]
                  , specType     :: [TypeDecl]
                  , specConst    :: [Const]}
+
+instance PP Spec where 
+    pp (Spec tms ts cs) = (P.vcat $ map ((P.$+$ P.text "") . pp) ts)
+                          P.$+$
+                          (P.vcat $ map ((P.$+$ P.text "") . pp) cs)
+                          P.$+$
+                          (P.vcat $ map ((P.$+$ P.text "") . pp) tms)
 
 emptySpec = Spec [] [] []

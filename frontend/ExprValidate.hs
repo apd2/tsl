@@ -216,8 +216,8 @@ validateExpr' (ENonDet _) = return ()
 validateCall :: (?spec::Spec, ?scope::Scope, MonadError String me) => Pos -> MethodRef -> [Expr] -> me ()
 validateCall p mref as = do
     let isfunc = case ?scope of
-                      ScopeMethod _ _ -> True
-                      _               -> False
+                      ScopeMethod _ meth -> methCat meth == Function
+                      _                  -> False
     (t,m) <- checkMethod ?scope mref
     assert ((length $ methArg m) == length as) p $
            "Method " ++ sname m ++ " takes " ++ show (length $ methArg m) ++ 
