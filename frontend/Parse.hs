@@ -374,8 +374,8 @@ detterm = parens detexpr <|> detterm'
 
 term' = withPos $
        ( estruct True
+     <|> etern   True
      <|> eapply  True
---     <|> try etern
      <|> elit    True
      <|> ebool   True
      <|> eterm   True
@@ -384,8 +384,8 @@ term' = withPos $
 
 detterm' = withPos $
           ( estruct False
+        <|> etern   False
         <|> eapply  False
- --     <|> try etern
         <|> elit    False
         <|> ebool   False
         <|> eterm   False
@@ -401,7 +401,7 @@ eapply  det = EApply nopos <$ isapply <*> methname <*> (parens $ commaSep (expr'
 eterm   det = ETerm nopos <$> staticsym
 ebool   det = EBool nopos <$> ((True <$ reserved "true") <|> (False <$ reserved "false"))
 elit    det = lexeme elit'
-etern   det = ETernOp nopos <$> (expr' det) <* reservedOp "?" <*> (expr' det) <* colon <*> (expr' det)
+etern   det = ETernOp nopos <$ reserved "if" <*> (expr' det) <*> (expr' det) <* reserved "else" <*> (expr' det)
 ecase   det = (fmap uncurry (ECase nopos <$ reserved "case" <*> (parens detexpr))) 
               <*> (braces $ (,) <$> (many $ (,) <$> detexpr <* colon <*> (expr' det) <* semi) 
                                 <*> optionMaybe (reserved "default" *> colon *> (expr' det) <* semi))

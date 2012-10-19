@@ -2,6 +2,12 @@ template ns16450(uart_os os)
 
 derive uart_dev;
 
+const uint<32> IER = 1;
+
 // TODO
+
+task controllable void write8(uint<32> addr, uint<8> b)
+{
+};
 
 endtemplate

@@ -34,7 +34,7 @@ typedef enum {
 
 typedef uint<32> uart_baud_t;
 
-const uint<16> UART_SENDQ_SIZE = 32;
+const uint<16> UART_SENDQ_SIZE = 4;
 
 /* OS-specific UART driver template */
 template linux_uart_drv(uart_dev dev)
@@ -72,6 +72,14 @@ bool tx_enabled = true;
 
 // true during configuration requests 
 bool config_in_progress;
+
+/************** send queue *****************/
+
+procedure void sendq_push(uint<8> c)
+{
+    sendq[sendq_tail] = c;
+    sendq_tail = (sendq_tail + 1) % UART_SENDQ_SIZE;
+};
 
 // Constraints on initial variable values
 init (config_in_progress == true) &&
