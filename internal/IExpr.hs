@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE ImplicitParams, TypeSynonymInstances, FlexibleInstances #-}
 
 module IExpr(Val(..),
              Expr(..),
@@ -16,7 +16,9 @@ module IExpr(Val(..),
 
 import Data.Maybe
 import Data.List
+import Text.PrettyPrint
 
+import PP
 import Util hiding (name)
 import TSLUtil
 import Common
@@ -38,7 +40,18 @@ instance (?spec::Spec) => Typed Val where
     typ (EnumVal n)   = Enum $ enumName $ getEnum n
     typ (PtrVal e)    = Ptr $ typ e
 
+instance PP Val where
+    pp (BoolVal True) = text "true"
+    pp (BoolVal True) = text "false"
+    pp (SIntVal _ v)  = text $ show v
+    pp (UIntVal _ v)  = text $ show v
+    pp (EnumVal n)    = text n
+    pp (PtrVal e)     = char '&' <> pp e
+
 type Slice = (Int, Int)
+
+instance PP Slice where
+    pp (l,h) = brackets $ pp l <> colon <> pp h
 
 data Expr = EVar    String
           | EConst  Val
@@ -47,6 +60,15 @@ data Expr = EVar    String
           | EUnOp   UOp Expr
           | EBinOp  BOp Expr Expr
           | ESlice  Expr Slice
+
+instance PP Expr where
+    pp (EVar n)          = text n
+    pp (EConst v)        = pp v
+    pp (EField e f)      = pp e <> char '.' <> pp f
+    pp (EIndex a i)      = pp a <> char '[' <> pp i <> char ']'
+    pp (EUnOp op e)      = parens $ pp op <> pp e
+    pp (EBinOp op e1 e2) = parens $ pp e1 <+> pp op <+> pp e2
+    pp (ESlice e s)      = pp e <> pp s
 
 instance (?spec::Spec) => Typed Expr where
     typ (EVar n)                               = typ $ getVar n

@@ -4,7 +4,14 @@ module IType(Field(..),
              typeWidth,
              Enumeration(..)) where
 
+import Text.PrettyPrint
+
+import PP
+
 data Field = Field String Type deriving (Eq)
+
+instance PP Field where
+    pp (Field n t) = pp t <+> text n
 
 instance Typed Field where
     typ (Field _ t) = t
@@ -17,6 +24,13 @@ data Type = Bool
           | Ptr      Type
           | Array    Type Int
           deriving (Eq)
+
+instance PP Type where
+    pp Bool        = text "bool"
+    pp (SInt i)    = pp i
+    pp (UInt i)    = pp i
+    pp (Enum e)    = text e
+    pp (Struct fs) = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
 
 twidth :: Type -> Int
 twidth (SInt w) = w
@@ -36,3 +50,7 @@ typeWidth = twidth . typ
 data Enumeration = Enumeration { enumName  :: String
                                , enumEnums :: [String]
                                }
+
+instance PP Enumeration where
+    pp (Enumeration n es) = text "enum" <+> text n <+> 
+                            (braces' $ vcat $ map ((<> semi) . text) es)

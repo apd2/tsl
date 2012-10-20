@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+
 module CFA(Statement(..),
            (=:),
            nop,
@@ -21,13 +23,19 @@ import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.Tree as G
 import Data.List
 import Data.Tuple
+import Text.PrettyPrint
 
+import PP
 import Util hiding (name)
 import IExpr
 
 -- Atomic statement
 data Statement = SAssume Expr
                | SAssign Expr Expr
+
+instance PP Statement where
+    pp (SAssume e)   = text "assume" <+> (parens $ pp e)
+    pp (SAssign l r) = pp l <+> text ":=" <+> pp r
 
 (=:) :: Expr -> Expr -> Statement
 (=:) e1 e2 = SAssign e1 e2
@@ -41,6 +49,9 @@ data LocLabel = LNone
               | LPause Expr
               | LFinal 
 type CFA = G.Gr LocLabel Statement
+
+instance PP CFA where
+    pp cfa = vcat $ map (\(from,to,s) -> pp from <+> text "-->" <+> pp to <> char ':' <+> pp s) $ G.labEdges cfa
 
 isDelayLabel :: LocLabel -> Bool
 isDelayLabel (LPause _) = True

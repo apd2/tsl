@@ -1,7 +1,7 @@
 {-# LANGUAGE ImplicitParams, TupleSections #-}
 
 -- Convert flattened spec to internal representation
-module SpecInline () where
+module SpecInline (spec2Internal) where
 
 import Data.List
 import Data.Maybe
