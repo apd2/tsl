@@ -3,6 +3,14 @@ import <ns16450.tsl> // device spec
 import <irq.tsl>
 
 
+template main
+
+    instance ns16450_drv drv(dev);
+    instance ns16450     dev(drv);
+
+endtemplate
+
+
 template ns16450_drv(ns16450 dev) // Note: we override dev port declaration
                                   // from linux_uart_drv with a concrete
                                   // ns16450 template derived from uart_dev
@@ -21,7 +29,7 @@ task uncontrollable void tty_probe()
     {...} post configured();
     // manually write ier, because perfect information strategy
     // knows nothing about it.
-    ier[0:0] = 0;
+    ier[ns16450::IER_RDI : ns16450::IER_RDI] = 0;
     dev.write8(ns16450::IER, ier);
 };
 
@@ -75,7 +83,7 @@ task uncontrollable void set_break(bool on)
 task uncontrollable void send(uint<8> c)
 {
     if (tx_enabled) {
-        ier[1:1] = 1;
+        ier[ns16450::IER_THRI : ns16450::IER_THRI] = 1;
         dev.write8(ns16450::IER, ier);
         {...} using send_goal;
     };
@@ -83,44 +91,44 @@ task uncontrollable void send(uint<8> c)
 
 task uncontrollable void start_rx()
 {
-    ier[UART_IER_DR:UART_IER_DR] = 1;
-    dev.write8(UART_IER, ier);
+    ier[ns16450::IER_RDI : ns16450::IER_RDI] = 1;
+    dev.write8(ns16450::IER, ier);
 };
 
 task uncontrollable void stop_rx()
 {
-    ier[UART_IER_DR:UART_IER_DR] = 0;
-    dev.write8(UART_IER, ier);
+    ier[ns16450::IER_RDI : ns16450::IER_RDI] = 0;
+    dev.write8(ns16450::IER, ier);
 };
 
 task uncontrollable void start_tx()
 {
-    ier[UART_IER_THRI:UART_IER_THRI] = 1;
-    dev.write8(UART_IER, ier);
+    ier[ns16450::IER_THRI : ns16450::IER_THRI] = 1;
+    dev.write8(ns16450::IER, ier);
 };
 
 task uncontrollable void stop_tx()
 {
-    ier[UART_IER_THRI:UART_IER_THRI] = 0;
-    dev.write8(UART_IER, ier);
+    ier[ns16450::IER_THRI : ns16450::IER_THRI] = 0;
+    dev.write8(ns16450::IER, ier);
 };
 
 export task uncontrollable void irq()
 {
     // Partial information hint
-    uint<8> status = dev.read8(UART_LST); //Read the line status register (tells us the cause of the interrupt)
+    uint<8> status = dev.read8(ns16450::LSR); //Read the line status register (tells us the cause of the interrupt)
 
-    if (status[UART_LSR_DR:UART_LSR_DR]) { //Data was received
+    if (status[ns16450::LSR_DR : ns16450::LSR_DR] != 0) { //Data was received
         // TODO: receive processing
     };
-    if (status[UART_LSR_THRE:UART_LSR_THRE]) { //Transmit holding register was empty
+    if (status[ns16450::LSR_THRE : ns16450::LSR_THRE] != 0) { //Transmit holding register was empty
         {...} using send_goal;
 
         // If the OS has not queued anything more to send then we disable the transmit 
         // holding regsiter empty interrupt so that we dont get endlessly repeated interrupts
         if (sendq_head == sendq_tail){
-            ier[UART_IER_THRI] = 0;
-            dev.write8(UART_IER, ier);
+            ier[ns16450::IER_THRI : ns16450::IER_THRI] = 0;
+            dev.write8(ns16450::IER, ier);
         };
     };
 };

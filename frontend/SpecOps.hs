@@ -1,7 +1,8 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
 module SpecOps(specNamespace,
-               validateSpec) where
+               validateSpec,
+               flatten) where
 
 import Data.List
 import Data.Maybe
@@ -100,7 +101,6 @@ validateSpec s = do
     mapM validateTmTypeDecls2                 (specTemplate s)
     mapM validateTmWires2                     (specTemplate s)
     mapM validateTmGoals2                     (specTemplate s)
-    validateSpecCallGraph2
 
     return ()
 
@@ -286,4 +286,5 @@ tspecFlatten _ t = t
 validateFlattenedSpec :: (MonadError String me) => Spec -> me ()
 validateFlattenedSpec s = do
     let ?spec = s
+    validateSpecCallGraph2
     validateTmWires4

@@ -173,3 +173,6 @@ instance WithPos Template where
 
 instance WithName Template where
     name = tname
+
+instance Show Template where
+    show = render . pp

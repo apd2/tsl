@@ -9,6 +9,7 @@ module TemplateOps(tmMapExpr,
                    callGraph,
                    isDescendant,
                    tmParents,
+                   tmParentsRec,
                    tmAllGoal,
                    tmAllMethod,
                    tmAllProcess,
@@ -32,6 +33,7 @@ import qualified Data.Graph.Inductive.Graph     as G
 import qualified Data.Graph.Inductive.Tree      as G
 import qualified Data.Graph.Inductive.Query.DFS as G
 import Control.Applicative hiding (Const)
+import Debug.Trace
 
 import TSLUtil
 import Pos
@@ -63,11 +65,12 @@ tmMapExpr f tm = tm { tmConst    = map (\c -> c{constVal = mapExpr f s (constVal
                                                 wireRHS  = fmap (mapExpr f s) (wireRHS w)})                        (tmWire tm)
                     , tmInit     = map (\i -> i{initBody = mapExpr f s (initBody i)})                              (tmInit tm)
                     , tmProcess  = map (\p -> p{procStatement = statMapExpr f s (procStatement p)})                (tmProcess tm)
-                    , tmMethod   = map (\m -> m{methRettyp = fmap (tspecMapExpr f s) (methRettyp m),
-                                                methArg    = map (\a -> a{argType = tspecMapExpr f s (argType a)}) (methArg m),
-                                                methBody   = case methBody m of
-                                                                  Left (mb,ma) -> Left  $ (fmap (statMapExpr f s) mb, fmap (statMapExpr f s) mb)
-                                                                  Right b      -> Right $ statMapExpr f s b})      (tmMethod tm)
+                    , tmMethod   = map (\m -> let sm = ScopeMethod tm m
+                                              in m{methRettyp = fmap (tspecMapExpr f s) (methRettyp m),
+                                                   methArg    = map (\a -> a{argType = tspecMapExpr f s (argType a)}) (methArg m),
+                                                   methBody   = case methBody m of
+                                                                     Left (mb,ma) -> Left  $ (fmap (statMapExpr f sm) mb, fmap (statMapExpr f sm) ma)
+                                                                     Right b      -> Right $ statMapExpr f sm b})  (tmMethod tm)
                     , tmGoal     = map (\g -> g{goalCond = mapExpr f s (goalCond g)})                              (tmGoal tm)}
     where s = ScopeTemplate tm
 
@@ -78,11 +81,12 @@ tmMapTSpec f tm = tm { tmConst    = map (\c -> Const (pos c) (mapTSpec f s $ tsp
                      , tmVar      = map (\v -> v{gvarVar  = (gvarVar v){varType = mapTSpec f s $ tspec v}})             (tmVar tm)
                      , tmWire     = map (\w -> w{wireType = mapTSpec f s (wireType w)})                                 (tmWire tm)
                      , tmProcess  = map (\p -> p{procStatement = statMapTSpec f s (procStatement p)})                   (tmProcess tm)
-                     , tmMethod   = map (\m -> m{methRettyp = fmap (mapTSpec f s) (methRettyp m),
-                                                 methArg    = map (\a -> a{argType = mapTSpec f s (argType a)}) (methArg m),
-                                                 methBody   = case methBody m of
-                                                                   Left (mb,ma) -> Left  $ (fmap (statMapTSpec f s) mb, fmap (statMapTSpec f s) mb)
-                                                                   Right b      -> Right $ statMapTSpec f s b})         (tmMethod tm)}
+                     , tmMethod   = map (\m -> let sm = ScopeMethod tm m
+                                               in m{methRettyp = fmap (mapTSpec f s) (methRettyp m),
+                                                    methArg    = map (\a -> a{argType = mapTSpec f s (argType a)}) (methArg m),
+                                                    methBody   = case methBody m of
+                                                                      Left (mb,ma) -> Left  $ (fmap (statMapTSpec f sm) mb, fmap (statMapTSpec f s) ma)
+                                                                      Right b      -> Right $ statMapTSpec f sm b})     (tmMethod tm)}
     where s = ScopeTemplate tm
 
 
@@ -194,6 +198,9 @@ tmLocalAndParentDecls t = concat $ (tmLocalDecls t):parents
 tmParents :: (?spec::Spec) => Template -> [Template]
 tmParents t = map (getTemplate . drvTemplate) (tmDerive t)
 
+tmParentsRec :: (?spec::Spec) => Template -> [Template]
+tmParentsRec t = concatMap (\t' -> t':(tmParentsRec t')) $ tmParents t
+
 -- Find port or instance by name.  Returns the name of the associated template.
 tmLookupPortInst :: (MonadError String me) => Template -> Ident -> me Ident
 tmLookupPortInst t n = case listToMaybe $ catMaybes [p, i] of
@@ -229,7 +236,7 @@ tmAllInst t = concatMap (\o -> case o of
                         (tmLocalAndParentDecls t)
 
 tmAllInit :: (?spec::Spec) => Template -> [Init]
-tmAllInit t = tmInit t ++ (concat $ map tmAllInit (tmParents t))
+tmAllInit t = tmInit t ++ (concatMap tmAllInit (tmParents t))
 
 tmAllProcess :: (?spec::Spec) => Template -> [Process]
 tmAllProcess t = concatMap (\o -> case o of
@@ -248,13 +255,13 @@ tmAllMethod t = map (\(t,m) -> m{methBody = methFullBody t m}) $ tmAllMethod' t
                 
 tmAllMethod' :: (?spec::Spec) => Template -> [(Template,Method)]
 tmAllMethod' t = (map (t,) $ tmMethod t) ++
-                 (filter (\(_,m) -> not $ elem (name m) $ (map name $ tmMethod t)) $ 
-                         concat $ map tmAllMethod' (tmParents t))
+                 (filter (\(_,m) -> not $ elem (name m) $ map name $ tmMethod t) $ 
+                         concatMap tmAllMethod' (tmParents t))
 
 tmAllWire :: (?spec::Spec) => Template -> [Wire]
 tmAllWire t = tmWire t ++
               (filter (\w -> not $ elem (name w) $ (map name $ tmWire t)) $ 
-                      concat $ map tmAllWire (tmParents t))
+                      concatMap tmAllWire (tmParents t))
 
 
 -- Merge template with its parents

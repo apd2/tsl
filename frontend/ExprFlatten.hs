@@ -1,6 +1,8 @@
 {-# LANGUAGE ImplicitParams #-}
 
-module ExprFlatten(exprFlatten) where
+module ExprFlatten(exprFlatten, exprFlatten') where
+
+import Debug.Trace
 
 import Name
 import Expr
@@ -11,7 +13,7 @@ import Spec
 import NS
 
 exprFlatten :: (?spec::Spec) => IID -> Scope -> Expr -> Expr
-exprFlatten iid s e = mapExpr (exprFlatten' iid)  s e
+exprFlatten iid s e = mapExpr (exprFlatten' iid) s e
 
 exprFlatten' iid s e@(ETerm p n) = case getTerm s n of
                                        ObjGVar tm v -> ETerm p [itreeFlattenName iid (name v)]
@@ -27,3 +29,5 @@ exprFlatten' iid s (EField p e f) =
             _                     -> EField p e f
 
 exprFlatten' iid s (EApply p (MethodRef p' n) as) = EApply p (MethodRef p' [itreeFlattenName (itreeRelToAbsPath iid (init n)) (last n)]) as
+
+exprFlatten' _ _ e = e

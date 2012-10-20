@@ -109,3 +109,6 @@ instance WithName Method where
 instance WithPos Method where
     pos       = mpos
     atPos m p = m{mpos = p}
+
+instance Show Method where
+    show      = render . pp

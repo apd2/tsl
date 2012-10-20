@@ -29,4 +29,7 @@ instance PP Spec where
                           P.$+$
                           (P.vcat $ map ((P.$+$ P.text "") . pp) tms)
 
+instance Show Spec where
+    show = P.render . pp
+
 emptySpec = Spec [] [] []

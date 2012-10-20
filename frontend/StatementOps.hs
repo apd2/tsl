@@ -15,6 +15,7 @@ module StatementOps(mapStat,
 
 import Control.Monad.Error
 import Data.Maybe
+import Debug.Trace
 
 import TSLUtil
 import Pos
@@ -170,10 +171,11 @@ statSubprocessNonrec _                   = []
 
 
 statFlatten :: (?spec::Spec) => IID -> Scope -> Statement -> Statement
-statFlatten iid s st = mapStat (statFlatten' iid) s $ statMapExpr (exprFlatten iid) s st
+statFlatten iid s st = mapStat (statFlatten' iid) s $ statMapExpr (exprFlatten' iid) s st
 
 statFlatten' :: (?spec::Spec) => IID -> Scope -> Statement -> Statement
 statFlatten' iid s (SPar p ps) = SPar p $ map (\(n,s) -> (itreeFlattenName iid n,s)) ps
+statFlatten' iid s (SInvoke p (MethodRef p' n) as) = SInvoke p (MethodRef p' [itreeFlattenName (itreeRelToAbsPath iid (init n)) (last n)]) as
 statFlatten' _   _ st          = st
 
 -------------------------------------------------------------------------

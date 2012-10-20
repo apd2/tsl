@@ -78,7 +78,8 @@ validateInstance tm i = do
            "Incorrect number of parameters to template " ++ sname t ++ 
            ". " ++ (show $ length $ tmPort t) ++ " parameters required."
     mapM (\(p,n) -> do ptm <- tmLookupPortInst tm n
-                       assert (portTemplate p == ptm) (pos n) $ 
+                       let parents = ptm : (map name $ tmParentsRec $ getTemplate ptm)
+                       assert (elem (portTemplate p) parents) (pos n) $ 
                               "Invalid template parameter: expected template type: " ++ (show $ portTemplate p) ++ ", actual type: " ++ show ptm)
          (zip (tmPort t) (instPort i))
     return ()

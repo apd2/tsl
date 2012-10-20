@@ -68,6 +68,9 @@ instance WithPos Statement where
     pos       = stpos
     atPos s p = s{stpos = p}
 
+instance Show Statement where
+    show = render . pp
+
 stmtVar :: Statement -> [Var]
 stmtVar (SVarDecl _ v)          = [v]
 stmtVar (SSeq _ ss)             = concat $ map stmtVar ss

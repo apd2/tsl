@@ -304,7 +304,7 @@ export procedure void evt_send(uint<8> c)
     sendq_dev_head = (sendq_dev_head + 1) % UART_SENDQ_SIZE;
 };
 
-export procedure void evt_receive(uint<8> c, bool error, bool brk);
+export procedure void evt_receive(uint<8> c, bool error, bool brk){};
 
 
 /****** Goals ***************************************************/
@@ -317,7 +317,7 @@ export procedure void evt_receive(uint<8> c, bool error, bool brk);
 
 // Infinitely often either queue is empty or the transmitter is disabled or
 // send_complete happens
-goal send_goal = (sendq_head == sendq_tail) || (!tx_enabled) || (tag == send_complete);
+goal send_goal = (sendq_head == sendq_tail) || (!tx_enabled); // || (tag == send_complete);
 
 /****************************************************************/
 
