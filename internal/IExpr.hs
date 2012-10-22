@@ -41,12 +41,12 @@ instance (?spec::Spec) => Typed Val where
     typ (PtrVal e)    = Ptr $ typ e
 
 instance PP Val where
-    pp (BoolVal True) = text "true"
-    pp (BoolVal True) = text "false"
-    pp (SIntVal _ v)  = text $ show v
-    pp (UIntVal _ v)  = text $ show v
-    pp (EnumVal n)    = text n
-    pp (PtrVal e)     = char '&' <> pp e
+    pp (BoolVal True)  = text "true"
+    pp (BoolVal False) = text "false"
+    pp (SIntVal _ v)   = text $ show v
+    pp (UIntVal _ v)   = text $ show v
+    pp (EnumVal n)     = text n
+    pp (PtrVal e)      = char '&' <> pp e
 
 type Slice = (Int, Int)
 

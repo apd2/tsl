@@ -11,6 +11,7 @@ import Data.List
 import Data.Maybe
 import Control.Monad.State
 import qualified Data.Map as M
+import Debug.Trace
 
 import qualified ISpec as I
 import qualified IExpr as I
@@ -152,10 +153,13 @@ exprToIExprs e t                              = do
     scope <- gets ctxScope
     let ?scope = scope
     e' <- exprToIExpr e t
-    return [(e', mkType $ typ e)]
+    let t' = case e of
+                  ENonDet _ -> mkType $ Type scope t
+                  _         -> mkType $ typ e
+    return [(e', t')]
 
 exprToIExpr' :: (?spec::Spec) => Expr -> Type -> State CFACtx I.Expr
-exprToIExpr' (ETerm _ ssym) _ = do
+exprToIExpr' e@(ETerm _ ssym) _ = do
     scope <- gets ctxScope
     lmap  <- gets ctxLNMap
     gmap  <- gets ctxGNMap

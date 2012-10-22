@@ -126,4 +126,5 @@ type ConstExpr = Expr
 type LExpr = Expr
 
 eAnd :: Pos -> [Expr] -> Expr
+eAnd p [] = EBool p True
 eAnd p es = foldl' (EBinOp p And) (head es) (tail es)

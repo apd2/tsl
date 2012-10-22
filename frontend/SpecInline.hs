@@ -9,8 +9,9 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad.State
 import qualified Data.Graph.Inductive.Graph as G
+import Debug.Trace
 
-import Util hiding (name)
+import Util hiding (name,trace)
 import TSLUtil
 import Spec
 import qualified ISpec as I
@@ -126,11 +127,12 @@ mkWires =
                      , ctxLNMap   = M.empty
                      , ctxLastVar = 0
                      , ctxVar     = []}
-        proc = let ?procs = [] in cfaToIProcess [] $ let ctx' = execState (procStatToCFA stat) ctx
-                                                     in (ctxCFA ctx', ctxVar ctx')
+        ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat
+                                               ctxPause aft I.true) ctx
+        proc = {-I.cfaTrace (ctxCFA ctx') "wires" $-} cfaToIProcess [] (ctxCFA ctx', ctxVar ctx')
     in case pBody proc of
             [t] -> t
-            _   -> error "mkWires: Invalid wire expression"
+            _   -> error $ "mkWires: Invalid wire expression.\nstat:" ++ show stat ++ "\nproc:\n" ++ show proc
 
 
 -- Build total order of wires so that for each wire, all wires that
@@ -193,7 +195,7 @@ mkCond e =
         -- precondition
     in case pBody iproc of
             [t] -> t
-            _   -> error "mkCond: Invalid condition"
+            _   -> error $ "mkCond " ++ show e ++ ": Invalid condition"
 
 ----------------------------------------------------------------------
 -- Idle transition
@@ -310,7 +312,7 @@ mkVars = (mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvar
 -- For a forked process the mparpid argument is the PID of the process in 
 -- whose syntactic scope the present process is located.
 procToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Process -> (I.CFA, [I.Var])
-procToCFA pid proc = (ctxCFA ctx', ctxVar ctx')
+procToCFA pid proc = {-I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $-} (ctxCFA ctx', ctxVar ctx')
     where ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeProcess tmMain proc
                        , ctxCFA    = I.newCFA I.true
@@ -321,7 +323,8 @@ procToCFA pid proc = (ctxCFA ctx', ctxVar ctx')
                        , ctxLNMap  = procLMap pid proc
                        , ctxLastVar = 0
                        , ctxVar     = []}
-          ctx' = execState (procStatToCFA (procStatement proc)) ctx
+          ctx' = execState (do aft <- procStatToCFA (procStatement proc)
+                               ctxFinal aft) ctx
 
 -- Convert forked process to CFA
 fprocToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
@@ -337,7 +340,8 @@ fprocToCFA pid lmap parscope stat = (ctxCFA ctx', ctxVar ctx')
                        , ctxLNMap  = lmap
                        , ctxLastVar = 0
                        , ctxVar     = []}
-          ctx' = execState (procStatToCFA stat) ctx
+          ctx' = execState (do aft <- procStatToCFA stat
+                               ctxFinal aft) ctx
 
 -- Convert controllable or uncontrollable task to CFA.
 -- The ctl argument indicates that a controllable transition is to be
@@ -486,7 +490,8 @@ forkedProcsRec s stat =
 ---------------------------------------------------------------
 
 cfaToIProcess :: PID -> (I.CFA,[I.Var]) -> ProcTrans
-cfaToIProcess pid (cfa,vs) = ProcTrans pid trans' vs final pcenum wait
+cfaToIProcess pid (cfa,vs) = trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreachable: " ++ (intercalate ", " $ map show r)) $
+                             ProcTrans pid trans' vs final pcenum wait
     where
     -- compute a set of transitions for each location labelled with pause or final
     trans = concatMap (locTrans cfa . fst)
@@ -521,7 +526,19 @@ locTrans cfa loc =
         -- for each final location, compute a subgraph that connects the two
         dst = filter (I.isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
     in map (\dst -> I.Transition loc dst $ pruneTrans cfa' loc dst) dst
-    
+
+-- locations reachable from found before reaching the next pause or final state
+reach :: I.CFA -> S.Set I.Loc -> S.Set I.Loc -> S.Set I.Loc
+reach cfa found frontier = if S.null frontier'
+                              then found'
+                              else reach cfa found' frontier'
+    where new       = suc frontier
+          found'    = S.union found new
+          -- frontier' - all newly discovered states that are not pause or final states
+          frontier' = S.filter (not . I.isDelayLabel . fromJust . G.lab cfa) $ new S.\\ found
+          suc locs  = S.unions $ map suc1 (S.toList locs)
+          suc1 loc  = S.fromList $ G.suc cfa loc
+
 -- Insert constraints over PC and cont variables after the last location of 
 -- the transition
 utranSuffix :: PID -> Bool -> I.Transition -> I.Transition
@@ -556,16 +573,4 @@ splitLoc loc cfa = (loc, loc', cfa3)
 -- iteratively prune dead-end locations until only transitions connecting from and to remain
 pruneTrans :: I.CFA -> I.Loc -> I.Loc -> I.CFA
 pruneTrans cfa from to = if G.noNodes cfa' == G.noNodes cfa then cfa else pruneTrans cfa' from to
-    where cfa' = foldl' (\g loc -> if loc /= to && null (G.suc g loc) then G.delNode loc g else g) cfa (G.nodes cfa)
-    
--- locations reachable from found before reaching the next pause or final state
-reach :: I.CFA -> S.Set I.Loc -> S.Set I.Loc -> S.Set I.Loc
-reach cfa found frontier = if S.null frontier'
-                              then found
-                              else reach cfa found' frontier'
-    where new       = suc frontier
-          found'    = S.union found new
-          -- frontier' - all newly discovered states that are not pause or final states
-          frontier' = S.filter (not . I.isDelayLabel . fromJust . G.lab cfa) $ new S.\\ found
-          suc locs  = S.unions $ map suc1 (S.toList locs)
-          suc1 loc  = S.fromList $ G.suc cfa loc
+    where cfa' = foldl' (\g loc -> if loc /= to && null (G.suc g loc) then G.delNode loc g else g) cfa (G.nodes cfa) 

@@ -7,8 +7,9 @@ import Control.Monad
 import Control.Monad.State
 import Data.List
 import Data.Maybe
+import Debug.Trace
 
-import Util hiding (name)
+import Util hiding (name,trace)
 import Inline
 import TSLUtil
 import Spec
@@ -220,7 +221,7 @@ statToCFA' before after (SAssign _ lhs (EApply _ mref args)) = do
          Task Uncontrollable -> taskCall before after meth args (Just lhs)
          _                   -> methInline before after meth args (Just lhs)
 
-statToCFA' before after (SAssign _ lhs rhs) = do
+statToCFA' before after st@(SAssign _ lhs rhs) = do
     scope <- gets ctxScope
     let ?scope = scope
     let t = mkType $ typ lhs
@@ -286,7 +287,8 @@ methInline before after meth args mlhs = do
     -- build CFA of the method
     aftbody <- statToCFA aftpause (fromRight $ methBody meth)
     ctxInsTrans aftbody retloc I.nop
-
+    -- restore syntactic scope
+    ctxPutScope $ ctxScope befctx
     -- copy out arguments
     aftout <- copyOutArgs retloc meth args
     aftpause <- ctxPause aftout $ I.true

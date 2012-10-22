@@ -31,6 +31,8 @@ instance PP Type where
     pp (UInt i)    = pp i
     pp (Enum e)    = text e
     pp (Struct fs) = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
+    pp (Ptr t)     = pp t <> char '*'
+    pp (Array t l) = pp t <> char '[' <> pp l <> char ']'
 
 twidth :: Type -> Int
 twidth (SInt w) = w

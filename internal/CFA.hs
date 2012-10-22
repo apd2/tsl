@@ -17,13 +17,18 @@ module CFA(Statement(..),
            cfaInsTrans',
            cfaInsTransMany',
            cfaSuc,
-           cfaAddNullPtrTrans) where
+           cfaAddNullPtrTrans,
+           cfaTrace,
+           cfaShow) where
 
-import qualified Data.Graph.Inductive.Graph as G
-import qualified Data.Graph.Inductive.Tree as G
+import qualified Data.Graph.Inductive.Graph    as G
+import qualified Data.Graph.Inductive.Tree     as G
+import qualified Data.Graph.Inductive.Graphviz as G
 import Data.List
 import Data.Tuple
 import Text.PrettyPrint
+import System.IO.Unsafe
+import System.Process
 
 import PP
 import Util hiding (name)
@@ -36,6 +41,9 @@ data Statement = SAssume Expr
 instance PP Statement where
     pp (SAssume e)   = text "assume" <+> (parens $ pp e)
     pp (SAssign l r) = pp l <+> text ":=" <+> pp r
+
+instance Show Statement where
+    show = render . pp
 
 (=:) :: Expr -> Expr -> Statement
 (=:) e1 e2 = SAssign e1 e2
@@ -50,8 +58,40 @@ data LocLabel = LNone
               | LFinal 
 type CFA = G.Gr LocLabel Statement
 
+instance PP LocLabel where
+    pp LNone      = empty
+    pp (LPause e) = pp e
+    pp LFinal     = text "F"
+
+instance Show LocLabel where
+    show = render . pp
+
 instance PP CFA where
-    pp cfa = vcat $ map (\(from,to,s) -> pp from <+> text "-->" <+> pp to <> char ':' <+> pp s) $ G.labEdges cfa
+    pp cfa = text "states:"
+             $+$
+             (vcat $ map (\(loc,lab) -> pp loc <> char ':' <+> pp lab) $ G.labNodes cfa)
+             $+$
+             text "transitions:"
+             $+$
+             (vcat $ map (\(from,to,s) -> pp from <+> text "-->" <+> pp to <> char ':' <+> pp s) $ G.labEdges cfa)
+
+instance Show CFA where
+    show = render . pp
+
+cfaTrace :: CFA -> String -> a -> a
+cfaTrace cfa title x = unsafePerformIO $ do
+    cfaShow cfa title
+    return x
+
+cfaShow :: CFA -> String -> IO ()
+cfaShow cfa title = do
+    let -- Convert graph to dot format
+        fname = "cfa_" ++ title ++ ".ps"
+        graphstr = G.graphviz cfa title (6.0, 11.0) (1,1) G.Portrait
+    writeFile (fname++".ps") graphstr
+    readProcess "dot" ["-Tps", "-o" ++ fname] graphstr 
+    readProcess "evince" [fname] ""
+    return ()
 
 isDelayLabel :: LocLabel -> Bool
 isDelayLabel (LPause _) = True
@@ -99,7 +139,9 @@ cfaAddNullPtrTrans :: CFA -> Expr -> CFA
 cfaAddNullPtrTrans cfa nul = foldl' (addNullPtrTrans1 nul) cfa (G.labEdges cfa)
 
 addNullPtrTrans1 :: Expr -> CFA -> (Loc,Loc,Statement) -> CFA
-addNullPtrTrans1 nul cfa (from , _, SAssign e1 e2) = cfaInsTrans from cfaErrLoc cond cfa
-    where cond = SAssume $ disj $ map (=== nul) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)
+addNullPtrTrans1 nul cfa (from , _, SAssign e1 e2) = case cond of
+                                                          EConst (BoolVal False) -> cfa
+                                                          _ -> cfaInsTrans from cfaErrLoc (SAssume cond) cfa
+    where cond = disj $ map (=== nul) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)
     
 addNullPtrTrans1 _   cfa (_    , _, SAssume _)     = cfa

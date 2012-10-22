@@ -6,7 +6,9 @@ import Data.List
 import Data.Maybe
 import Control.Monad.State
 import qualified Data.Map as M
+import Text.PrettyPrint
 
+import PP
 import Util hiding (name)
 import qualified ISpec as I
 import qualified IExpr as I
@@ -43,6 +45,22 @@ data ProcTrans = ProcTrans { pPID    :: PID
                            }
 
 type PID = [String]
+
+instance PP ProcTrans where
+    pp p = text "ProcTrans" <+> (text $ pidToName $ pPID p) <+>
+           (braces' $
+           (vcat $ map (($+$ text "") . pp) (pBody p))
+           $+$
+           (vcat $ map (($+$ text "") . pp) (pVar p))
+           $+$
+           (text "final locations:" <+> (hsep $ punctuate comma $ map pp (pFinal p)))
+           $+$
+           (text "PC:" <+> (pp $ pPCEnum p))
+           $+$
+           (text "Pause conditions:" <+> (hsep $ punctuate comma $ map (\(l,c) -> parens $ pp l <> comma <> pp c) (pPauses p))))
+
+instance Show ProcTrans where
+    show = render . pp
 
 -- PID to process name
 pidToName :: PID -> String
@@ -223,6 +241,7 @@ mkType t =
          Type s (EnumSpec   _ es)  -> I.Enum $ getEnumName $ name $ head es
          Type s (PtrSpec    _ t)   -> I.Ptr $ mkType $ Type s t
          Type s (ArraySpec  _ t l) -> let ?scope = s in I.Array (mkType $ Type s t) (fromInteger $ evalInt l)
+         Type s t -> error $ "mkType: " ++ show t
 
 
 getEnumName :: (?spec::Spec) => Ident -> String
@@ -299,6 +318,11 @@ ctxPause :: I.Loc -> I.Expr -> State CFACtx I.Loc
 ctxPause loc cond = do after <- ctxInsLocLab (I.LPause cond)
                        ctxInsTrans loc after I.nop
                        return after
+
+ctxFinal :: I.Loc -> State CFACtx I.Loc
+ctxFinal loc = do after <- ctxInsLocLab I.LFinal
+                  ctxInsTrans loc after I.nop
+                  return after
 
 ctxPutBrkLoc :: I.Loc -> State CFACtx ()
 ctxPutBrkLoc loc = modify $ (\ctx -> ctx {ctxBrkLoc = loc})
