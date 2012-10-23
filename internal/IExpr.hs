@@ -62,7 +62,7 @@ data Expr = EVar    String
           | ESlice  Expr Slice
 
 instance PP Expr where
-    pp (EVar n)          = text n
+    pp (EVar n)          = pp n
     pp (EConst v)        = pp v
     pp (EField e f)      = pp e <> char '.' <> pp f
     pp (EIndex a i)      = pp a <> char '[' <> pp i <> char ']'

@@ -236,7 +236,7 @@ task uncontrollable void set_mctrl(uint<32> mctrl)
 before{
     rts  = (mctrl[TIOCM_RTS:TIOCM_RTS] == 1);
     dtr  = (mctrl[TIOCM_DTR:TIOCM_DTR] == 1);
-    out1 = (mctrl[TIOCM_OUT1:TIOCM_OUT2] == 1);
+    out1 = (mctrl[TIOCM_OUT1:TIOCM_OUT1] == 1);
     out2 = (mctrl[TIOCM_OUT2:TIOCM_OUT2] == 1);
     loop = (mctrl[TIOCM_LOOP:TIOCM_LOOP] == 1);
     config_in_progress = true;

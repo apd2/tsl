@@ -22,7 +22,7 @@ uint<8> ier;
 
 task uncontrollable void tty_probe()
 {
-    uint<8> "x";
+    uint<8> x;
 
     // TODO: potentially force reset to put the device in a known state.
 

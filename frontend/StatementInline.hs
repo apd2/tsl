@@ -91,16 +91,17 @@ statSimplify' st                    = [st]
 -- Convert statement to CFA
 ----------------------------------------------------------
 statToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => I.Loc -> Statement -> State CFACtx I.Loc
-statToCFA before (SSeq _ ss) = foldM statToCFA before ss
-statToCFA before (SPause _)  = ctxPause before I.true
-statToCFA before (SWait _ c) = do ci <- exprToIExprDet c
-                                  ctxPause before ci
-statToCFA before (SStop _)   = do after <- ctxInsLocLab I.LFinal
-                                  ctxInsTrans before after I.nop
-                                  return after
-statToCFA before stat        = do after <- ctxInsLoc
-                                  statToCFA' before after stat
-                                  return after
+statToCFA before (SSeq _ ss)    = foldM statToCFA before ss
+statToCFA before (SPause _)     = ctxPause before I.true
+statToCFA before (SWait _ c)    = do ci <- exprToIExprDet c
+                                     ctxPause before ci
+statToCFA before (SStop _)      = do after <- ctxInsLocLab I.LFinal
+                                     ctxInsTrans before after I.nop
+                                     return after
+statToCFA before (SVarDecl _ _) = return before
+statToCFA before stat           = do after <- ctxInsLoc
+                                     statToCFA' before after stat
+                                     return after
 
 -- Only safe to call from statToCFA.  Do not call this function directly!
 statToCFA' :: (?spec::Spec, ?procs::[ProcTrans]) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
@@ -143,7 +144,7 @@ statToCFA' before after (SForever _ stat) = do
     -- loc' = end of loop body
     loc' <- statToCFA before stat 
     -- loop-back transition
-    ctxInsTrans loc' after I.nop
+    ctxInsTrans loc' before I.nop
     ctxPutBrkLoc brkLoc
 
 statToCFA' before after (SDo _ stat cond) = do
@@ -257,10 +258,7 @@ statToCFA' before after (SMagic _ obj) = do
     aftmag <- ctxInsTrans' before $ mkMagicVar I.=: I.true
     -- wait for magic flag to be false
     aftwait <- ctxPause aftmag $ mkMagicVar I.=== I.false
-    aftass <- case obj of
-                   Left _     -> return aftwait
-                   Right cond -> statToCFA aftwait $ SAssert nopos cond
-    ctxInsTrans aftass after I.nop  
+    ctxInsTrans aftwait after I.nop
 
 methInline :: (?spec::Spec,?procs::[ProcTrans]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
 methInline before after meth args mlhs = do
@@ -272,7 +270,9 @@ methInline before after meth args mlhs = do
                 Just lhs -> (liftM Just) $ exprToIExprDet lhs
     -- set input arguments
     aftarg <- setArgs before meth args
-    aftpause <- ctxPause aftarg $ I.true
+    aftpause1 <- case methCat meth of
+                      Task _ -> ctxPause aftarg I.true
+                      _      -> return aftarg
     -- set return location
     retloc <- ctxInsLoc
     ctxPutRetLoc retloc
@@ -285,15 +285,17 @@ methInline before after meth args mlhs = do
     -- build local map consisting of method arguments and local variables
     ctxPutLNMap $ methodLMap pid meth
     -- build CFA of the method
-    aftbody <- statToCFA aftpause (fromRight $ methBody meth)
+    aftbody <- statToCFA aftpause1 (fromRight $ methBody meth)
     ctxInsTrans aftbody retloc I.nop
     -- restore syntactic scope
     ctxPutScope $ ctxScope befctx
     -- copy out arguments
     aftout <- copyOutArgs retloc meth args
-    aftpause <- ctxPause aftout $ I.true
+    aftpause2 <- case methCat meth of
+                      Task _ -> ctxPause aftout I.true
+                      _      -> return aftout
     -- nop-transition to after
-    ctxInsTrans aftpause after I.nop
+    ctxInsTrans aftpause2 after I.nop
     -- restore context
     ctxPutBrkLoc $ ctxBrkLoc befctx
     ctxPutRetLoc $ ctxRetLoc befctx

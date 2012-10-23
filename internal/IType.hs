@@ -27,8 +27,8 @@ data Type = Bool
 
 instance PP Type where
     pp Bool        = text "bool"
-    pp (SInt i)    = pp i
-    pp (UInt i)    = pp i
+    pp (SInt i)    = text "sint" <> char '<' <> pp i <> char '>'
+    pp (UInt i)    = text "uint" <> char '<' <> pp i <> char '>'
     pp (Enum e)    = text e
     pp (Struct fs) = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
     pp (Ptr t)     = pp t <> char '*'

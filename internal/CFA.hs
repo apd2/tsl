@@ -18,6 +18,7 @@ module CFA(Statement(..),
            cfaInsTransMany',
            cfaSuc,
            cfaAddNullPtrTrans,
+           cfaPruneUnreachable,
            cfaTrace,
            cfaShow) where
 
@@ -29,9 +30,11 @@ import Data.Tuple
 import Text.PrettyPrint
 import System.IO.Unsafe
 import System.Process
+import Data.String.Utils
+import Debug.Trace
 
 import PP
-import Util hiding (name)
+import Util hiding (name,trace)
 import IExpr
 
 -- Atomic statement
@@ -86,7 +89,8 @@ cfaTrace cfa title x = unsafePerformIO $ do
 cfaShow :: CFA -> String -> IO ()
 cfaShow cfa title = do
     let -- Convert graph to dot format
-        fname = "cfa_" ++ title ++ ".ps"
+        title' = replace "\"" "_" $ replace "/" "_" title
+        fname = "cfa_" ++ title' ++ ".ps"
         graphstr = G.graphviz cfa title (6.0, 11.0) (1,1) G.Portrait
     writeFile (fname++".ps") graphstr
     readProcess "dot" ["-Tps", "-o" ++ fname] graphstr 
@@ -118,10 +122,11 @@ cfaInsTrans :: Loc -> Loc -> Statement -> CFA -> CFA
 cfaInsTrans from to stat cfa = G.insEdge (from,to,stat) cfa
 
 cfaInsTransMany :: Loc -> Loc -> [Statement] -> CFA -> CFA
-cfaInsTransMany from to stats cfa = cfaInsTrans aft to nop cfa'
+cfaInsTransMany from to [] cfa = cfaInsTrans from to nop cfa
+cfaInsTransMany from to stats cfa = cfaInsTrans aft to (last stats) cfa'
     where (cfa', aft) = foldl' (\(cfa, loc) stat -> let (cfa',loc') = cfaInsLoc LNone cfa
                                                     in (cfaInsTrans loc loc' stat cfa', loc'))
-                               (cfa, from) stats
+                               (cfa, from) (init stats)
 
 cfaInsTrans' :: Loc -> Statement -> CFA -> (CFA, Loc)
 cfaInsTrans' from stat cfa = (cfaInsTrans from to stat cfa', to)
@@ -137,6 +142,14 @@ cfaSuc loc cfa = map swap $ G.lsuc cfa loc
 -- Add error transitions for all potential null-pointer dereferences
 cfaAddNullPtrTrans :: CFA -> Expr -> CFA
 cfaAddNullPtrTrans cfa nul = foldl' (addNullPtrTrans1 nul) cfa (G.labEdges cfa)
+
+cfaPruneUnreachable :: CFA -> [Loc] -> CFA
+cfaPruneUnreachable cfa keep = 
+    let unreach = filter (\n -> (not $ elem n ([cfaInitLoc, cfaErrLoc] ++ keep)) && (null $ G.pre cfa n)) $ G.nodes cfa
+    in if null unreach 
+          then cfa   
+          else trace ("cfaPruneUnreachable: " ++ show cfa ++ "\n"++ show unreach) $
+               cfaPruneUnreachable (foldl' (\cfa n -> G.delNode n cfa) cfa unreach) keep
 
 addNullPtrTrans1 :: Expr -> CFA -> (Loc,Loc,Statement) -> CFA
 addNullPtrTrans1 nul cfa (from , _, SAssign e1 e2) = case cond of

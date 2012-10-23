@@ -129,7 +129,7 @@ mkWires =
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat
                                                ctxPause aft I.true) ctx
-        proc = {-I.cfaTrace (ctxCFA ctx') "wires" $-} cfaToIProcess [] (ctxCFA ctx', ctxVar ctx')
+        proc = I.cfaTrace (ctxCFA ctx') "wires" $ cfaToIProcess [] (ctxCFA ctx', ctxVar ctx')
     in case pBody proc of
             [t] -> t
             _   -> error $ "mkWires: Invalid wire expression.\nstat:" ++ show stat ++ "\nproc:\n" ++ show proc
@@ -312,7 +312,7 @@ mkVars = (mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvar
 -- For a forked process the mparpid argument is the PID of the process in 
 -- whose syntactic scope the present process is located.
 procToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Process -> (I.CFA, [I.Var])
-procToCFA pid proc = {-I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $-} (ctxCFA ctx', ctxVar ctx')
+procToCFA pid proc = I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
     where ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeProcess tmMain proc
                        , ctxCFA    = I.newCFA I.true
@@ -328,7 +328,7 @@ procToCFA pid proc = {-I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") 
 
 -- Convert forked process to CFA
 fprocToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
-fprocToCFA pid lmap parscope stat = (ctxCFA ctx', ctxVar ctx')
+fprocToCFA pid lmap parscope stat = I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
     where -- Add process-local variables to nmap
           ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = parscope
@@ -347,7 +347,7 @@ fprocToCFA pid lmap parscope stat = (ctxCFA ctx', ctxVar ctx')
 -- The ctl argument indicates that a controllable transition is to be
 -- generated (using tag instead of enabling variable)
 taskToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Method -> Bool -> (I.CFA, [I.Var])
-taskToCFA pid meth ctl = (ctxCFA ctx', ctxVar ctx')
+taskToCFA pid meth ctl = I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "_" ++ sname meth ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
     where stat = fromRight $ methBody meth
           ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeMethod tmMain meth

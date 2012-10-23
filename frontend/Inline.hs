@@ -85,7 +85,7 @@ mkVarName mpid mmeth x = mkVarNameS mpid mmeth (sname x)
 mkVarNameS :: Maybe PID -> Maybe Method -> String -> String
 mkVarNameS mpid mmeth s = intercalate "/" names
     where names = fromMaybe [] mpid ++ 
-                  [fromMaybe "" (fmap ((++ "()") . sname) mmeth)] ++ 
+                  fromMaybe [] (fmap ((:[]). (++ "()") . sname) mmeth) ++ 
                   [s]
 
 mkVar :: (WithName a) => Maybe PID -> Maybe Method -> a -> I.Expr
