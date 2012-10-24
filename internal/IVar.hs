@@ -5,7 +5,7 @@ import Text.PrettyPrint
 
 import PP
 import IType
-import AbsGame
+import PredicateDB
 
 data Var = Var { varMem  :: Bool
                , varCat  :: VarCategory

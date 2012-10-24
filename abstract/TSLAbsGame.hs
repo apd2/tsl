@@ -14,6 +14,7 @@ import qualified Data.Set as S
 import TSLUtil
 import Common
 import AbsGame
+import PredicateDB
 import LogicClasses
 import Implicit
 import ISpec
@@ -25,14 +26,17 @@ import Cascade
 import Predicate
 import Formula
 
-type PDB c v = PredicateDB c v Predicate
 type TAbsVar = AbsVar Predicate
+
+type TmpVars v = M.Map TAbsVar v
+
+type PDB c v x = PredicateDB c v Predicate (TmpVars v) x
 
 -----------------------------------------------------------------------
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: (AllOps c v a) => Spec -> AbsGame c v a Predicate
+tslAbsGame :: (AllOps c v a) => Spec -> AbsGame c v a Predicate (TmpVars v)
 tslAbsGame spec = AbsGame { gameGoals       = tslGameGoals       spec
                           , gameFair        = tslGameFair        spec
                           , gameInit        = tslGameInit        spec
@@ -40,39 +44,39 @@ tslAbsGame spec = AbsGame { gameGoals       = tslGameGoals       spec
                           , gameVarUpdateU  = tslGameVarUpdateU  spec}
 
 
-tslGameGoals :: (AllOps c v a) => Spec -> State (PDB c v) [(String,a)]
+tslGameGoals :: (AllOps c v a) => Spec -> PDB c v [(String,a)]
 tslGameGoals spec = do
     let ?spec = spec
-    c <- gets pdbCtx
+    c <- pdbCtx
     let ?m = c
     mapM (\g -> do c <- tranPrecondition (goalCond g)
                    return (goalName g, c))
          $ specGoal spec
 
-tslGameFair :: (AllOps c v a) => Spec -> State (PDB c v) [a]
+tslGameFair :: (AllOps c v a) => Spec -> PDB c v [a]
 tslGameFair spec = mapM (bexprAbstract spec) $ specFair spec
 
-tslGameInit :: (AllOps c v a) => Spec -> State (PDB c v) a
+tslGameInit :: (AllOps c v a) => Spec -> PDB c v a
 tslGameInit spec = do 
     let ?spec = spec
-    c <- gets pdbCtx
+    c <- pdbCtx
     let ?m = c
     pre   <- tranPrecondition (fst $ specInit spec)
     extra <- bexprAbstract spec (snd $ specInit spec)
     return $ pre .& extra
 
-tslGameVarUpdateC :: (AllOps c v a) => Spec -> [TAbsVar] -> State (PDB c v) [a]
+tslGameVarUpdateC :: (AllOps c v a) => Spec -> [TAbsVar] -> PDB c v [a]
 tslGameVarUpdateC spec vars = do
     let ?spec = spec
-    c <- gets pdbCtx
+    c <- pdbCtx
     let ?m = c
     updatefs <- mapM (varUpdateTrans vars) $ specCTran spec
     return $ map disj $ transpose updatefs
 
-tslGameVarUpdateU :: (AllOps c v a) => Spec -> [TAbsVar] -> State (PDB c v) [a]
+tslGameVarUpdateU :: (AllOps c v a) => Spec -> [TAbsVar] -> PDB c v [a]
 tslGameVarUpdateU spec vars = do
     let ?spec = spec
-    c <- gets pdbCtx
+    c <- pdbCtx
     let ?m = c
     updatefs <- mapM (varUpdateTrans vars) $ specUTran spec
     return $ map disj $ transpose updatefs
@@ -82,8 +86,8 @@ tslGameVarUpdateU spec vars = do
 ----------------------------------------------------------------------------
 
 -- Find predicates of the form (e == AddrOf e')
-pdbPtrPreds :: (AllOps c v a, ?pdb::PDB c v) => Expr -> [(Predicate, Term)]
-pdbPtrPreds e = 
+ptrPreds :: (?pred::[Predicate]) => Expr -> [(Predicate, Term)]
+ptrPreds e = 
     mapMaybe (\p@(PAtom _ t1 t2) -> if t1 == t
                                        then case t2 of
                                                  TAddr t' -> Just (p,t')
@@ -93,7 +97,7 @@ pdbPtrPreds e =
                                                          TAddr t' -> Just (p,t')
                                                          _        -> Nothing
                                                else Nothing) 
-             $ pdbPred ?pdb
+             ?pred
     where t = exprToTerm e
 
 ----------------------------------------------------------------------------
@@ -101,43 +105,43 @@ pdbPtrPreds e =
 ----------------------------------------------------------------------------
 
 -- Extract predicates from formula and compile it
-compile :: (AllOps c v a, ?spec::Spec) => Formula -> State (PDB c v) a
+compile :: (AllOps c v a, ?spec::Spec) => Formula -> PDB c v a
 compile = error "Not implemented: compile"
 
 -- Compile _existing_ abstract var
-compileVar :: (AllOps c v a, ?spec::Spec, ?m::c) => TAbsVar -> State (PDB c v) a
+compileVar :: (AllOps c v a, ?spec::Spec) => TAbsVar -> PDB c v a
 compileVar = error "Not implemented: compileVar"
 
-compileFormula :: (AllOps c v a, ?spec::Spec, ?m::c) => Formula -> State (PDB c v) (a,[TAbsVar])
+compileFormula :: (AllOps c v a, ?spec::Spec) => Formula -> PDB c v (a,[TAbsVar])
 compileFormula = error "Not implemented: compileFormula"
 
-compileTCascade :: (AllOps c v a, ?spec::Spec, ?m::c) => TCascade -> State (PDB c v) (a,[TAbsVar])
+compileTCascade :: (AllOps c v a, ?spec::Spec) => TCascade -> PDB c v (a,[TAbsVar])
 compileTCascade = error "Not implemented: compileTCascade"
 
 -- Substitute variable v with relation substitution in rel, using
 -- tmpv as temporary copy of v
-subst :: (AllOps c v a, ?spec::Spec, ?m::c) => a -> v -> a -> v -> a
+subst :: (AllOps c v a, ?spec::Spec) => c -> a -> v -> a -> v -> a
 subst rel v substitution tmpv = error "Not implemented: subst"
 
 ----------------------------------------------------------------------------
 -- Computing abstraction
 ----------------------------------------------------------------------------
 
-bexprAbstract :: (AllOps c v a) => Spec -> Expr -> State (PDB c v) a
+bexprAbstract :: (AllOps c v a) => Spec -> Expr -> PDB c v a
 bexprAbstract spec e = do
-    pdb <- get
+    pred <- pdbPred
     let ?spec = spec
-        ?pdb  = pdb
+        ?pred = pred
     compile $ bexprToFormula e
 
 -- Convert boolean expression (possibly with pointers) to a formula without
 -- introducing new pointer predicates.
-bexprToFormula :: (AllOps c v a, ?spec::Spec, ?pdb::PDB c v) => Expr -> Formula
+bexprToFormula :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Formula
 bexprToFormula e = fcasToFormula $ fmap bexprToFormula' $ exprExpandPtr e
 
 -- Convert boolean expression (possibly with pointers) to a formula, 
 -- introducing new pointer predicates if needed.
-bexprToFormulaPlus :: (AllOps c v a, ?spec::Spec, ?pdb::PDB c v) => Expr -> Formula
+bexprToFormulaPlus :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Formula
 bexprToFormulaPlus e@(EBinOp op e1 e2) | op == Eq || op == Neq = 
     let f1 = case e1 of
                   EUnOp Deref e1' -> fcasToFormula $ fcasPrune $ (addrPred op) <$> (exprExpandPtr e1') <*> (exprExpandPtr e2)
@@ -152,12 +156,12 @@ bexprToFormulaPlus e = bexprToFormula e
 -- Check if predicate (x == addrof y) exists in the DB.  If yes,
 -- return false, else return (x == addrof y) or !(x == addrof y),
 -- depending on op.
-addrPred :: (AllOps c v a, ?spec::Spec, ?pdb::PDB c v) => BOp -> Expr -> Expr -> Formula
+addrPred :: (?spec::Spec, ?pred::[Predicate]) => BOp -> Expr -> Expr -> Formula
 addrPred op x y =
     let tx = exprToTerm x
         ty = exprToTerm y
         fp = fAtom REq tx (TAddr ty)
-    in if (not $ isMemTerm ty) || (any ((==ty) . snd) $ pdbPtrPreds x)
+    in if (not $ isMemTerm ty) || (any ((==ty) . snd) $ ptrPreds x)
           then FFalse
           else if op == Eq
                   then fp 
@@ -189,12 +193,12 @@ combineExpr op e1 e2 | typ e1 == Bool =
 
 -- Expand each pointer dereference operation in the expression
 -- using predicates in the DB.
-exprExpandPtr :: (AllOps c v a, ?pdb::PDB c v) => Expr -> ECascade
+exprExpandPtr :: (?pred::[Predicate]) => Expr -> ECascade
 exprExpandPtr e@(EVar _)          = CasLeaf e
 exprExpandPtr e@(EConst _)        = CasLeaf e
 exprExpandPtr   (EField e f)      = fmap (\e -> EField e f) $ exprExpandPtr e
 exprExpandPtr   (EIndex a i)      = EIndex <$> exprExpandPtr a <*> exprExpandPtr i
-exprExpandPtr   (EUnOp Deref e)   = casMap (CasTree . (map (\(p, t) -> (FPred p, CasLeaf $ termToExpr t))) . pdbPtrPreds)
+exprExpandPtr   (EUnOp Deref e)   = casMap (CasTree . (map (\(p, t) -> (FPred p, CasLeaf $ termToExpr t))) . ptrPreds)
                                            $ exprExpandPtr e
 exprExpandPtr   (EBinOp op e1 e2) = (EBinOp op) <$> exprExpandPtr e1 <*> exprExpandPtr e2
 exprExpandPtr   (ESlice e s)      = fmap (\e -> ESlice e s) $ exprExpandPtr e
@@ -203,21 +207,23 @@ exprExpandPtr   (ESlice e s)      = fmap (\e -> ESlice e s) $ exprExpandPtr e
 -- Predicate/variable update functions
 ----------------------------------------------------------------------------
 
--- Compute precondition of transition, i.e., variable
--- update function for empty set of variables
-tranPrecondition :: (AllOps c v a, ?spec::Spec, ?m::c) => Transition -> State (PDB c v) a
-tranPrecondition tran = do
-    cache <- varUpdateLoc [] (tranFrom tran) (tranCFA tran) (M.singleton (tranTo tran) ([t],[]))
-    return $ head $ fst $ cache M.! (tranFrom tran)
-
 -- Cache of variable update functions for intermediate locations inside a transition:
 -- [a] is the list of variable update functions, 
 -- [TAbsVar] is the list of variables that these functions depend on (these variable must 
 -- be recomputed at the next iteration)
 type Cache a = M.Map Loc ([a],[TAbsVar])
 
+-- Compute precondition of transition, i.e., variable
+-- update function for empty set of variables
+tranPrecondition :: (AllOps c v a, ?spec::Spec) => Transition -> PDB c v a
+tranPrecondition tran = do
+    m <- pdbCtx
+    let ?m = m
+    cache <- varUpdateLoc [] (tranFrom tran) (tranCFA tran) (M.singleton (tranTo tran) ([t],[]))
+    return $ head $ fst $ cache M.! (tranFrom tran)
+
 -- Compute update functions for a list of variables wrt to a transition
-varUpdateTrans :: (AllOps c v a, ?spec::Spec, ?m::c) => [TAbsVar] -> Transition -> State (PDB c v) [a]
+varUpdateTrans :: (AllOps c v a, ?spec::Spec) => [TAbsVar] -> Transition -> PDB c v [a]
 varUpdateTrans vs t = do
     -- Main transition
     cache <- varUpdateLoc vs (tranFrom t) (tranCFA t) M.empty
@@ -231,7 +237,7 @@ varUpdateTrans vs t = do
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA.  Record the result in a cache that will be used to recursively
 -- compute update functions for predecessor locations.
-varUpdateLoc :: (AllOps c v a, ?spec::Spec, ?m::c) => [TAbsVar] -> Loc -> CFA -> Cache a -> State (PDB c v) (Cache a)
+varUpdateLoc :: (AllOps c v a, ?spec::Spec) => [TAbsVar] -> Loc -> CFA -> Cache a -> PDB c v (Cache a)
 varUpdateLoc vs loc cfa cache | M.member loc cache    = return cache
 varUpdateLoc vs loc cfa cache | null (cfaSuc loc cfa) = do
     rels <- mapM compileVar vs
@@ -243,10 +249,12 @@ varUpdateLoc vs loc cfa cache                         = do
           cache (cfaSuc loc cfa)
 
 -- Compute variable update functions for an individual statement
-varUpdateStat :: (AllOps c v a, ?spec::Spec, ?m::c) => Statement -> ([a], [TAbsVar]) -> State (PDB c v) ([a],[TAbsVar])
+varUpdateStat :: (AllOps c v a, ?spec::Spec) => Statement -> ([a], [TAbsVar]) -> PDB c v ([a],[TAbsVar])
 varUpdateStat (SAssume e) (rels, vs) = do
-    pdb <- get
-    let ?pdb = pdb
+    pred <- pdbPred
+    m    <- pdbCtx
+    let ?pred = pred
+        ?m    = m
     let f = bexprToFormulaPlus e
     (rel,vs') <- compileFormula f
     return (map (and rel) rels, S.toList $ S.fromList $ vs ++ vs')
@@ -256,11 +264,14 @@ varUpdateStat (SAssign e1 e2) (rels, vs) =
 -- Given a list of variable update relations computed so far and and 
 -- assignment statement, recompute individual abstract variable and 
 -- substitute the expression for it to all relations.
-varUpdateAsnStat1 :: (AllOps c v a, ?spec::Spec, ?m::c) => Expr -> Expr -> ([a], [TAbsVar]) -> TAbsVar -> State (PDB c v) ([a],[TAbsVar])
+varUpdateAsnStat1 :: (AllOps c v a, ?spec::Spec) => Expr -> Expr -> ([a], [TAbsVar]) -> TAbsVar -> PDB c v ([a],[TAbsVar])
 varUpdateAsnStat1 lhs rhs (rels, vs) av = do
-    pdb <- get
-    let ?pdb = pdb
-    let (v,v') = pdbGetVar pdb av
+    pred <- pdbPred
+    m    <- pdbCtx
+    let ?pred = pred
+    v <- pdbGetVar av
+    tmp <- pdbGetExt
+    let v' = tmp M.! av 
     (rel,vs') <- case av of
                       (PredVar _ p) -> do let f = updatePredAsn lhs rhs p
                                           compileFormula f
@@ -269,11 +280,11 @@ varUpdateAsnStat1 lhs rhs (rels, vs) av = do
                                                      $ casMap exprExpandPtr 
                                                      $ updateScalAsn lhs rhs (TVar $ varName var)
                                           compileTCascade var'
-    let rels' = map (\r -> subst r v rel v') rels
+    let rels' = map (\r -> subst m r v rel v') rels
     return (rels', S.toList $ S.fromList $ vs ++ vs')
 
 -- Predicate update by assignment statement
-updatePredAsn :: (AllOps c v a, ?spec::Spec, ?pdb::PDB c v) => Expr -> Expr -> Predicate -> Formula
+updatePredAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Predicate -> Formula
 updatePredAsn lhs rhs p = pSubstScalCas p sc'
     where sc' = map (updateScalAsn lhs rhs) $ pScalars p
  
@@ -281,7 +292,7 @@ updatePredAsn lhs rhs p = pSubstScalCas p sc'
 -- Computes possible overlaps of the lhs with the term and
 -- corresponding next-state values of the term expressed as concatenation 
 -- of slices of the rhs and the original term.
-updateScalAsn :: (AllOps c v a, ?spec::Spec, ?pdb::PDB c v) => Expr -> Expr -> Term -> ECascade
+updateScalAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Term -> ECascade
 updateScalAsn e                rhs (TSlice t s) = fmap (\e -> exprSlice e s) (updateScalAsn e rhs t)
 updateScalAsn (ESlice e (l,h)) rhs t            = 
     fmap (\b -> if b
@@ -298,7 +309,7 @@ updateScalAsn lhs              rhs t            =
 
 -- Takes lhs expression and a term and computes the condition 
 -- when the expression is a synonym of the term.
-lhsTermEq :: (AllOps c v a, ?spec::Spec, ?pdb::PDB c v) => Expr -> Term -> BCascade
+lhsTermEq :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Term -> BCascade
 lhsTermEq (EVar n1)       (TVar n2)        | n1 == n2 = CasLeaf True
 lhsTermEq (EField e f1)   (TField t f2)    | f1 == f2 = lhsTermEq e t
 lhsTermEq (EIndex ae ie)  (TIndex at it)              = 
@@ -341,12 +352,12 @@ tScalars   (TSlice t _)     = tScalars t
 
 -- Substitute all scalar terms in a predicate with cascades of scalar expressions.
 -- The order of cascades is assumed to be the same one returned by pScalars.
-pSubstScalCas :: (AllOps c v a, ?spec::Spec, ?pdb::PDB c v) => Predicate -> [ECascade] -> Formula
+pSubstScalCas :: (?spec::Spec, ?pred::[Predicate]) => Predicate -> [ECascade] -> Formula
 pSubstScalCas (PAtom op t1 t2) cas = fcasToFormula $ (\e1 e2 -> bexprToFormulaPlus $ EBinOp (relOpToBOp op) e1 e2) <$> t1' <*> t2'
     where (t1', cas') = tSubstCas t1 cas
           (t2', _   ) = tSubstCas t2 cas'
 
-tSubstCas :: (AllOps c v a, ?spec::Spec, ?pdb::PDB c v) => Term -> [ECascade] -> (ECascade, [ECascade])
+tSubstCas :: (?spec::Spec, ?pred::[Predicate]) => Term -> [ECascade] -> (ECascade, [ECascade])
 tSubstCas   (TVar   _)           cas = (head cas              , tail cas)
 tSubstCas t@(TSInt  _ _)         cas = (CasLeaf $ termToExpr t, cas)
 tSubstCas t@(TUInt  _ _)         cas = (CasLeaf $ termToExpr t, cas)
