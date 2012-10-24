@@ -65,7 +65,7 @@ tslGameInit spec = do
     extra <- bexprAbstract spec (snd $ specInit spec)
     return $ pre .& extra
 
-tslGameVarUpdateC :: (AllOps c v a) => Spec -> [TAbsVar] -> PDB c v [a]
+tslGameVarUpdateC :: (AllOps c v a) => Spec -> [(TAbsVar,v)] -> PDB c v [a]
 tslGameVarUpdateC spec vars = do
     let ?spec = spec
     c <- pdbCtx
@@ -73,7 +73,7 @@ tslGameVarUpdateC spec vars = do
     updatefs <- mapM (varUpdateTrans vars) $ specCTran spec
     return $ map disj $ transpose updatefs
 
-tslGameVarUpdateU :: (AllOps c v a) => Spec -> [TAbsVar] -> PDB c v [a]
+tslGameVarUpdateU :: (AllOps c v a) => Spec -> [(TAbsVar,v)] -> PDB c v [a]
 tslGameVarUpdateU spec vars = do
     let ?spec = spec
     c <- pdbCtx
@@ -104,24 +104,32 @@ ptrPreds e =
 -- Compilation
 ----------------------------------------------------------------------------
 
--- Extract predicates from formula and compile it
-compile :: (AllOps c v a, ?spec::Spec) => Formula -> PDB c v a
-compile = error "Not implemented: compile"
+---- Extract predicates from formula and compile it
+--compile :: (AllOps c v a, ?spec::Spec) => Formula -> PDB c v a
+--compile = error "Not implemented: compile"
 
 -- Compile _existing_ abstract var
-compileVar :: (AllOps c v a, ?spec::Spec) => TAbsVar -> PDB c v a
+compileVar :: (AllOps c v a, ?spec::Spec) => (TAbsVar,v) -> PDB c v a
 compileVar = error "Not implemented: compileVar"
 
-compileFormula :: (AllOps c v a, ?spec::Spec) => Formula -> PDB c v (a,[TAbsVar])
+compileFormula :: (AllOps c v a, ?spec::Spec) => Formula -> PDB c v a
 compileFormula = error "Not implemented: compileFormula"
 
-compileTCascade :: (AllOps c v a, ?spec::Spec) => TCascade -> PDB c v (a,[TAbsVar])
-compileTCascade = error "Not implemented: compileTCascade"
+--compileTCascade :: (AllOps c v a, ?spec::Spec) => TCascade -> PDB c v (a,[TAbsVar])
+--compileTCascade = error "Not implemented: compileTCascade"
 
--- Substitute variable v with relation substitution in rel, using
--- tmpv as temporary copy of v
-subst :: (AllOps c v a, ?spec::Spec) => c -> a -> v -> a -> v -> a
-subst rel v substitution tmpv = error "Not implemented: subst"
+-- Substitute variable v with relation substitution in rel
+tcasSubst :: (AllOps c v a, ?spec::Spec) => a -> TAbsVar -> TCascade -> PDB c v a
+tcasSubst rel v substitution = error "Not implemented: subst"
+
+tcasAbsVars :: TCascade -> [TAbsVar]
+tcasAbsVars = undefined
+
+formSubst :: (AllOps c v a, ?spec::Spec) => a -> TAbsVar -> Formula -> PDB c v a
+formSubst rel v substitution = error "Not implemented: subst"
+
+formAbsVars :: Formula -> [TAbsVar]
+formAbsVars = undefined
 
 ----------------------------------------------------------------------------
 -- Computing abstraction
@@ -132,7 +140,7 @@ bexprAbstract spec e = do
     pred <- pdbPred
     let ?spec = spec
         ?pred = pred
-    compile $ bexprToFormula e
+    compileFormula $ bexprToFormula e
 
 -- Convert boolean expression (possibly with pointers) to a formula without
 -- introducing new pointer predicates.
@@ -223,7 +231,7 @@ tranPrecondition tran = do
     return $ head $ fst $ cache M.! (tranFrom tran)
 
 -- Compute update functions for a list of variables wrt to a transition
-varUpdateTrans :: (AllOps c v a, ?spec::Spec) => [TAbsVar] -> Transition -> PDB c v [a]
+varUpdateTrans :: (AllOps c v a, ?spec::Spec) => [(TAbsVar,v)] -> Transition -> PDB c v [a]
 varUpdateTrans vs t = do
     -- Main transition
     cache <- varUpdateLoc vs (tranFrom t) (tranCFA t) M.empty
@@ -237,11 +245,12 @@ varUpdateTrans vs t = do
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA.  Record the result in a cache that will be used to recursively
 -- compute update functions for predecessor locations.
-varUpdateLoc :: (AllOps c v a, ?spec::Spec) => [TAbsVar] -> Loc -> CFA -> Cache a -> PDB c v (Cache a)
+varUpdateLoc :: (AllOps c v a, ?spec::Spec) => [(TAbsVar,v)] -> Loc -> CFA -> Cache a -> PDB c v (Cache a)
 varUpdateLoc vs loc cfa cache | M.member loc cache    = return cache
 varUpdateLoc vs loc cfa cache | null (cfaSuc loc cfa) = do
+    let avs = map fst vs
     rels <- mapM compileVar vs
-    return $ M.insert loc (rels, vs) cache
+    return $ M.insert loc (rels, avs) cache
 varUpdateLoc vs loc cfa cache                         = do
     foldM (\cache (s,loc') -> do cache' <- varUpdateLoc vs loc' cfa cache
                                  rels   <- varUpdateStat s (cache' M.! loc')
@@ -256,32 +265,31 @@ varUpdateStat (SAssume e) (rels, vs) = do
     let ?pred = pred
         ?m    = m
     let f = bexprToFormulaPlus e
-    (rel,vs') <- compileFormula f
+        vs' = formAbsVars f
+    rel <- compileFormula f
     return (map (and rel) rels, S.toList $ S.fromList $ vs ++ vs')
 varUpdateStat (SAssign e1 e2) (rels, vs) = 
     foldM (varUpdateAsnStat1 e1 e2) (rels,[]) vs
 
--- Given a list of variable update relations computed so far and and 
+-- Given a list of variable update relations computed so far and  
 -- assignment statement, recompute individual abstract variable and 
 -- substitute the expression for it to all relations.
 varUpdateAsnStat1 :: (AllOps c v a, ?spec::Spec) => Expr -> Expr -> ([a], [TAbsVar]) -> TAbsVar -> PDB c v ([a],[TAbsVar])
 varUpdateAsnStat1 lhs rhs (rels, vs) av = do
     pred <- pdbPred
-    m    <- pdbCtx
     let ?pred = pred
-    v <- pdbGetVar av
     tmp <- pdbGetExt
-    let v' = tmp M.! av 
-    (rel,vs') <- case av of
-                      (PredVar _ p) -> do let f = updatePredAsn lhs rhs p
-                                          compileFormula f
-                      _             -> do let var  = getVar $ avarName av 
-                                              var' = fmap exprToTerm 
-                                                     $ casMap exprExpandPtr 
-                                                     $ updateScalAsn lhs rhs (TVar $ varName var)
-                                          compileTCascade var'
-    let rels' = map (\r -> subst m r v rel v') rels
-    return (rels', S.toList $ S.fromList $ vs ++ vs')
+    case av of
+         (PredVar _ p) -> do let repl = updatePredAsn lhs rhs p
+                                 vs'  = formAbsVars repl
+                             rels' <- mapM (\r -> formSubst r av repl) rels
+                             return (rels', S.toList $ S.fromList $ vs ++ vs')
+         _             -> do let repl = fmap exprToTerm 
+                                        $ casMap exprExpandPtr 
+                                        $ updateScalAsn lhs rhs (TVar $ varName $ getVar $ avarName av)
+                                 vs'  = tcasAbsVars repl
+                             rels' <- mapM (\r -> tcasSubst r av repl) rels
+                             return (rels', S.toList $ S.fromList $ vs ++ vs')
 
 -- Predicate update by assignment statement
 updatePredAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Predicate -> Formula
