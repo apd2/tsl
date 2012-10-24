@@ -127,9 +127,9 @@ mkWires =
                      , ctxLNMap   = M.empty
                      , ctxLastVar = 0
                      , ctxVar     = []}
-        ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat
+        ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                                ctxPause aft I.true) ctx
-        proc = I.cfaTrace (ctxCFA ctx') "wires" $ cfaToIProcess [] (ctxCFA ctx', ctxVar ctx')
+        proc = {- I.cfaTrace (ctxCFA ctx') "wires" $ -} cfaToIProcess [] (ctxCFA ctx', ctxVar ctx')
     in case pBody proc of
             [t] -> t
             _   -> error $ "mkWires: Invalid wire expression.\nstat:" ++ show stat ++ "\nproc:\n" ++ show proc
@@ -204,7 +204,7 @@ mkCond e =
 mkIdleTran :: (?spec::Spec) => I.Transition
 mkIdleTran =
     let (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc (I.SAssume $ mkContVar I.=== I.false) (I.newCFA I.true)
-    in utranSuffix pidIdle False (I.Transition I.cfaInitLoc aftguard cfa0)
+    in utranSuffix pidIdle False True (I.Transition I.cfaInitLoc aftguard cfa0)
 
 ----------------------------------------------------------------------
 -- Controllable transitions
@@ -312,7 +312,7 @@ mkVars = (mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvar
 -- For a forked process the mparpid argument is the PID of the process in 
 -- whose syntactic scope the present process is located.
 procToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Process -> (I.CFA, [I.Var])
-procToCFA pid proc = I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
+procToCFA pid proc = {- I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ -} (ctxCFA ctx', ctxVar ctx')
     where ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeProcess tmMain proc
                        , ctxCFA    = I.newCFA I.true
@@ -323,16 +323,17 @@ procToCFA pid proc = I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ 
                        , ctxLNMap  = procLMap pid proc
                        , ctxLastVar = 0
                        , ctxVar     = []}
-          ctx' = execState (do aft <- procStatToCFA (procStatement proc)
+          ctx' = execState (do aft <- procStatToCFA (procStatement proc) I.cfaInitLoc
                                ctxFinal aft) ctx
 
 -- Convert forked process to CFA
 fprocToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
 fprocToCFA pid lmap parscope stat = I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
-    where -- Add process-local variables to nmap
+    where guard = mkEnVar pid Nothing I.=== I.true
+          -- Add process-local variables to nmap
           ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = parscope
-                       , ctxCFA    = I.newCFA $ mkEnVar pid Nothing I.=== I.true
+                       , ctxCFA    = I.newCFA guard
                        , ctxRetLoc = error "return from a forked process"
                        , ctxBrkLoc = error "break outside a loop"
                        , ctxLHS    = Nothing
@@ -340,20 +341,22 @@ fprocToCFA pid lmap parscope stat = I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName 
                        , ctxLNMap  = lmap
                        , ctxLastVar = 0
                        , ctxVar     = []}
-          ctx' = execState (do aft <- procStatToCFA stat
-                               ctxFinal aft) ctx
+          ctx' = execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.SAssume guard
+                               final <- procStatToCFA stat aftguard
+                               ctxFinal final) ctx
 
 -- Convert controllable or uncontrollable task to CFA.
 -- The ctl argument indicates that a controllable transition is to be
 -- generated (using tag instead of enabling variable)
 taskToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Method -> Bool -> (I.CFA, [I.Var])
-taskToCFA pid meth ctl = I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "_" ++ sname meth ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
-    where stat = fromRight $ methBody meth
+taskToCFA pid meth ctl = {-I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "_" ++ sname meth ++ "\"") $ -} (ctxCFA ctx', ctxVar ctx')
+    where guard = if ctl
+                     then mkTagVar I.=== tagMethod meth
+                     else mkEnVar pid (Just meth) I.=== I.true
+          stat = fromRight $ methBody meth
           ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeMethod tmMain meth
-                       , ctxCFA    = I.newCFA $ if ctl
-                                                   then mkTagVar I.=== tagMethod meth
-                                                   else mkEnVar pid (Just meth) I.=== I.true
+                       , ctxCFA    = I.newCFA guard
                        , ctxRetLoc = I.cfaInitLoc
                        , ctxBrkLoc = error "break outside a loop"
                        , ctxLHS    = mkRetVar (Just pid) meth
@@ -362,20 +365,20 @@ taskToCFA pid meth ctl = I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "_" 
                        , ctxLastVar = 0
                        , ctxVar     = []}
           ctx' = if ctl
-                    then execState (do -- reset tag to idle on return
+                    then execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.SAssume guard
+                                       -- reset tag to idle on return
                                        retloc  <- ctxInsLoc
                                        ctxInsTrans retloc I.cfaInitLoc $ mkTagVar I.=: tagIdle
                                        ctxPutRetLoc retloc
-                                       -- wait for tag
-                                       aftbody <- procStatToCFA stat
+                                       aftbody <- procStatToCFA stat aftguard
                                        ctxInsTrans aftbody retloc I.nop) 
                                    ctx
-                    else execState (do -- reset $en to false on return
+                    else execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.SAssume guard
+                                       -- reset $en to false on return
                                        retloc  <- ctxInsLoc
                                        ctxInsTrans retloc I.cfaInitLoc $ (mkEnVar pid (Just meth)) I.=: I.false
                                        ctxPutRetLoc retloc
-                                       -- wait for $en
-                                       aftbody <- procStatToCFA stat
+                                       aftbody <- procStatToCFA stat aftguard
                                        ctxInsTrans aftbody retloc I.nop) 
                                    ctx
 
@@ -499,7 +502,7 @@ cfaToIProcess pid (cfa,vs) = trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nrea
                       $ G.labNodes cfa
     -- filter out unreachable transitions
     r = S.toList $ reachable $ S.singleton I.cfaInitLoc
-    trans' = map (utranSuffix pid True) $ filter (\t -> elem (I.tranFrom t) r) trans
+    trans' = map (utranSuffix pid True False) $ filter (\t -> elem (I.tranFrom t) r) trans
     final = filter (\loc -> case I.cfaLocLabel loc cfa of
                                  I.LFinal -> True
                                  _        -> False) r
@@ -541,23 +544,25 @@ reach cfa found frontier = if S.null frontier'
 
 -- Insert constraints over PC and cont variables after the last location of 
 -- the transition
-utranSuffix :: PID -> Bool -> I.Transition -> I.Transition
-utranSuffix pid updatepc (I.Transition from to cfa) = 
+utranSuffix :: PID -> Bool -> Bool -> I.Transition -> I.Transition
+utranSuffix pid updatepc updatecont (I.Transition from to cfa) = 
     let -- If this is a loop transition, split the initial node
         (init, final, cfa1) = if from == to
                                  then splitLoc from cfa
                                  else (from, to, cfa)
-        -- update PC id requested
+        -- update PC if requested
         (cfa3, aftpc) = if updatepc
                            then let (cfa2, loc1) = I.cfaInsTrans' final (I.SAssume $ mkPCVar pid I.=== mkPC pid from) cfa1
                                 in I.cfaInsTrans' loc1 (mkPCVar pid I.=: mkPC pid to) cfa2
                            else (cfa1, final)
-        -- if tag==idle && magic==true, non-deterministically set cont:=true
-        (cfa4, loc3)    = I.cfaInsTrans' aftpc (I.SAssume $ I.conj [mkTagVar I.=== tagIdle, mkMagicVar I.=== I.true]) cfa3
-        (cfa5, aftcont) = I.cfaInsTrans' loc3  (mkContVar I.=: I.false)                      cfa4
-        cfa6            = I.cfaInsTrans  aftpc aftcont I.nop                                 cfa5
+        -- non-deterministically reset the cont to true if inside a magic block
+        (cfa6,aftcont) = if updatecont 
+                            then let (cfa4, loc3)    = I.cfaInsTrans' aftpc (I.SAssume $ mkMagicVar I.=== I.true) cfa3
+                                     (cfa5, aftcont) = I.cfaInsTrans' loc3  (mkContVar I.=: I.false) cfa4
+                                 in (I.cfaInsTrans aftpc aftcont I.nop cfa5, aftcont)
+                  else (cfa3, aftpc)
         -- set $pid
-        (cfa7, after)   = I.cfaInsTrans' aftcont (mkPIDVar I.=: mkPIDEnum pid)               cfa6
+        (cfa7, after)   = I.cfaInsTrans' aftcont (mkPIDVar I.=: mkPIDEnum pid) cfa6
     in I.Transition init after cfa7
 
 -- Split location into 2, one containing all outgoing edges and one containing

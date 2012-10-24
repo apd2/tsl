@@ -317,7 +317,9 @@ ctxInsTmpVar t = do
 ctxPause :: I.Loc -> I.Expr -> State CFACtx I.Loc
 ctxPause loc cond = do after <- ctxInsLocLab (I.LPause cond)
                        ctxInsTrans loc after I.nop
-                       return after
+                       case cond of
+                            (I.EConst (I.BoolVal True)) -> return after
+                            _                           -> ctxInsTrans' after (I.SAssume cond)
 
 ctxFinal :: I.Loc -> State CFACtx I.Loc
 ctxFinal loc = do after <- ctxInsLocLab I.LFinal

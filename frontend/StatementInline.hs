@@ -64,7 +64,7 @@ statSimplify' (SInvoke p mref as)   = -- Order of argument evaluation is undefin
                                       let (ss, as') = unzip $ map exprSimplify as
                                       in (concat ss) ++ [SInvoke p mref $ as']
 statSimplify' (SWait p c)           = let (ss,c') = exprSimplify c
-                                      in ss ++ [SWait p c']
+                                      in (SPause p) : (ss ++ [SAssume p c'])
 statSimplify' (SAssert p c)         = let (ss,c') = exprSimplify c
                                       in ss ++ [SAssert p c']
 statSimplify' (SAssume p c)         = let (ss,c') = exprSimplify c
@@ -141,35 +141,41 @@ statToCFA' before after (SPar _ ps) = do
 statToCFA' before after (SForever _ stat) = do
     brkLoc <- gets ctxBrkLoc
     ctxPutBrkLoc after
+    -- create target for loopback transition
+    loopback <- ctxInsTrans' before I.nop
     -- loc' = end of loop body
-    loc' <- statToCFA before stat 
+    loc' <- statToCFA loopback stat 
     -- loop-back transition
-    ctxInsTrans loc' before I.nop
+    ctxInsTrans loc' loopback I.nop
     ctxPutBrkLoc brkLoc
 
 statToCFA' before after (SDo _ stat cond) = do
     brkLoc <- gets ctxBrkLoc
     cond' <- exprToIExpr cond (BoolSpec nopos)
-    ctxInsTrans before after (I.SAssume $ I.EUnOp Not cond')
-    -- after condition has been checked, before the body
-    befbody <- ctxInsTrans' before (I.SAssume cond')
-    -- body
     ctxPutBrkLoc after
-    aftbody <- statToCFA befbody stat
-    -- loop-back transition
-    ctxInsTrans aftbody before I.nop
+    -- create target for loopback transition
+    loopback <- ctxInsTrans' before I.nop
+    aftbody <- statToCFA loopback stat
     ctxPutBrkLoc brkLoc
+    -- loop-back transition
+    ctxInsTrans aftbody loopback (I.SAssume cond')
+    -- exit loop transition
+    ctxInsTrans aftbody after (I.SAssume $ I.EUnOp Not cond')
 
 statToCFA' before after (SWhile _ cond stat) = do
     brkLoc <- gets ctxBrkLoc
     cond' <- exprToIExpr cond (BoolSpec nopos)
+    -- create target for loopback transition
+    loopback <- ctxInsTrans' before I.nop
+    ctxInsTrans loopback after (I.SAssume $ I.EUnOp Not cond')
+    -- after condition has been checked, before the body
+    befbody <- ctxInsTrans' loopback (I.SAssume cond')
+    -- body
     ctxPutBrkLoc after
-    aftbody <- statToCFA before stat
-    ctxPutBrkLoc brkLoc
+    aftbody <- statToCFA befbody stat
     -- loop-back transition
-    ctxInsTrans aftbody before (I.SAssume cond')
-    -- exit loop transition
-    ctxInsTrans aftbody after (I.SAssume $ I.EUnOp Not cond')
+    ctxInsTrans aftbody loopback I.nop
+    ctxPutBrkLoc brkLoc
 
 statToCFA' before after (SFor _ (minit, cond, inc) body) = do
     brkLoc <- gets ctxBrkLoc
@@ -177,16 +183,18 @@ statToCFA' before after (SFor _ (minit, cond, inc) body) = do
     aftinit <- case minit of
                     Nothing   -> return before
                     Just init -> statToCFA before init
-    ctxInsTrans aftinit after (I.SAssume $ I.EUnOp Not cond')
+    -- create target for loopback transition
+    loopback <- ctxInsTrans' aftinit I.nop
+    ctxInsTrans loopback after (I.SAssume $ I.EUnOp Not cond')
     -- before loop body
-    befbody <- ctxInsTrans' aftinit $ I.SAssume cond'
+    befbody <- ctxInsTrans' loopback $ I.SAssume cond'
     ctxPutBrkLoc after
     aftbody <- statToCFA befbody body
     -- after increment is performed at the end of loop iteration
     aftinc <- statToCFA aftbody inc
     ctxPutBrkLoc brkLoc
     -- loopback transition
-    ctxInsTrans aftinc befbody I.nop
+    ctxInsTrans aftinc loopback I.nop
 
 statToCFA' before after (SChoice _ ss) = do
     mapM (\s -> do aft <- statToCFA before s
@@ -235,20 +243,22 @@ statToCFA' before after (SITE _ cond sthen mselse) = do
     befthen <- statToCFA before (SAssume nopos cond)
     aftthen <- statToCFA befthen sthen
     ctxInsTrans aftthen after I.nop
-    case mselse of
-         Nothing -> return ()
-         Just selse -> do befelse <- statToCFA before (SAssume nopos $ EUnOp nopos Not cond)
-                          aftelse <- statToCFA befelse selse
-                          ctxInsTrans aftelse after I.nop
+    befelse <- statToCFA before (SAssume nopos $ EUnOp nopos Not cond)
+    aftelse <- case mselse of
+                    Nothing -> return befelse
+                    Just selse -> do statToCFA befelse selse
+    ctxInsTrans aftelse after I.nop
 
 statToCFA' before after (SCase _ e cs mdef) = do
     let negs = map (eAnd nopos . map (EBinOp nopos Neq e)) $ inits $ map fst cs
-        cs' = map (\((c, st), neg) -> (EBinOp nopos And (EBinOp nopos Eq e c) neg, st)) $ zip cs negs
+        cs' = map (\((c, st), neg) -> (EBinOp nopos And (EBinOp nopos Eq e c) neg, Just st)) $ zip cs negs
         cs'' = case mdef of
-                    Nothing  -> cs'
-                    Just def -> cs' ++ [(last negs, def)]
+                    Nothing  -> cs' ++ [(last negs, Nothing)]
+                    Just def -> cs' ++ [(last negs, Just def)]
     mapM (\(c,st) -> do befst <- statToCFA before (SAssume nopos c)
-                        aftst <- statToCFA befst  st
+                        aftst <- case st of 
+                                      Nothing -> return befst
+                                      Just st -> statToCFA befst st
                         ctxInsTrans aftst after I.nop) cs''
     return ()
 
@@ -351,8 +361,8 @@ copyOutArgs loc meth args = do
 -- Top-level function: convert process statement to CFA
 ----------------------------------------------------------
 
-procStatToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => Statement -> State CFACtx I.Loc
-procStatToCFA stat = do
-    after <- statToCFA I.cfaInitLoc stat
+procStatToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => Statement -> I.Loc -> State CFACtx I.Loc
+procStatToCFA stat before = do
+    after <- statToCFA before stat
     modify $ (\ctx -> ctx {ctxCFA = I.cfaAddNullPtrTrans (ctxCFA ctx) mkNullVar})
     return after

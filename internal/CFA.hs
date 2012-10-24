@@ -102,7 +102,7 @@ isDelayLabel (LPause _) = True
 isDelayLabel LFinal     = True
 isDelayLabel LNone      = False
 
-newCFA :: Expr -> CFA
+newCFA :: Expr -> CFA 
 newCFA initcond = G.insNode (cfaInitLoc,LPause initcond) $ G.insNode (cfaErrLoc,(LPause false)) G.empty
 
 cfaErrLoc :: Loc
