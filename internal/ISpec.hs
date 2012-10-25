@@ -4,7 +4,8 @@ module ISpec(Goal(..),
              Transition(..),
              Spec(..),
              getVar,
-             getEnum) where
+             getEnum,
+             enumToInt) where
 
 import Data.List
 import Data.Maybe
@@ -76,3 +77,7 @@ getVar n = fromJustMsg ("getVar: variable " ++ n ++ " not found")
 getEnum :: (?spec::Spec) => String -> Enumeration
 getEnum e = fromJustMsg ("getEnum: enumerator " ++ e ++ " not found")
                         $ find (elem e . enumEnums) $ specEnum ?spec
+
+-- Get sequence number of an enumerator
+enumToInt :: (?spec::Spec) => String -> Int
+enumToInt n = fst $ fromJust $ find ((==n) . snd) $ zip [0..] (enumEnums $ getEnum n)

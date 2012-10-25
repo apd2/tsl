@@ -7,15 +7,20 @@ module Predicate(ArithUOp(..),
                  bopToArithOp,
                  arithOpToBOp,
                  Term(..),
+                 termCategory,
                  tConcat,
                  isMemTerm,
                  RelOp(..),
                  bopToRelOp,
                  relOpToBOp,
                  Predicate(..),
+                 predCategory,
                  exprToTerm,
                  termToExpr) where
 
+import Text.PrettyPrint
+
+import PP
 import Common
 import ISpec
 import IExpr
@@ -90,6 +95,12 @@ instance Canonical Term where
 instance (?spec::Spec) => Typed Term where
     typ = typ . termToExpr
 
+instance PP Term where
+    pp = pp . termToExpr
+
+instance Show Term where
+    show = render . pp
+
 -- TODO: merge adjacent terms
 tConcat :: [Term] -> Term
 tConcat [t]        = t
@@ -102,6 +113,24 @@ isMemTerm (TIndex t _) = isMemTerm t
 isMemTerm (TSlice t _) = isMemTerm t
 isMemTerm _        = False
 
+termVar :: (?spec::Spec) => Term -> [Var]
+termVar (TVar n)         = [getVar n]
+termVar (TSInt _ _)      = []
+termVar (TUInt _ _)      = []
+termVar (TEnum _)        = []
+termVar TTrue            = []
+termVar (TAddr t)        = termVar t
+termVar (TField t f)     = termVar t
+termVar (TIndex a i)     = termVar a ++ termVar i
+termVar (TUnOp _ t)      = termVar t
+termVar (TBinOp _ t1 t2) = termVar t1 ++ termVar t2
+termVar (TSlice t _)     = termVar t
+
+termCategory :: (?spec::Spec) => Term -> VarCategory
+termCategory t = if any ((==VarTmp) . varCat) $ termVar t
+                    then VarTmp
+                    else VarState
+
 -- Relational operations
 data RelOp = REq
            | RNeq 
@@ -110,6 +139,12 @@ data RelOp = REq
            | RLte 
            | RGte
            deriving (Eq)
+
+instance PP RelOp where
+    pp = pp . relOpToBOp
+
+instance Show RelOp where
+    show = render . pp
 
 bopToRelOp :: BOp -> RelOp
 bopToRelOp Eq  = REq
@@ -128,7 +163,21 @@ relOpToBOp RLte = Lte
 relOpToBOp RGte = Gte
 
 -- Predicates
-data Predicate = PAtom {pOp :: RelOp, p1 :: Term, p2 :: Term} deriving (Eq)
+data Predicate = PAtom {pOp :: RelOp, pTerm1 :: Term, pTerm2 :: Term} deriving (Eq)
+
+instance PP Predicate where
+    pp (PAtom op t1 t2) = pp t1 <> pp op <> pp t2
+
+instance Show Predicate where
+    show = render . pp
+
+predTerm :: Predicate -> [Term]
+predTerm (PAtom _ t1 t2) = [t1,t2]
+
+predCategory :: (?spec::Spec) => Predicate -> VarCategory
+predCategory p = if any ((==VarTmp) . termCategory) $ predTerm p
+                    then VarTmp
+                    else VarState
 
 -- Convert scalar expression without pointers and boolean operators to a term
 exprToTerm :: Expr -> Term

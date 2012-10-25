@@ -25,12 +25,7 @@ import CFA
 import Cascade
 import Predicate
 import Formula
-
-type TAbsVar = AbsVar Predicate
-
-type TmpVars v = M.Map TAbsVar v
-
-type PDB c v x = PredicateDB c v Predicate (TmpVars v) x
+import FCompile
 
 -----------------------------------------------------------------------
 -- Interface
@@ -99,37 +94,6 @@ ptrPreds e =
                                                else Nothing) 
              ?pred
     where t = exprToTerm e
-
-----------------------------------------------------------------------------
--- Compilation
-----------------------------------------------------------------------------
-
----- Extract predicates from formula and compile it
---compile :: (AllOps c v a, ?spec::Spec) => Formula -> PDB c v a
---compile = error "Not implemented: compile"
-
--- Compile _existing_ abstract var
-compileVar :: (AllOps c v a, ?spec::Spec) => (TAbsVar,v) -> PDB c v a
-compileVar = error "Not implemented: compileVar"
-
-compileFormula :: (AllOps c v a, ?spec::Spec) => Formula -> PDB c v a
-compileFormula = error "Not implemented: compileFormula"
-
---compileTCascade :: (AllOps c v a, ?spec::Spec) => TCascade -> PDB c v (a,[TAbsVar])
---compileTCascade = error "Not implemented: compileTCascade"
-
--- Substitute variable v with relation substitution in rel
-tcasSubst :: (AllOps c v a, ?spec::Spec) => a -> TAbsVar -> TCascade -> PDB c v a
-tcasSubst rel v substitution = error "Not implemented: subst"
-
-tcasAbsVars :: TCascade -> [TAbsVar]
-tcasAbsVars = undefined
-
-formSubst :: (AllOps c v a, ?spec::Spec) => a -> TAbsVar -> Formula -> PDB c v a
-formSubst rel v substitution = error "Not implemented: subst"
-
-formAbsVars :: Formula -> [TAbsVar]
-formAbsVars = undefined
 
 ----------------------------------------------------------------------------
 -- Computing abstraction
