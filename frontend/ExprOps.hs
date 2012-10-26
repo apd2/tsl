@@ -256,6 +256,7 @@ exprNoSideEffects (EApply _ m as)          = applyNoSideEffects m as
 exprNoSideEffects (EField _ e _)           = exprNoSideEffects e
 exprNoSideEffects (EPField _ e _)          = exprNoSideEffects e
 exprNoSideEffects (EIndex _ a i)           = exprNoSideEffects a && exprNoSideEffects i
+exprNoSideEffects (EUnOp _ Deref _)        = False -- pointer dereference can transition to error state and is therefore considered to have side effects
 exprNoSideEffects (EUnOp _ _ e)            = exprNoSideEffects e
 exprNoSideEffects (EBinOp _ _ e1 e2)       = exprNoSideEffects e1 && exprNoSideEffects e2
 exprNoSideEffects (ETernOp _ e1 e2 e3)     = exprNoSideEffects e1 && exprNoSideEffects e2 && exprNoSideEffects e3

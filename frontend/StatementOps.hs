@@ -275,6 +275,7 @@ validateStat' _ (SAssert _ e) = do
     validateExpr' e
     assert (isBool e) (pos e) $ "Assertion must be a boolean expression"
     assert (exprNoSideEffects e) (pos e) $ "Assertion must be side-effect free"
+    assert (not $ isFunctionScope ?scope) (pos e) $ "Assertions not allowed inside functions"
 
 validateStat' _ (SAssume _ e) = do
     validateExpr' e
@@ -287,11 +288,9 @@ validateStat' _ (SAssign _ lhs rhs) = do
     assert (isLExpr lhs) (pos lhs) $ "Left-hand side of assignment is not an L-value"
     checkTypeMatch lhs rhs
     -- No modifications to global variables in a function
-    case ?scope of
-         ScopeMethod tm m -> if methCat m == Function
-                                then assert (isLocalLHS lhs) (pos lhs) "Global state modification inside a function"
-                                else return ()
-         _                -> return ()
+    if isFunctionScope ?scope 
+       then assert (isLocalLHS lhs) (pos lhs) "Global state modification inside a function"
+       else return ()
 
 validateStat' l (SITE _ i t e) = do
     validateExpr' i

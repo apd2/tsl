@@ -2,6 +2,7 @@
 
 module NS(Scope(..),
           WithScope(..),
+          isFunctionScope,
           Type(Type),
           WithType(..),
           lookupTemplate, checkTemplate, getTemplate, 
@@ -66,6 +67,11 @@ instance Ord Scope where
 
 class WithScope a where
     scope :: a -> Scope
+
+isFunctionScope :: Scope -> Bool
+isFunctionScope (ScopeMethod _ m) = methCat m == Function
+isFunctionScope _                 = False
+
 
 data Type = Type Scope TypeSpec
 

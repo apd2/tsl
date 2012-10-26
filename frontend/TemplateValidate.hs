@@ -131,8 +131,14 @@ validateTmDerives tm = do {mapM (validateDerive tm) (tmDerive tm); return()}
 -- Validate init blocks 
 ------------------------------------------------------------------------------
 
+validateInit2 :: (?spec::Spec, MonadError String me) => Template -> Init -> me ()
+validateInit2 t i = do
+    let ?scope = ScopeTemplate t
+    validateExpr' (initBody i)
+    assert (exprNoSideEffects $ initBody i) (pos $ initBody i) "Initial conditions must be side-effect free"
+
 validateTmInit2 :: (?spec::Spec, MonadError String me) => Template -> me ()
-validateTmInit2 t = do {mapM (validateExpr (ScopeTemplate t) . initBody) (tmInit t); return ()}
+validateTmInit2 t = do {mapM (validateInit2 t) (tmInit t); return ()}
 
 
 ------------------------------------------------------------------------------
@@ -143,6 +149,7 @@ validateGoal2 :: (?spec::Spec, MonadError String me) => Template -> Goal -> me (
 validateGoal2 t g = do
     let ?scope = ScopeTemplate t
     validateExpr' (goalCond g)
+    assert (exprNoSideEffects $ goalCond g) (pos $ goalCond g) "Goal conditions must be side-effect free"
     assert (isBool $ goalCond g) (pos $ goalCond g) $ "Goal must be a boolean expression"
 
 validateTmGoals2 :: (?spec::Spec, MonadError String me) => Template -> me ()
