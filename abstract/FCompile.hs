@@ -22,7 +22,7 @@ import IType
 
 type TAbsVar = AbsVar Predicate
 
-type TmpVars v = M.Map v v
+type TmpVars v = M.Map TAbsVar v
 
 type PDB c v x = PredicateDB c v Predicate (TmpVars v) x
 
@@ -46,7 +46,7 @@ termAbsVars (TEnum _) = []
 termAbsVars TTrue     = []
 termAbsVars t         = [termAbsVar t]
 
-termAbsVar :: (?spec::Spec) => Term -> AbsVar
+termAbsVar :: (?spec::Spec) => Term -> TAbsVar
 termAbsVar t = case typ t of
                     Bool   -> BoolVar (show t)
                     Enum n -> EnumVar (show t) sz where sz = length $ enumEnums $ getEnum n
@@ -54,15 +54,17 @@ termAbsVar t = case typ t of
 mkTermVar :: (AllOps c v a, ?spec::Spec) => Term -> PDB c v v
 mkTermVar t = do
     tmap <- pdbGetExt
-    v <- case typ t of
-              Bool -> do let av = BoolVar $ show t 
-                         pdbAllocVar av (termCategory t)
-              (Enum n) -> do let e = getEnum n
-                                 av = EnumVar (show t) (length $ enumEnums e)
-                             pdbAllocVar av (termCategory t)
-    case M.lookup v tmap of
-         Nothing -> do v' <- logicAllocVar $ typeWidth t
-                       let tmap' = M.insert v v' tmap
+    (av,v) <- case typ t of
+                   Bool -> do let av = BoolVar $ show t 
+                              v <- pdbAllocVar av (termCategory t)
+                              return (av,v)
+                   (Enum n) -> do let e = getEnum n
+                                      av = EnumVar (show t) (length $ enumEnums e)
+                                  v <- pdbAllocVar av (termCategory t)
+                                  return (av,v)
+    case M.lookup av tmap of
+         Nothing -> do v' <- pdbAllocTmpVar $ typeWidth t
+                       let tmap' = M.insert av v' tmap
                        pdbPutExt tmap'
          Just v' -> return ()
     return v
@@ -72,9 +74,9 @@ mkPredVar p = do
     tmap <- pdbGetExt
     let av = PredVar (show p) p
     v <- pdbAllocVar av (predCategory p)
-    case M.lookup v tmap of
-         Nothing -> do v' <- logicAllocVar 1
-                       let tmap' = M.insert v v' tmap
+    case M.lookup av tmap of
+         Nothing -> do v' <- pdbAllocTmpVar 1
+                       let tmap' = M.insert av v' tmap
                        pdbPutExt tmap'
          Just v' -> return ()
     return v
@@ -132,7 +134,7 @@ compileFormula' m (FPred p@(PAtom op t1 t2)) =
                                                    return $ case op of
                                                                  REq  -> r
                                                                  RNeq -> notOp m r
-                        (,)                  -> do v1 <- mkTermVar t1
+                        (_,_)                -> do v1 <- mkTermVar t1
                                                    v2 <- mkTermVar t2
                                                    let r = eqVars m v1 v2
                                                    return $ case op of 
@@ -168,8 +170,8 @@ formSubst rel av f = do
     m    <- pdbCtx
     v    <- pdbGetVar av
     tmap <- pdbGetExt
-    let v' = tmap M.! v
-        cubev' = compVar m v'
+    let v' = tmap M.! av
+        cubev' = head $ compVar m v'
         rel' = swap m v v' rel
     f' <- compileFormula f
     return $ exists m v' $ andOp m rel' (xnorOp m cubev' f')
@@ -185,7 +187,7 @@ tcasSubst rel av cas = do
     m    <- pdbCtx
     v    <- pdbGetVar av
     tmap <- pdbGetExt
-    let v' = tmap M.! v
+    let v' = tmap M.! av
         rel' = swap m v v' rel
     f' <- compileTCas cas v'
     return $ exists m v' $ andOp m rel' f'
