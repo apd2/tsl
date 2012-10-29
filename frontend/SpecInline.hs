@@ -328,7 +328,7 @@ procToCFA pid proc = {- I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"")
 
 -- Convert forked process to CFA
 fprocToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
-fprocToCFA pid lmap parscope stat = I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
+fprocToCFA pid lmap parscope stat = {-I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $-} (ctxCFA ctx', ctxVar ctx')
     where guard = mkEnVar pid Nothing I.=== I.true
           -- Add process-local variables to nmap
           ctx = CFACtx { ctxPID    = pid 

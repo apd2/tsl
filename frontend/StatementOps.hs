@@ -15,6 +15,7 @@ module StatementOps(mapStat,
 
 import Control.Monad.Error
 import Data.Maybe
+import Data.List
 import Debug.Trace
 
 import TSLUtil
@@ -184,8 +185,8 @@ statFlatten' _   _ st          = st
 -------------------------------------------------------------------------
 
 validateStat :: (?spec::Spec, MonadError String me) => Scope -> Statement -> me ()
-validateStat s e = let ?scope = s 
-                   in validateStat' False e
+validateStat s st = do let ?scope = s 
+                       validateStat' False st
 
 -- The first argument indicates that the statement belongs to a loop
 validateStat' :: (?spec::Spec, ?scope::Scope, MonadError String me) => Bool -> Statement -> me ()
@@ -216,6 +217,7 @@ validateStat' l (SPar p ss) = do
          ScopeProcess _ pr -> return ()
 
 validateStat' _ (SForever _ b) = do
+    trace "validateStat forever" $ return ()
     checkLoopBody b
 
 validateStat' _ (SDo _ b c) = do
@@ -327,4 +329,64 @@ validateStat' l (SMagic p g) = do
 checkLoopBody :: (?spec::Spec, ?scope::Scope, MonadError String me) => Statement -> me ()
 checkLoopBody s = do
     validateStat' True s
-    return $ error "checkLoopBody not implemented"
+    case findInstPath False s of
+         Nothing -> return ()
+         Just p  -> err (pos s) $ "Instanteneous path exists through the body of the loop:" ++
+                                  (concat $ map (\s -> "\n    " ++ case s of 
+                                                                        Left st -> spos st ++ ": " ++ show st
+                                                                        Right e -> spos e  ++ ": " ++ show e) p)
+                                  
+-- Find instanteneous path through the statement.  
+-- If the first argument is true, then Break is considered
+-- instantaneous; otherwise it's not.
+findInstPath :: (?spec::Spec, ?scope::Scope) => Bool -> Statement -> Maybe [Either Statement Expr]
+findInstPath _     s@(SVarDecl _ _)    = Just []
+findInstPath _       (SReturn _ _)     = Nothing
+findInstPath b       (SSeq _ ss)       = let ps  = map (findInstPath b) ss
+                                             ps' = case findIndex (\p -> isJust p && isBreak (last $ fromJust p)) ps of
+                                                        Nothing -> ps
+                                                        Just i  -> take (i+1) ps
+                                         in if all isJust ps'
+                                               then Just $ concat $ map fromJust ps'
+                                               else Nothing
+findInstPath _       (SPar _ _)        = Nothing
+findInstPath _       (SForever _ s)    = findInstPath True s
+findInstPath _       (SDo _ s _)       = findInstPath True s -- a do-loop performs at least one iteration
+findInstPath _     s@(SWhile _ c _)    = if isInstExpr c then Just [Right c] else Nothing -- while and for-loops can terminate instantaneously
+findInstPath _     s@(SFor _ _ _)      = Just [Left s]
+findInstPath b       (SChoice _ ss)    = shortest $ catMaybes $ map (findInstPath b) ss
+findInstPath _       (SPause _)        = Nothing
+findInstPath _       (SWait _ _)       = Nothing
+findInstPath _       (SStop _)         = Nothing
+findInstPath True  s@(SBreak _)        = Just [Left s]
+findInstPath False s@(SBreak _)        = Nothing
+findInstPath b     s@(SInvoke _ m as)  = let (_,meth) = getMethod ?scope m
+                                         in if elem (methCat meth) [Function,Procedure] 
+                                               then if all isInstExpr as 
+                                                       then Just [Left s]
+                                                       else Nothing
+                                               else Nothing
+findInstPath _     s@(SAssert _ _)     = Just [Left s]
+findInstPath _     s@(SAssume _ _)     = Just [Left s]
+findInstPath _     s@(SAssign _ _ r)   = if isInstExpr r then Just [Left s] else Nothing
+findInstPath b     s@(SITE _ c t e)    = if not $ isInstExpr c 
+                                            then Nothing
+                                            else case e of 
+                                                      Nothing -> Just [Right c]
+                                                      Just st -> shortest $ catMaybes $ map (findInstPath b) $ [t,st]
+findInstPath b     s@(SCase _ _ cs md) = shortest $ catMaybes $ map (findInstPath b) $ (map snd cs) ++ maybeToList md
+findInstPath _       (SMagic _ _)      = Nothing
+
+
+isBreak :: Either Statement Expr -> Bool
+isBreak (Left (SBreak _)) = True
+isBreak _                 = False
+
+-- Return a path that ends with a break if one exists;
+-- otherwise return the first path from the list of Nothing
+-- if the list is empty
+shortest :: [[Either Statement Expr]] -> Maybe [Either Statement Expr]
+shortest [] = Nothing
+shortest ps = case find (isBreak . last) ps of
+                   Nothing -> Just $ head ps
+                   Just p  -> Just p

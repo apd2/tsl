@@ -6,6 +6,7 @@ module ExprOps(mapExpr,
                isMemExpr,
                isLocalLHS,
                isConstExpr,
+               isInstExpr,
                eval,
                evalInt,
                exprNoSideEffects,
@@ -280,6 +281,31 @@ applyNoSideEffects mref as =  (and $ map isLocalLHS oargs)
     where m       = snd $ getMethod ?scope mref
           oidx    = findIndices ((== ArgOut) . argDir) (methArg m)
           oargs   = map (as !!) oidx
+
+-- True if expression _can_ terminate instantaneously 
+-- (but is not necessarily guaranteed to always do so)
+isInstExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+isInstExpr (ETerm _ _)              = True
+isInstExpr (ELit _ _ _ _ _)         = True
+isInstExpr (EBool _ _)              = True
+isInstExpr (EApply _ m as)          = let (_,meth) = getMethod ?scope m
+                                      in if elem (methCat meth) [Function,Procedure]
+                                            then all isInstExpr as 
+                                            else False
+isInstExpr (EField _ s _)           = isInstExpr s
+isInstExpr (EPField _ s _)          = isInstExpr s
+isInstExpr (EIndex _ a i)           = isInstExpr a && isInstExpr i
+isInstExpr (EUnOp _ _ e)            = isInstExpr e
+isInstExpr (EBinOp _ _ e1 e2)       = isInstExpr e1 && isInstExpr e2
+isInstExpr (ETernOp _ e1 e2 e3)     = isInstExpr e1 && (isInstExpr e2 || isInstExpr e3)
+isInstExpr (ECase _ c cs Nothing )  = isInstExpr c
+isInstExpr (ECase _ c cs (Just d))  = isInstExpr c && (any isInstExpr $ d:(map snd cs))
+isInstExpr (ECond _ cs Nothing)     = True
+isInstExpr (ECond _ cs (Just d))    = any isInstExpr $ d:(map snd cs)
+isInstExpr (ESlice  _ e _)          = isInstExpr e
+isInstExpr (EStruct _ _ (Left fs))  = all isInstExpr $ map snd fs
+isInstExpr (EStruct _ _ (Right fs)) = all isInstExpr fs
+isInstExpr (ENonDet _)              = True
 
 -- Objects referred to by the expression
 exprObjs :: (?spec::Spec, ?scope::Scope) => Expr -> [Obj]

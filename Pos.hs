@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+
 module Pos(Pos, 
            WithPos(..),
            spos,
@@ -11,8 +13,13 @@ class WithPos a where
     pos   :: a -> Pos
     atPos :: a -> Pos -> a
 
+instance WithPos Pos where
+    pos   = id
+    atPos = error "Not implemented: atPos Pos"   
+
 spos :: (WithPos a) => a -> String
-spos x = show $ fst $ pos x
+spos x = let p = fst $ pos x
+         in sourceName p ++ ":" ++ (show $ sourceLine p) ++ ":" ++ (show $ sourceColumn p)
 
 nopos::Pos 
 nopos = (initialPos "",initialPos "")
