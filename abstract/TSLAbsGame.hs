@@ -24,7 +24,7 @@ import IVar
 import CFA
 import Cascade
 import Predicate
-import Formula
+import BFormula
 import FCompile
 
 -----------------------------------------------------------------------

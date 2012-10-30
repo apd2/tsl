@@ -30,8 +30,8 @@ import NS
 import Statement
 import Type
 import TypeOps
-import Var
-import VarOps
+import TVar
+import TVarOps
 import Method
 import Template
 import InstTree

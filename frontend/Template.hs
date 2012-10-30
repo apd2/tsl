@@ -14,7 +14,7 @@ import PP
 import Pos
 import Name
 import Const
-import Var
+import TVar
 import Process
 import Method
 import Type

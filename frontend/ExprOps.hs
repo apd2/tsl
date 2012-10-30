@@ -35,7 +35,7 @@ import MethodOps
 import Const
 import NS
 import Val
-import Var
+import TVar
 import StatementOps
 
 -- Map function over subexpression of expression

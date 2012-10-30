@@ -30,7 +30,7 @@ import ExprOps
 import ExprInline
 import Template
 import TemplateFlatten
-import Var
+import TVar
 import Method
 import Process
 import Type

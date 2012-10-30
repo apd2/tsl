@@ -20,7 +20,7 @@ import qualified Data.Graph.Inductive.Tree      as G
 import Pos
 import Name
 import NS
-import Var
+import TVar
 import Spec
 import Template
 import TemplateOps

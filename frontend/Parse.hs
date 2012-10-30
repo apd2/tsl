@@ -26,7 +26,7 @@ import Expr
 import Statement
 import Process
 import Template
-import Var
+import TVar
 import Type
 import Method
 import Const

@@ -138,7 +138,7 @@ data RelOp = REq
            | RGt 
            | RLte 
            | RGte
-           deriving (Eq)
+           deriving (Eq,Ord)
 
 instance PP RelOp where
     pp = pp . relOpToBOp
@@ -163,7 +163,7 @@ relOpToBOp RLte = Lte
 relOpToBOp RGte = Gte
 
 -- Predicates
-data Predicate = PAtom {pOp :: RelOp, pTerm1 :: Term, pTerm2 :: Term} deriving (Eq)
+data Predicate = PAtom {pOp :: RelOp, pTerm1 :: Term, pTerm2 :: Term} deriving (Eq, Ord)
 
 instance PP Predicate where
     pp (PAtom op t1 t2) = pp t1 <> pp op <> pp t2

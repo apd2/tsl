@@ -14,7 +14,7 @@ import Data.List
 import TSLUtil
 import ISpec
 import IExpr
-import Formula
+import BFormula
 import Predicate
 
 -- Intermediate data structure that represents the value of

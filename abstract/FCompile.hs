@@ -16,7 +16,7 @@ import ISpec
 import PredicateDB
 import Cascade
 import Predicate
-import Formula
+import BFormula
 import LogicClasses
 import IType
 

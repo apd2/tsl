@@ -22,7 +22,7 @@ import TemplateOps
 import Statement
 import StatementOps
 import Spec
-import Var
+import TVar
 
 instance (?spec::Spec, ?scope::Scope) => WithType Arg where
     typ = Type ?scope . tspec

@@ -13,7 +13,7 @@ import Data.Maybe
 
 import Pos
 import Name
-import Var
+import TVar
 import PP
 import Type
 import Statement

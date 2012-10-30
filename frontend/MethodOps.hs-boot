@@ -7,7 +7,7 @@ import Control.Monad.Error
 import Spec
 import Template
 import Method
-import Var
+import TVar
 import Statement
 
 methFullVar  :: (?spec::Spec)                       => Template -> Method -> [(Template,Method,Var)]

@@ -34,6 +34,9 @@ instance PP Type where
     pp (Ptr t)     = pp t <> char '*'
     pp (Array t l) = pp t <> char '[' <> pp l <> char ']'
 
+instance Show Type where
+    show = render . pp
+
 twidth :: Type -> Int
 twidth (SInt w) = w
 twidth (UInt w) = w

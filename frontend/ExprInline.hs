@@ -25,7 +25,7 @@ import Spec
 import Expr
 import ExprOps
 import Statement
-import Var
+import TVar
 import Type
 import TypeOps
 import Inline

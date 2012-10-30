@@ -20,7 +20,7 @@ import Statement
 import Expr
 import ExprOps
 import Template
-import Var
+import TVar
 import Method
 import Process
 import Type

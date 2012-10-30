@@ -38,8 +38,8 @@ import TemplateOps
 import TemplateFlatten
 import Spec
 import ConstOps
-import Var
-import VarOps
+import TVar
+import TVarOps
 import ExprOps
 import ExprValidate
 import Method

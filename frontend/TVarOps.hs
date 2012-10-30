@@ -1,8 +1,8 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
-module VarOps(varMapExpr,
-              validateVar, 
-              validateVar2) where
+module TVarOps(varMapExpr,
+               validateVar, 
+               validateVar2) where
 
 import Control.Monad.Error
 
@@ -10,7 +10,7 @@ import Pos
 import Name
 import Spec
 import NS
-import Var
+import TVar
 import Type
 import TypeOps
 import TypeValidate

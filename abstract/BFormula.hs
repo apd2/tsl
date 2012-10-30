@@ -1,10 +1,10 @@
-module Formula(BoolBOp(..),
-               Formula(..),
-               fdisj,
-               fconj,
-               fAtom,
-               bopToBoolOp,
-               boolOpToBOp) where
+module BFormula(BoolBOp(..),
+                Formula(..),
+                fdisj,
+                fconj,
+                fAtom,
+                bopToBoolOp,
+                boolOpToBOp) where
 
 import Data.List
 

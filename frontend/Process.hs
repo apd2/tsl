@@ -6,7 +6,7 @@ import Text.PrettyPrint
 import Pos
 import Name
 import PP
-import Var
+import TVar
 import Statement
 
 data Process = Process { ppos          :: Pos

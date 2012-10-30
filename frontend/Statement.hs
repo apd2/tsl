@@ -11,7 +11,7 @@ import PP
 import Pos
 import Name
 import Expr
-import Var
+import TVar
 
 -- Statements
 data Statement = SVarDecl {stpos::Pos, svar::Var}

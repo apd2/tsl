@@ -44,8 +44,8 @@ import Template
 import Spec
 import Const
 import ConstOps
-import Var
-import VarOps
+import TVar
+import TVarOps
 import {-# SOURCE #-} MethodOps
 import Expr
 import {-# SOURCE #-} ExprOps

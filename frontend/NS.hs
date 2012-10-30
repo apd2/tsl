@@ -30,7 +30,7 @@ import Template
 import Process
 import Method
 import {-# SOURCE #-} MethodOps
-import Var
+import TVar
 import Const
 import Type
 import Spec
