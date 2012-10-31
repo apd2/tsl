@@ -131,10 +131,10 @@ mkPCVar :: PID -> I.Expr
 mkPCVar pid = I.EVar $ mkPCVarName pid
 
 mkPCEnum :: PID -> I.Loc -> String
-mkPCEnum pid loc = mkVarNameS (Just pid) Nothing $ show loc
+mkPCEnum pid loc = mkVarNameS (Just pid) Nothing $ "$pc" ++ show loc
 
 mkPC :: PID -> I.Loc -> I.Expr
-mkPC pid loc = I.EVar $ mkVarNameS (Just pid) Nothing ("$" ++ show loc)
+mkPC pid loc = I.EConst $ I.EnumVal $ mkPCEnum pid loc 
 
 -- PID of the last process to make a transition
 mkPIDVarName :: String

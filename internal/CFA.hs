@@ -117,11 +117,19 @@ cfaSave cfa title tmp = do
     let -- Convert graph to dot format
         title' = sanitize title
         fname = (if tmp then "/tmp/" else "") ++ "cfa_" ++ title' ++ ".ps"
-        graphstr = G.graphviz cfa title' (6.0, 11.0) (1,1) G.Portrait
+        graphstr = cfaToDot cfa title'
     writeFile (fname++".dot") graphstr
     readProcess "dot" ["-Tps", "-o" ++ fname] graphstr 
     return fname
 
+cfaToDot :: CFA -> String -> String
+cfaToDot cfa title = G.graphviz cfa' title (6.0, 11.0) (1,1) G.Portrait
+    where cfa' = G.emap (format . show) cfa
+          maxLabel = 64
+          format :: String -> String
+          format s | length s <= maxLabel = s
+                   | otherwise            =
+                       take maxLabel s ++ "\n" ++ format (drop maxLabel s)
 
 isDelayLabel :: LocLabel -> Bool
 isDelayLabel (LPause _) = True
