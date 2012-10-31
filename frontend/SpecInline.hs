@@ -64,9 +64,6 @@ spec2Internal s =
            (pidvar, pidenum) = mkPIDVarDecl $ map pPID $ cproc ++ uproc
            -- Uncontrollable transitions
            utran = concatMap pBody uproc
-           -- In addition to regular goals, we are required to be outside a magic block
-           -- infinitely often
-           magicGoal = Goal nopos (Ident nopos "$magic_goal") (EUnOp nopos Not (ETerm nopos [Ident nopos mkMagicVarName]))
        in I.Spec { I.specEnum   = pidenum : tagenum : (senum ++ pcenums)
                  , I.specVar    = pidvar : (pcvars ++ vars) ++ 
                                   concat cvars ++ 
@@ -76,7 +73,7 @@ spec2Internal s =
                  , I.specUTran  = mkIdleTran : utran
                  , I.specWire   = mkWires
                  , I.specInit   = (mkInit, I.conj $ (auxinit : pcinit))
-                 , I.specGoal   = map mkGoal $ magicGoal : (tmGoal tmMain)
+                 , I.specGoal   = mkMagicGoal : (map mkGoal $ tmGoal tmMain)
                  , I.specFair   = mkFair $ cproc ++ uproc
                  }
 
@@ -132,7 +129,7 @@ mkWires =
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                                ctxPause aft I.true) ctx
-        proc = {- I.cfaTrace (ctxCFA ctx') "wires" $ -} cfaToIProcess [] (ctxCFA ctx', ctxVar ctx')
+        proc = I.cfaTraceFile (ctxCFA ctx') "wires" $ cfaToIProcess [] (ctxCFA ctx', ctxVar ctx')
     in case pBody proc of
             [t] -> t
             _   -> error $ "mkWires: Invalid wire expression.\nstat:" ++ show stat ++ "\nproc:\n" ++ show proc
@@ -175,22 +172,29 @@ mkFair procs = fsched : fproc
 ----------------------------------------------------------------------
 
 mkInit :: (?spec::Spec) => I.Transition
-mkInit = mkCond cond
+mkInit = mkCond cond []
     where -- conjunction of initial variable assignments
           ass = mapMaybe (\v -> case varInit $ gvarVar v of
                                      Nothing -> Nothing
                                      Just e  -> Just (EBinOp (pos v) Eq (ETerm nopos $ [name v]) e)) (tmVar tmMain)
           -- add init blocks
           cond = eAnd nopos (ass ++ map initBody (tmInit tmMain))
-       
+
+-- $err == false
+noerror :: I.Expr
+noerror = I.EUnOp Not mkErrVar
+
 mkGoal :: (?spec::Spec) => Goal -> I.Goal
 mkGoal g = -- Add $err==false to the goal condition
-           I.Goal (sname g) (mkCond $ EBinOp nopos And (goalCond g) noerror)
-    where noerror = EUnOp nopos Not (ETerm nopos [Ident nopos mkErrVarName])
+           I.Goal (sname g) (mkCond (goalCond g) [noerror])
 
+-- In addition to regular goals, we are required to be outside a magic block
+-- infinitely often
+mkMagicGoal :: (?spec::Spec) => I.Goal
+mkMagicGoal = I.Goal "$magic_goal" $ mkCond (EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
 
-mkCond :: (?spec::Spec) => Expr -> I.Transition
-mkCond e = 
+mkCond :: (?spec::Spec) => Expr -> [I.Expr] -> I.Transition
+mkCond e extra = 
     let -- simplify and convert into a statement
         (ss, cond') = let ?scope = ScopeTemplate tmMain 
                           ?uniq = newUniq
@@ -199,7 +203,7 @@ mkCond e =
         iproc = let ?procs = [] in cfaToIProcess [] $ fprocToCFA [] M.empty (ScopeTemplate tmMain) stat
         -- precondition
     in case pBody iproc of
-            [t] -> t
+            [t] -> foldl' tranAppend t (map I.SAssume extra)
             _   -> error $ "mkCond " ++ show e ++ ": Invalid condition"
 
 ----------------------------------------------------------------------
@@ -318,7 +322,7 @@ mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar :
 -- For a forked process the mparpid argument is the PID of the process in 
 -- whose syntactic scope the present process is located.
 procToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Process -> (I.CFA, [I.Var])
-procToCFA pid proc = {- I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ -} (ctxCFA ctx', ctxVar ctx')
+procToCFA pid proc = I.cfaTraceFile (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
     where ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeProcess tmMain proc
                        , ctxCFA    = I.newCFA I.true
@@ -334,7 +338,7 @@ procToCFA pid proc = {- I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"")
 
 -- Convert forked process to CFA
 fprocToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
-fprocToCFA pid lmap parscope stat = {-I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $-} (ctxCFA ctx', ctxVar ctx')
+fprocToCFA pid lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
     where guard = mkEnVar pid Nothing I.=== I.true
           -- Add process-local variables to nmap
           ctx = CFACtx { ctxPID    = pid 
@@ -355,7 +359,7 @@ fprocToCFA pid lmap parscope stat = {-I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToNam
 -- The ctl argument indicates that a controllable transition is to be
 -- generated (using tag instead of enabling variable)
 taskToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Method -> Bool -> (I.CFA, [I.Var])
-taskToCFA pid meth ctl = {-I.cfaTrace (ctxCFA ctx') ("\"" ++ pidToName pid ++ "_" ++ sname meth ++ "\"") $ -} (ctxCFA ctx', ctxVar ctx')
+taskToCFA pid meth ctl = I.cfaTraceFile (ctxCFA ctx') ("\"" ++ pidToName pid ++ "_" ++ sname meth ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
     where guard = if ctl
                      then mkTagVar I.=== tagMethod meth
                      else mkEnVar pid (Just meth) I.=== I.true
@@ -570,6 +574,10 @@ utranSuffix pid updatepc updatecont (I.Transition from to cfa) =
         -- set $pid
         (cfa7, after)   = I.cfaInsTrans' aftcont (mkPIDVar I.=: mkPIDEnum pid) cfa6
     in I.Transition init after cfa7
+
+tranAppend :: I.Transition -> I.Statement -> I.Transition
+tranAppend (I.Transition from to cfa) s = I.Transition from to' cfa'
+    where (cfa', to') = I.cfaInsTrans' to s cfa
 
 -- Split location into 2, one containing all outgoing edges and one containing
 -- all incoming edges of the original location

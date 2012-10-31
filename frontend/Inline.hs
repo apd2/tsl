@@ -221,11 +221,8 @@ procLMap :: PID -> Process -> NameMap
 procLMap pid p = M.fromList $ map (\v -> (name v, mkVar (Just pid) Nothing v)) (procVar p)
 
 globalNMap :: (?spec::Spec) => NameMap
-globalNMap = M.fromList $ auxvars ++ gvars ++ wires ++ enums
-    where -- auxiliary helper variables
-          auxvars = [(Ident nopos mkMagicVarName, mkMagicVar),
-                     (Ident nopos mkErrVarName,   mkErrVar)]
-          -- global variables
+globalNMap = M.fromList $ gvars ++ wires ++ enums
+    where -- global variables
           gvars  = map (\v -> (name v, mkVar Nothing Nothing v)) $ tmVar tmMain
           -- wires
           wires  = map (\w -> (name w, mkVar Nothing Nothing w)) $ tmWire tmMain

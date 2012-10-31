@@ -22,7 +22,9 @@ module CFA(Statement(..),
            cfaAddNullPtrTrans,
            cfaPruneUnreachable,
            cfaTrace,
-           cfaShow) where
+           cfaTraceFile,
+           cfaShow,
+           cfaSave) where
 
 import qualified Data.Graph.Inductive.Graph    as G
 import qualified Data.Graph.Inductive.Tree     as G
@@ -89,16 +91,27 @@ cfaTrace cfa title x = unsafePerformIO $ do
     cfaShow cfa title
     return x
 
+cfaTraceFile :: CFA -> String -> a -> a
+cfaTraceFile cfa title x = unsafePerformIO $ do
+    cfaSave cfa title
+    return x
+
 cfaShow :: CFA -> String -> IO ()
 cfaShow cfa title = do
+    fname <- cfaSave cfa title
+    readProcess "evince" [fname] ""
+    return ()
+
+cfaSave :: CFA -> String -> IO String
+cfaSave cfa title = do
     let -- Convert graph to dot format
         title' = replace "\"" "_" $ replace "/" "_" title
         fname = "cfa_" ++ title' ++ ".ps"
-        graphstr = G.graphviz cfa title (6.0, 11.0) (1,1) G.Portrait
-    writeFile (fname++".ps") graphstr
+        graphstr = G.graphviz cfa title' (6.0, 11.0) (1,1) G.Portrait
+    writeFile (fname++".dot") graphstr
     readProcess "dot" ["-Tps", "-o" ++ fname] graphstr 
-    readProcess "evince" [fname] ""
-    return ()
+    return fname
+
 
 isDelayLabel :: LocLabel -> Bool
 isDelayLabel (LPause _) = True

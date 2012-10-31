@@ -58,20 +58,20 @@ import NS
 
 -- Map function over all expressions occurring in the template
 tmMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Template -> Template
-tmMapExpr f tm = tm { tmConst    = map (\c -> c{constVal = mapExpr f s (constVal c)})                              (tmConst tm)
-                    , tmTypeDecl = map (\t -> TypeDecl (pos t) (tspecMapExpr f s $ tspec t) (name t))              (tmTypeDecl tm)
-                    , tmVar      = map (\v -> v{gvarVar = varMapExpr f s (gvarVar v)})                             (tmVar tm)
+tmMapExpr f tm = tm { tmConst    = map (\c -> c{constVal = mapExpr f s (constVal c)})                                 (tmConst tm)
+                    , tmTypeDecl = map (\t -> TypeDecl (pos t) (tspecMapExpr f s $ tspec t) (name t))                 (tmTypeDecl tm)
+                    , tmVar      = map (\v -> v{gvarVar = varMapExpr f s (gvarVar v)})                                (tmVar tm)
                     , tmWire     = map (\w -> w{wireType = tspecMapExpr f s (wireType w), 
-                                                wireRHS  = fmap (mapExpr f s) (wireRHS w)})                        (tmWire tm)
-                    , tmInit     = map (\i -> i{initBody = mapExpr f s (initBody i)})                              (tmInit tm)
-                    , tmProcess  = map (\p -> p{procStatement = statMapExpr f s (procStatement p)})                (tmProcess tm)
+                                                wireRHS  = fmap (mapExpr f s) (wireRHS w)})                           (tmWire tm)
+                    , tmInit     = map (\i -> i{initBody = mapExpr f s (initBody i)})                                 (tmInit tm)
+                    , tmProcess  = map (\p -> p{procStatement = statMapExpr f (ScopeProcess tm p) (procStatement p)}) (tmProcess tm)
                     , tmMethod   = map (\m -> let sm = ScopeMethod tm m
                                               in m{methRettyp = fmap (tspecMapExpr f s) (methRettyp m),
                                                    methArg    = map (\a -> a{argType = tspecMapExpr f s (argType a)}) (methArg m),
                                                    methBody   = case methBody m of
                                                                      Left (mb,ma) -> Left  $ (fmap (statMapExpr f sm) mb, fmap (statMapExpr f sm) ma)
-                                                                     Right b      -> Right $ statMapExpr f sm b})  (tmMethod tm)
-                    , tmGoal     = map (\g -> g{goalCond = mapExpr f s (goalCond g)})                              (tmGoal tm)}
+                                                                     Right b      -> Right $ statMapExpr f sm b})     (tmMethod tm)
+                    , tmGoal     = map (\g -> g{goalCond = mapExpr f s (goalCond g)})                                 (tmGoal tm)}
     where s = ScopeTemplate tm
 
 -- Map function over all TypeSpec's occurring in the template
