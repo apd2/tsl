@@ -60,10 +60,13 @@ spec2Internal s =
                                                              var  = I.Var False I.VarState (mkPCVarName pid) (I.Enum $ I.enumName enum)
                                                              init = mkPCVar pid I.=== mkPC pid I.cfaInitLoc
                                                          in if null $ I.enumEnums enum then Nothing else Just (var, enum, init))
-                                                  uproc
+                                                  $ uproc ++ cproc
            (pidvar, pidenum) = mkPIDVarDecl $ map pPID $ cproc ++ uproc
            -- Uncontrollable transitions
            utran = concatMap pBody uproc
+           -- In addition to regular goals, we are required to be outside a magic block
+           -- infinitely often
+           magicGoal = Goal nopos (Ident nopos "$magic_goal") (EUnOp nopos Not (ETerm nopos [Ident nopos mkMagicVarName]))
        in I.Spec { I.specEnum   = pidenum : tagenum : (senum ++ pcenums)
                  , I.specVar    = pidvar : (pcvars ++ vars) ++ 
                                   concat cvars ++ 
@@ -73,7 +76,7 @@ spec2Internal s =
                  , I.specUTran  = mkIdleTran : utran
                  , I.specWire   = mkWires
                  , I.specInit   = (mkInit, I.conj $ (auxinit : pcinit))
-                 , I.specGoal   = map mkGoal $ tmGoal tmMain
+                 , I.specGoal   = map mkGoal $ magicGoal : (tmGoal tmMain)
                  , I.specFair   = mkFair $ cproc ++ uproc
                  }
 
@@ -181,7 +184,9 @@ mkInit = mkCond cond
           cond = eAnd nopos (ass ++ map initBody (tmInit tmMain))
        
 mkGoal :: (?spec::Spec) => Goal -> I.Goal
-mkGoal g = I.Goal (sname g) (mkCond $ goalCond g)
+mkGoal g = -- Add $err==false to the goal condition
+           I.Goal (sname g) (mkCond $ EBinOp nopos And (goalCond g) noerror)
+    where noerror = EUnOp nopos Not (ETerm nopos [Ident nopos mkErrVarName])
 
 
 mkCond :: (?spec::Spec) => Expr -> I.Transition
@@ -246,9 +251,9 @@ mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
 ----------------------------------------------------------------------
 
 mkVars :: (?spec::Spec) => ([I.Var], I.Enumeration, I.Expr)
-mkVars = (mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ pvars), 
+mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ pvars), 
           tenum, 
-          I.conj $ teninit ++ peninit ++ [taginit, maginit, continit, pidinit])
+          I.conj $ teninit ++ peninit ++ [errinit, taginit, maginit, continit, pidinit])
     where
     -- tag: one enumerator per controllable task
     (tvar, tenum) = mkTagVarDecl
@@ -297,6 +302,7 @@ mkVars = (mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvar
     maginit  = mkMagicVar I.=== I.false
     continit = mkContVar  I.=== I.false
     pidinit  = mkPIDVar   I.=== mkPIDEnum pidIdle
+    errinit  = mkErrVar   I.=== I.false
 
     taskVars :: Maybe PID -> Method -> [I.Var]
     taskVars mpid m = 

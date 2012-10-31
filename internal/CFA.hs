@@ -9,6 +9,7 @@ module CFA(Statement(..),
            isDelayLabel,
            newCFA,
            cfaErrLoc,
+           cfaErrVarName,
            cfaInitLoc,
            cfaInsLoc,
            cfaLocLabel,
@@ -16,6 +17,7 @@ module CFA(Statement(..),
            cfaInsTransMany,
            cfaInsTrans',
            cfaInsTransMany',
+           cfaErrTrans,
            cfaSuc,
            cfaAddNullPtrTrans,
            cfaPruneUnreachable,
@@ -36,6 +38,7 @@ import Debug.Trace
 import PP
 import Util hiding (name,trace)
 import IExpr
+
 
 -- Atomic statement
 data Statement = SAssume Expr
@@ -108,6 +111,9 @@ newCFA initcond = G.insNode (cfaInitLoc,LPause initcond) $ G.insNode (cfaErrLoc,
 cfaErrLoc :: Loc
 cfaErrLoc = 0
 
+cfaErrVarName :: String
+cfaErrVarName = "$err"
+
 cfaInitLoc :: Loc
 cfaInitLoc = 1
 
@@ -136,12 +142,26 @@ cfaInsTransMany' :: Loc -> [Statement] -> CFA -> (CFA, Loc)
 cfaInsTransMany' from stats cfa = (cfaInsTransMany from to stats cfa', to)
     where (cfa', to) = cfaInsLoc LNone cfa
 
+cfaErrTrans :: Loc -> Statement -> CFA -> CFA
+cfaErrTrans loc stat cfa =
+    let (cfa',loc') = cfaInsTrans' loc stat cfa
+    in cfaInsTrans loc' cfaErrLoc (EVar cfaErrVarName =: true) cfa'
+
 cfaSuc :: Loc -> CFA -> [(Statement,Loc)]
 cfaSuc loc cfa = map swap $ G.lsuc cfa loc
 
 -- Add error transitions for all potential null-pointer dereferences
 cfaAddNullPtrTrans :: CFA -> Expr -> CFA
 cfaAddNullPtrTrans cfa nul = foldl' (addNullPtrTrans1 nul) cfa (G.labEdges cfa)
+
+addNullPtrTrans1 :: Expr -> CFA -> (Loc,Loc,Statement) -> CFA
+addNullPtrTrans1 nul cfa (from , _, SAssign e1 e2) = case cond of
+                                                          EConst (BoolVal False) -> cfa
+                                                          _ -> cfaErrTrans from (SAssume cond) cfa
+    where cond = disj $ map (=== nul) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)
+    
+addNullPtrTrans1 _   cfa (_    , _, SAssume _)     = cfa
+
 
 cfaPruneUnreachable :: CFA -> [Loc] -> CFA
 cfaPruneUnreachable cfa keep = 
@@ -151,10 +171,4 @@ cfaPruneUnreachable cfa keep =
           else trace ("cfaPruneUnreachable: " ++ show cfa ++ "\n"++ show unreach) $
                cfaPruneUnreachable (foldl' (\cfa n -> G.delNode n cfa) cfa unreach) keep
 
-addNullPtrTrans1 :: Expr -> CFA -> (Loc,Loc,Statement) -> CFA
-addNullPtrTrans1 nul cfa (from , _, SAssign e1 e2) = case cond of
-                                                          EConst (BoolVal False) -> cfa
-                                                          _ -> cfaInsTrans from cfaErrLoc (SAssume cond) cfa
-    where cond = disj $ map (=== nul) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)
-    
-addNullPtrTrans1 _   cfa (_    , _, SAssume _)     = cfa
+

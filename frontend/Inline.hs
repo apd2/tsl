@@ -9,6 +9,7 @@ import qualified Data.Map as M
 import Text.PrettyPrint
 
 import PP
+import Pos
 import Util hiding (name)
 import qualified ISpec as I
 import qualified IExpr as I
@@ -199,6 +200,16 @@ mkNullVar = I.EVar mkNullVarName
 mkNullVarDecl :: I.Var
 mkNullVarDecl = I.Var False I.VarState mkNullVarName (I.Ptr I.Bool)
 
+mkErrVarName :: String
+mkErrVarName = I.cfaErrVarName
+
+mkErrVar :: I.Expr
+mkErrVar = I.EVar mkErrVarName
+
+mkErrVarDecl :: I.Var
+mkErrVarDecl = I.Var False I.VarState mkErrVarName I.Bool
+
+
 type NameMap = M.Map Ident I.Expr
 
 methodLMap :: PID -> Method -> NameMap 
@@ -210,8 +221,11 @@ procLMap :: PID -> Process -> NameMap
 procLMap pid p = M.fromList $ map (\v -> (name v, mkVar (Just pid) Nothing v)) (procVar p)
 
 globalNMap :: (?spec::Spec) => NameMap
-globalNMap = M.fromList $ gvars ++ wires ++ enums
-    where -- global variables
+globalNMap = M.fromList $ auxvars ++ gvars ++ wires ++ enums
+    where -- auxiliary helper variables
+          auxvars = [(Ident nopos mkMagicVarName, mkMagicVar),
+                     (Ident nopos mkErrVarName,   mkErrVar)]
+          -- global variables
           gvars  = map (\v -> (name v, mkVar Nothing Nothing v)) $ tmVar tmMain
           -- wires
           wires  = map (\w -> (name w, mkVar Nothing Nothing w)) $ tmWire tmMain
@@ -325,6 +339,9 @@ ctxFinal :: I.Loc -> State CFACtx I.Loc
 ctxFinal loc = do after <- ctxInsLocLab I.LFinal
                   ctxInsTrans loc after I.nop
                   return after
+
+ctxErrTrans :: I.Loc -> I.Statement -> State CFACtx ()
+ctxErrTrans loc stat = modify $ (\ctx -> ctx {ctxCFA = I.cfaErrTrans loc stat $ ctxCFA ctx})
 
 ctxPutBrkLoc :: I.Loc -> State CFACtx ()
 ctxPutBrkLoc loc = modify $ (\ctx -> ctx {ctxBrkLoc = loc})

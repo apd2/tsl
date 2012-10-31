@@ -216,7 +216,7 @@ statToCFA' before after (SInvoke _ mref as) = do
 statToCFA' before after (SAssert _ cond) = do
     cond' <- exprToIExprDet cond
     ctxInsTrans before after (I.SAssume cond')
-    ctxInsTrans before I.cfaErrLoc (I.SAssume $ I.EUnOp Not cond')
+    ctxErrTrans before (I.SAssume $ I.EUnOp Not cond')
 
 statToCFA' before after (SAssume _ cond) = do
     cond' <- exprToIExprDet cond
