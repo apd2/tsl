@@ -34,6 +34,9 @@ instance PP Transition where
                                              $+$
                                              pp cfa)
 
+instance Show Transition where
+    show = render . pp
+
 data Goal = Goal { goalName :: String
                  , goalCond :: Transition
                  }

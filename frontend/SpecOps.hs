@@ -264,8 +264,7 @@ exprFlattenConsts s e = case e of
 -- Replace references to enums with flattened names
 -- (For use in mapExpr)
 exprFlattenEnums :: (?spec::Spec) => Scope -> Expr -> Expr
-exprFlattenEnums s e = trace ("exprFlattenEnums " ++ show s  ++ " " ++ show e) $
-                       case e of
+exprFlattenEnums s e = case e of
                              ETerm p sym  -> case getTerm s sym of
                                                   ObjEnum (Type (ScopeTemplate t) _) en -> ETerm p [flattenName t en]
                                                   _                                     -> e

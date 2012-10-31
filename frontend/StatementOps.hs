@@ -217,7 +217,6 @@ validateStat' l (SPar p ss) = do
          ScopeProcess _ pr -> return ()
 
 validateStat' _ (SForever _ b) = do
-    trace "validateStat forever" $ return ()
     checkLoopBody b
 
 validateStat' _ (SDo _ b c) = do

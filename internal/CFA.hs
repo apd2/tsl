@@ -23,6 +23,7 @@ module CFA(Statement(..),
            cfaPruneUnreachable,
            cfaTrace,
            cfaTraceFile,
+           cfaTraceFileMany,
            cfaShow,
            cfaSave) where
 
@@ -91,22 +92,31 @@ cfaTrace cfa title x = unsafePerformIO $ do
     cfaShow cfa title
     return x
 
+sanitize :: String -> String
+sanitize title = replace "\"" "_" $ replace "/" "_" $ replace "$" "" $ replace ":" "_" title
+
 cfaTraceFile :: CFA -> String -> a -> a
 cfaTraceFile cfa title x = unsafePerformIO $ do
-    cfaSave cfa title
+    cfaSave cfa title False
+    return x
+
+cfaTraceFileMany :: [CFA] -> String -> a -> a
+cfaTraceFileMany cfas title x = unsafePerformIO $ do
+    fnames <- mapM (\(cfa,n) -> cfaSave cfa (title++show n) True) $ zip cfas [1..]
+    readProcess "psmerge" (["-o" ++ (sanitize title) ++ ".ps"]++fnames) ""
     return x
 
 cfaShow :: CFA -> String -> IO ()
 cfaShow cfa title = do
-    fname <- cfaSave cfa title
+    fname <- cfaSave cfa title True
     readProcess "evince" [fname] ""
     return ()
 
-cfaSave :: CFA -> String -> IO String
-cfaSave cfa title = do
+cfaSave :: CFA -> String -> Bool -> IO String
+cfaSave cfa title tmp = do
     let -- Convert graph to dot format
-        title' = replace "\"" "_" $ replace "/" "_" title
-        fname = "cfa_" ++ title' ++ ".ps"
+        title' = sanitize title
+        fname = (if tmp then "/tmp/" else "") ++ "cfa_" ++ title' ++ ".ps"
         graphstr = G.graphviz cfa title' (6.0, 11.0) (1,1) G.Portrait
     writeFile (fname++".dot") graphstr
     readProcess "dot" ["-Tps", "-o" ++ fname] graphstr 
@@ -181,7 +191,7 @@ cfaPruneUnreachable cfa keep =
     let unreach = filter (\n -> (not $ elem n ([cfaInitLoc, cfaErrLoc] ++ keep)) && (null $ G.pre cfa n)) $ G.nodes cfa
     in if null unreach 
           then cfa   
-          else trace ("cfaPruneUnreachable: " ++ show cfa ++ "\n"++ show unreach) $
+          else --trace ("cfaPruneUnreachable: " ++ show cfa ++ "\n"++ show unreach) $
                cfaPruneUnreachable (foldl' (\cfa n -> G.delNode n cfa) cfa unreach) keep
 
 

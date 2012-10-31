@@ -129,10 +129,10 @@ mkWires =
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                                ctxPause aft I.true) ctx
-        proc = I.cfaTraceFile (ctxCFA ctx') "wires" $ cfaToIProcess [] (ctxCFA ctx', ctxVar ctx')
-    in case pBody proc of
-            [t] -> t
-            _   -> error $ "mkWires: Invalid wire expression.\nstat:" ++ show stat ++ "\nproc:\n" ++ show proc
+        trans = I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ locTrans (ctxCFA ctx') I.cfaInitLoc
+    in case trans of
+            [t] -> I.cfaTraceFile (I.tranCFA t) "wires" $ t
+            _   -> error $ "mkWires: Invalid wire expression.\nstat:" ++ show stat ++ "\ntrans:\n" ++ (intercalate "\n\n"  $ map show trans)
 
 
 -- Build total order of wires so that for each wire, all wires that
@@ -172,7 +172,7 @@ mkFair procs = fsched : fproc
 ----------------------------------------------------------------------
 
 mkInit :: (?spec::Spec) => I.Transition
-mkInit = mkCond cond []
+mkInit = mkCond "$init" cond []
     where -- conjunction of initial variable assignments
           ass = mapMaybe (\v -> case varInit $ gvarVar v of
                                      Nothing -> Nothing
@@ -186,24 +186,39 @@ noerror = I.EUnOp Not mkErrVar
 
 mkGoal :: (?spec::Spec) => Goal -> I.Goal
 mkGoal g = -- Add $err==false to the goal condition
-           I.Goal (sname g) (mkCond (goalCond g) [noerror])
+           I.Goal (sname g) (mkCond (sname g) (goalCond g) [noerror])
 
 -- In addition to regular goals, we are required to be outside a magic block
 -- infinitely often
 mkMagicGoal :: (?spec::Spec) => I.Goal
-mkMagicGoal = I.Goal "$magic_goal" $ mkCond (EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
+mkMagicGoal = I.Goal "$magic_goal" $ mkCond "$magic_goal" (EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
 
-mkCond :: (?spec::Spec) => Expr -> [I.Expr] -> I.Transition
-mkCond e extra = 
+mkCond :: (?spec::Spec) => String -> Expr -> [I.Expr] -> I.Transition
+mkCond descr e extra = 
     let -- simplify and convert into a statement
         (ss, cond') = let ?scope = ScopeTemplate tmMain 
                           ?uniq = newUniq
                       in exprSimplify e
         stat = SSeq nopos (ss ++ [SAssume nopos cond'])
-        iproc = let ?procs = [] in cfaToIProcess [] $ fprocToCFA [] M.empty (ScopeTemplate tmMain) stat
+
+        ctx = CFACtx { ctxPID     = []
+                     , ctxScope   = ScopeTemplate tmMain
+                     , ctxCFA     = I.newCFA I.true
+                     , ctxRetLoc  = error $ "return from " ++ descr
+                     , ctxBrkLoc  = error "break outside a loop"
+                     , ctxLHS     = Nothing
+                     , ctxGNMap   = globalNMap
+                     , ctxLNMap   = M.empty
+                     , ctxLastVar = 0
+                     , ctxVar     = []}
+        ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
+                                               ctxPause aft I.true) ctx
+
+        trans = locTrans (ctxCFA ctx') I.cfaInitLoc
         -- precondition
-    in case pBody iproc of
-            [t] -> foldl' tranAppend t (map I.SAssume extra)
+    in case trans of
+            [t] -> let res = foldl' tranAppend t (map I.SAssume extra)
+                   in I.cfaTraceFile (I.tranCFA t) descr $ res
             _   -> error $ "mkCond " ++ show e ++ ": Invalid condition"
 
 ----------------------------------------------------------------------
@@ -322,7 +337,7 @@ mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar :
 -- For a forked process the mparpid argument is the PID of the process in 
 -- whose syntactic scope the present process is located.
 procToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Process -> (I.CFA, [I.Var])
-procToCFA pid proc = I.cfaTraceFile (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
+procToCFA pid proc = I.cfaTraceFile (ctxCFA ctx') (pidToName pid) $ (ctxCFA ctx', ctxVar ctx')
     where ctx = CFACtx { ctxPID    = pid 
                        , ctxScope  = ScopeProcess tmMain proc
                        , ctxCFA    = I.newCFA I.true
@@ -338,7 +353,7 @@ procToCFA pid proc = I.cfaTraceFile (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\""
 
 -- Convert forked process to CFA
 fprocToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
-fprocToCFA pid lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') ("\"" ++ pidToName pid ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
+fprocToCFA pid lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (pidToName pid) $ (ctxCFA ctx', ctxVar ctx')
     where guard = mkEnVar pid Nothing I.=== I.true
           -- Add process-local variables to nmap
           ctx = CFACtx { ctxPID    = pid 
@@ -359,7 +374,7 @@ fprocToCFA pid lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') ("\"" ++ pidToN
 -- The ctl argument indicates that a controllable transition is to be
 -- generated (using tag instead of enabling variable)
 taskToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Method -> Bool -> (I.CFA, [I.Var])
-taskToCFA pid meth ctl = I.cfaTraceFile (ctxCFA ctx') ("\"" ++ pidToName pid ++ "_" ++ sname meth ++ "\"") $ (ctxCFA ctx', ctxVar ctx')
+taskToCFA pid meth ctl = I.cfaTraceFile (ctxCFA ctx') (pidToName pid ++ "_" ++ sname meth) $ (ctxCFA ctx', ctxVar ctx')
     where guard = if ctl
                      then mkTagVar I.=== tagMethod meth
                      else mkEnVar pid (Just meth) I.=== I.true
@@ -503,7 +518,8 @@ forkedProcsRec s stat =
 ---------------------------------------------------------------
 
 cfaToIProcess :: PID -> (I.CFA,[I.Var]) -> ProcTrans
-cfaToIProcess pid (cfa,vs) = trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreachable: " ++ (intercalate ", " $ map show r)) $
+cfaToIProcess pid (cfa,vs) = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreachable: " ++ (intercalate ", " $ map show r)) $
+                             I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ pidToName pid) $
                              ProcTrans pid trans' vs final pcenum wait
     where
     -- compute a set of transitions for each location labelled with pause or final
@@ -534,11 +550,12 @@ locTrans cfa loc =
     let -- compute all reachable locations before pause
         r = reach cfa S.empty (S.singleton loc)
         -- construct subgraph with only these nodes
-        cfa' = foldl' (\g loc -> if S.member loc r then g else G.delNode loc g) cfa (G.nodes cfa)
+        cfa' = foldl' (\g l -> if l==loc || S.member l r then g else G.delNode l g) cfa (G.nodes cfa)
         -- check for loop freedom
         -- for each final location, compute a subgraph that connects the two
         dst = filter (I.isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
-    in map (\dst -> I.Transition loc dst $ pruneTrans cfa' loc dst) dst
+    in --trace ("locTrans loc=" ++ show loc ++ " dst=" ++ show dst ++ " reach=" ++ show r) $
+       map (\dst -> I.Transition loc dst $ pruneTrans cfa' loc dst) dst
 
 -- locations reachable from found before reaching the next pause or final state
 reach :: I.CFA -> S.Set I.Loc -> S.Set I.Loc -> S.Set I.Loc
