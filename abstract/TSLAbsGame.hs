@@ -137,7 +137,7 @@ addrPred op x y =
           then FFalse
           else if op == Eq
                   then fp 
-                  else FNot fp
+                  else fnot fp
 
 -- Convert boolean expression without pointers to a formula
 bexprToFormula' :: (?spec::Spec) => Expr -> Formula
@@ -146,22 +146,36 @@ bexprToFormula'   (EConst (BoolVal True))          = FTrue
 bexprToFormula'   (EConst (BoolVal False))         = FFalse
 bexprToFormula' e@(EField s f)                     = fAtom REq (exprToTerm e) TTrue
 bexprToFormula' e@(EIndex a i)                     = fAtom REq (exprToTerm e) TTrue
-bexprToFormula'   (EUnOp Not e)                    = FNot $ bexprToFormula' e
+bexprToFormula'   (EUnOp Not e)                    = fnot $ bexprToFormula' e
 bexprToFormula'   (EBinOp op e1 e2) | isRelBOp op  = combineExpr (bopToRelOp op) e1 e2
 bexprToFormula'   (EBinOp op e1 e2) | isBoolBOp op = FBinOp (bopToBoolOp op) (bexprToFormula' e1) (bexprToFormula' e2)
 
 combineExpr :: (?spec::Spec) => RelOp -> Expr -> Expr -> Formula
-combineExpr op e1 e2 | typ e1 == Bool =
+combineExpr REq  (EUnOp AddrOf e1) (EUnOp AddrOf e2) = combineAddrOfExpr e1 e2
+combineExpr RNeq (EUnOp AddrOf e1) (EUnOp AddrOf e2) = fnot $ combineAddrOfExpr e1 e2
+combineExpr op e1 e2 | typ e1 == Bool                = 
    case e1 of
-       EConst (BoolVal True)  -> if op == REq then bexprToFormula' e2 else FNot $ bexprToFormula' e2
-       EConst (BoolVal False) -> if op == REq then FNot $ bexprToFormula' e2 else bexprToFormula' e2
+       EConst (BoolVal True)  -> if op == REq then bexprToFormula' e2 else fnot $ bexprToFormula' e2
+       EConst (BoolVal False) -> if op == REq then fnot $ bexprToFormula' e2 else bexprToFormula' e2
        _                      -> 
            case e2 of
-                EConst (BoolVal True)  -> if op == REq then bexprToFormula' e1 else FNot $ bexprToFormula' e1
-                EConst (BoolVal False) -> if op == REq then FNot $ bexprToFormula' e1 else bexprToFormula' e1
+                EConst (BoolVal True)  -> if op == REq then bexprToFormula' e1 else fnot $ bexprToFormula' e1
+                EConst (BoolVal False) -> if op == REq then fnot $ bexprToFormula' e1 else bexprToFormula' e1
                 _                      -> let f = FBinOp Equiv (bexprToFormula' e1) (bexprToFormula' e2)
-                                          in if op == REq then f else FNot f
-                     | otherwise      = fAtom op (exprToTerm e1) (exprToTerm e2)
+                                          in if op == REq then f else fnot f
+                     | otherwise                     = fAtom op (exprToTerm e1) (exprToTerm e2)
+
+-- To addrof expressions are equal if they are isomorphic and
+-- array indices in matching positions in these expressions are equal.
+combineAddrOfExpr :: (?spec::Spec) => Expr -> Expr -> Formula
+combineAddrOfExpr (EVar n1)      (EVar n2)      | n1 == n2 = FTrue
+combineAddrOfExpr (EVar n1)      (EVar n2)      | n1 /= n2 = FFalse
+combineAddrOfExpr (EField e1 f1) (EField e2 f2) | f1 == f2 = combineAddrOfExpr e1 e2
+combineAddrOfExpr (EField e1 f1) (EField e2 f2) | f1 /= f2 = FFalse
+combineAddrOfExpr (EIndex a1 i1) (EIndex a2 i2)            = fconj [combineAddrOfExpr a1 a2, combineExpr REq i1 i2]
+combineAddrOfExpr (ESlice e1 s1) (ESlice e2 s2) | s1 == s2 = combineAddrOfExpr e1 e2
+combineAddrOfExpr (ESlice e1 s1) (ESlice e2 s2) | s1 /= s2 = FFalse
+combineAddrOfExpr _              _                         = FFalse
 
 -- Expand each pointer dereference operation in the expression
 -- using predicates in the DB.
@@ -289,14 +303,14 @@ lhsTermEq (EIndex ae ie)  (TIndex at it)              =
                      then case bexprToFormula $ (termToExpr it) === ie of
                                FTrue  -> CasLeaf True
                                FFalse -> CasLeaf False
-                               f      -> CasTree [(f, CasLeaf True), (FNot f, CasLeaf False)]
+                               f      -> CasTree [(f, CasLeaf True), (fnot f, CasLeaf False)]
                      else CasLeaf False)
            $ lhsTermEq ae at
 lhsTermEq (EUnOp Deref e) t                | etyp == ttyp && isMemTerm t = 
     case bexprToFormula $ e === EUnOp AddrOf (termToExpr t) of
          FTrue  -> CasLeaf True
          FFalse -> CasLeaf False
-         f      -> CasTree [(f, CasLeaf True), (FNot f, CasLeaf False)]
+         f      -> CasTree [(f, CasLeaf True), (fnot f, CasLeaf False)]
     where Ptr etyp = typ e
           ttyp     = typ t
 lhsTermEq _              _                            = CasLeaf False

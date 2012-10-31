@@ -31,14 +31,14 @@ data Val = BoolVal   Bool
          | SIntVal   Int Integer
          | UIntVal   Int Integer
          | EnumVal   String
-         | PtrVal    LExpr
+--         | PtrVal    LExpr
 
 instance (?spec::Spec) => Typed Val where
     typ (BoolVal _)   = Bool
     typ (SIntVal w _) = SInt w
     typ (UIntVal w _) = UInt w
     typ (EnumVal n)   = Enum $ enumName $ getEnum n
-    typ (PtrVal e)    = Ptr $ typ e
+--    typ (PtrVal e)    = Ptr $ typ e
 
 instance PP Val where
     pp (BoolVal True)  = text "true"
@@ -46,7 +46,7 @@ instance PP Val where
     pp (SIntVal _ v)   = text $ show v
     pp (UIntVal _ v)   = text $ show v
     pp (EnumVal n)     = text n
-    pp (PtrVal e)      = char '&' <> pp e
+--    pp (PtrVal e)      = char '&' <> pp e
 
 type Slice = (Int, Int)
 
