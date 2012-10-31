@@ -16,7 +16,6 @@ import Common
 import AbsGame
 import PredicateDB
 import LogicClasses
-import Implicit
 import ISpec
 import IExpr hiding (disj)
 import IType
@@ -35,6 +34,7 @@ tslAbsGame :: (AllOps c v a) => Spec -> AbsGame c v a Predicate (TmpVars v)
 tslAbsGame spec = AbsGame { gameGoals       = tslGameGoals       spec
                           , gameFair        = tslGameFair        spec
                           , gameInit        = tslGameInit        spec
+                          , gameConsistent  = tslGameConsistent  spec
                           , gameVarUpdateC  = tslGameVarUpdateC  spec
                           , gameVarUpdateU  = tslGameVarUpdateU  spec}
 
@@ -42,8 +42,6 @@ tslAbsGame spec = AbsGame { gameGoals       = tslGameGoals       spec
 tslGameGoals :: (AllOps c v a) => Spec -> PDB c v [(String,a)]
 tslGameGoals spec = do
     let ?spec = spec
-    c <- pdbCtx
-    let ?m = c
     mapM (\g -> do c <- tranPrecondition (goalCond g)
                    return (goalName g, c))
          $ specGoal spec
@@ -54,27 +52,37 @@ tslGameFair spec = mapM (bexprAbstract spec) $ specFair spec
 tslGameInit :: (AllOps c v a) => Spec -> PDB c v a
 tslGameInit spec = do 
     let ?spec = spec
-    c <- pdbCtx
-    let ?m = c
+    m <- pdbCtx
     pre   <- tranPrecondition (fst $ specInit spec)
     extra <- bexprAbstract spec (snd $ specInit spec)
-    return $ pre .& extra
+    return $ andOp m pre extra
+
+tslGameConsistent :: (AllOps c v a) => Spec -> PDB c v a
+tslGameConsistent spec = do
+    m      <- pdbCtx
+    avars  <- pdbAbsVar
+    -- Enum vars can take values between 0 and n-1 (where n is the size of the enumeration)
+    let evars = filter (\av -> case av of
+                                    EnumVar _ _ -> True
+                                    _           -> False) avars
+    constr <- mapM (\av@(EnumVar _ s) -> do v <- pdbGetVar av
+                                            return $ disjOp m $ map (eqConst m v) [0..s-1]) evars
+    return $ conjOp m constr
+
 
 tslGameVarUpdateC :: (AllOps c v a) => Spec -> [(TAbsVar,v)] -> PDB c v [a]
 tslGameVarUpdateC spec vars = do
     let ?spec = spec
-    c <- pdbCtx
-    let ?m = c
+    m <- pdbCtx
     updatefs <- mapM (varUpdateTrans vars) $ specCTran spec
-    return $ map disj $ transpose updatefs
+    return $ map (disjOp m) $ transpose updatefs
 
 tslGameVarUpdateU :: (AllOps c v a) => Spec -> [(TAbsVar,v)] -> PDB c v [a]
 tslGameVarUpdateU spec vars = do
     let ?spec = spec
-    c <- pdbCtx
-    let ?m = c
+    m <- pdbCtx
     updatefs <- mapM (varUpdateTrans vars) $ specUTran spec
-    return $ map disj $ transpose updatefs
+    return $ map (disjOp m) $ transpose updatefs
 
 ----------------------------------------------------------------------------
 -- PDB operations
@@ -204,8 +212,7 @@ type Cache a = M.Map Loc ([a],[TAbsVar])
 tranPrecondition :: (AllOps c v a, ?spec::Spec) => Transition -> PDB c v a
 tranPrecondition tran = do
     m <- pdbCtx
-    let ?m = m
-    cache <- varUpdateLoc [] (tranFrom tran) (tranCFA tran) (M.singleton (tranTo tran) ([t],[]))
+    cache <- varUpdateLoc [] (tranFrom tran) (tranCFA tran) (M.singleton (tranTo tran) ([topOp m],[]))
     return $ head $ fst $ cache M.! (tranFrom tran)
 
 -- Compute update functions for a list of variables wrt to a transition
@@ -241,11 +248,10 @@ varUpdateStat (SAssume e) (rels, vs) = do
     pred <- pdbPred
     m    <- pdbCtx
     let ?pred = pred
-        ?m    = m
     let f = bexprToFormulaPlus e
         vs' = formAbsVars f
     rel <- compileFormula f
-    return (map (and rel) rels, S.toList $ S.fromList $ vs ++ vs')
+    return (map (andOp m rel) rels, S.toList $ S.fromList $ vs ++ vs')
 varUpdateStat (SAssign e1 e2) (rels, vs) = 
     foldM (varUpdateAsnStat1 e1 e2) (rels,[]) vs
 
