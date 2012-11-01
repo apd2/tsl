@@ -569,6 +569,15 @@ reach cfa found frontier = if S.null frontier'
           suc locs  = S.unions $ map suc1 (S.toList locs)
           suc1 loc  = S.fromList $ G.suc cfa loc
 
+-- iteratively prune dead-end locations until only transitions connecting from and to remain
+pruneTrans :: I.CFA -> I.Loc -> I.Loc -> I.CFA
+pruneTrans cfa from to = if G.noNodes cfa'' == G.noNodes cfa then cfa else pruneTrans cfa'' from to
+    where -- eliminate from-->from loops, unless we are generating a loop transition
+          cfa' = if from /= to
+                    then foldl' (\cfa (f,t,_) -> G.delEdge (f,t) cfa) cfa (G.inn cfa from)
+                    else cfa
+          cfa'' = foldl' (\g loc -> if loc /= to && null (G.suc g loc) then G.delNode loc g else g) cfa' (G.nodes cfa') 
+
 -- Insert constraints over PC and cont variables after the last location of 
 -- the transition
 utranSuffix :: PID -> Bool -> Bool -> I.Transition -> I.Transition
@@ -606,7 +615,3 @@ splitLoc loc cfa = (loc, loc', cfa3)
           cfa3         = foldl' (\cfa (f,t,l) -> G.insEdge (f,loc',l) cfa) cfa2 i
 
 
--- iteratively prune dead-end locations until only transitions connecting from and to remain
-pruneTrans :: I.CFA -> I.Loc -> I.Loc -> I.CFA
-pruneTrans cfa from to = if G.noNodes cfa' == G.noNodes cfa then cfa else pruneTrans cfa' from to
-    where cfa' = foldl' (\g loc -> if loc /= to && null (G.suc g loc) then G.delNode loc g else g) cfa (G.nodes cfa) 

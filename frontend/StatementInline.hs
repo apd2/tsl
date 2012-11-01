@@ -280,9 +280,9 @@ methInline before after meth args mlhs = do
                 Just lhs -> (liftM Just) $ exprToIExprDet lhs
     -- set input arguments
     aftarg <- setArgs before meth args
-    aftpause1 <- case methCat meth of
-                      Task _ -> ctxPause aftarg I.true
-                      _      -> return aftarg
+--    aftpause1 <- case methCat meth of
+--                      Task _ -> ctxPause aftarg I.true
+--                      _      -> return aftarg
     -- set return location
     retloc <- ctxInsLoc
     ctxPutRetLoc retloc
@@ -295,17 +295,17 @@ methInline before after meth args mlhs = do
     -- build local map consisting of method arguments and local variables
     ctxPutLNMap $ methodLMap pid meth
     -- build CFA of the method
-    aftbody <- statToCFA aftpause1 (fromRight $ methBody meth)
+    aftbody <- statToCFA aftarg (fromRight $ methBody meth)
     ctxInsTrans aftbody retloc I.nop
     -- restore syntactic scope
     ctxPutScope $ ctxScope befctx
     -- copy out arguments
     aftout <- copyOutArgs retloc meth args
-    aftpause2 <- case methCat meth of
-                      Task _ -> ctxPause aftout I.true
-                      _      -> return aftout
+--    aftpause2 <- case methCat meth of
+--                      Task _ -> ctxPause aftout I.true
+--                      _      -> return aftout
     -- nop-transition to after
-    ctxInsTrans aftpause2 after I.nop
+    ctxInsTrans aftout after I.nop
     -- restore context
     ctxPutBrkLoc $ ctxBrkLoc befctx
     ctxPutRetLoc $ ctxRetLoc befctx
