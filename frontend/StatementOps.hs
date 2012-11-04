@@ -238,7 +238,14 @@ validateStat' _ (SFor _ (mi, c, s) b) = do
     validateStat' False s
     checkLoopBody b
 
-validateStat' l (SChoice _ ss) = do
+validateStat' l (SChoice p ss) = do
+    case ?scope of
+         ScopeMethod  _ m -> case methCat m of
+                                  Function            -> err p $ "non-deterministic choice inside function"
+                                  Procedure           -> err p $ "non-deterministic choice inside procedure"
+                                  Task Uncontrollable -> err p $ "non-deterministic choice inside uncontrollable task"
+                                  _                   -> return ()
+         ScopeProcess _ pr -> return ()
     mapM (validateStat' l) ss
     return ()
 
