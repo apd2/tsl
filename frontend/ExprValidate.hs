@@ -210,7 +210,15 @@ validateExpr' (EStruct p n es) = do
                           (zip (zip es fs) [1..])
     return ()
 
-validateExpr' (ENonDet _) = return ()
+validateExpr' (ENonDet p) = do
+    case ?scope of
+         ScopeMethod  _ m -> case methCat m of
+                                  Function            -> err p $ "non-deterministic value inside function"
+                                  Procedure           -> err p $ "non-deterministic value inside procedure"
+                                  Task Uncontrollable -> err p $ "non-deterministic value inside uncontrollable task"
+                                  _                   -> return ()
+         ScopeProcess _ pr -> return ()
+
 
 -- Common code to validate method calls in statement and expression contexts
 validateCall :: (?spec::Spec, ?scope::Scope, MonadError String me) => Pos -> MethodRef -> [Expr] -> me ()
