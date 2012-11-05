@@ -191,16 +191,18 @@ validateStat s st = do let ?scope = s
 -- The first argument indicates that the statement belongs to a loop
 validateStat' :: (?spec::Spec, ?scope::Scope, MonadError String me) => Bool -> Statement -> me ()
 validateStat' _ (SVarDecl p v) = do 
+    assert (not $ isTemplateScope ?scope) p "variable declaration inside always-block"
     validateVar ?scope v
     validateVar2 ?scope v
 
 validateStat' _ (SReturn p me) = do
     case ?scope of
          ScopeMethod  _ m  -> case methRettyp m of
-                                   Nothing -> assert (isNothing me) p "Cannot return value from method with void return type"
-                                   Just t  -> do assert (isJust me) p "Return value not specified"
+                                   Nothing -> assert (isNothing me) p "cannot return value from method with void return type"
+                                   Just t  -> do assert (isJust me) p "return value not specified"
                                                  checkTypeMatch (Type ?scope t) (fromJust me)
-         ScopeProcess _ pr -> assert (isNothing me) p "Cannot return value from a process"
+         ScopeProcess _ pr -> assert (isNothing me) p "cannot return value from a process"
+         ScopeTemplate _   -> err p "return statement inside always-block"
 
 validateStat' l (SSeq _ ss) = do
     mapM (validateStat' l) ss
@@ -210,28 +212,29 @@ validateStat' l (SPar p ss) = do
     mapM (validateStat' l . snd) ss
     case ?scope of
          ScopeMethod  _ m -> case methCat m of
-                                  Function          -> err p $ "fork inside function"
-                                  Procedure         -> err p $ "fork inside procedure"
-                                  Task Controllable -> err p $ "fork inside controllable task"
+                                  Function          -> err p "fork inside function"
+                                  Procedure         -> err p "fork inside procedure"
+                                  Task Controllable -> err p "fork inside controllable task"
                                   _                 -> return ()
          ScopeProcess _ pr -> return ()
+         ScopeTemplate _   -> err p $ "fork inside always-block"
 
 validateStat' _ (SForever _ b) = do
     checkLoopBody b
 
 validateStat' _ (SDo _ b c) = do
     validateExpr' c
-    assert (isBool c) (pos c) $ "Loop condition is not of boolean type"
+    assert (isBool c) (pos c) "loop condition is not of boolean type"
     checkLoopBody b
 
 validateStat' _ (SWhile _ c b) = do
     validateExpr' c
-    assert (isBool c) (pos c) $ "Loop condition is not of boolean type"
+    assert (isBool c) (pos c) "loop condition is not of boolean type"
     checkLoopBody b
 
 validateStat' _ (SFor _ (mi, c, s) b) = do
     validateExpr' c
-    assert (isBool c) (pos c) $ "Loop condition is not of boolean type"
+    assert (isBool c) (pos c) "loop condition is not of boolean type"
     case mi of
          Just i  -> validateStat' False i
          Nothing -> return ()
@@ -241,54 +244,59 @@ validateStat' _ (SFor _ (mi, c, s) b) = do
 validateStat' l (SChoice p ss) = do
     case ?scope of
          ScopeMethod  _ m -> case methCat m of
-                                  Function            -> err p $ "non-deterministic choice inside function"
-                                  Procedure           -> err p $ "non-deterministic choice inside procedure"
-                                  Task Uncontrollable -> err p $ "non-deterministic choice inside uncontrollable task"
+                                  Function            -> err p "non-deterministic choice inside function"
+                                  Procedure           -> err p "non-deterministic choice inside procedure"
+                                  Task Uncontrollable -> err p "non-deterministic choice inside uncontrollable task"
                                   _                   -> return ()
          ScopeProcess _ pr -> return ()
+         ScopeTemplate _   -> err p "non-deterministic choice inside always-block"
     mapM (validateStat' l) ss
     return ()
 
 validateStat' _ (SPause p) = do
     case ?scope of
          ScopeMethod  _ m -> case methCat m of
-                                  Function          -> err p $ "pause inside function"
-                                  Procedure         -> err p $ "pause inside procedure"
-                                  Task Controllable -> err p $ "pause inside controllable task"
+                                  Function          -> err p "pause inside function"
+                                  Procedure         -> err p "pause inside procedure"
+                                  Task Controllable -> err p "pause inside controllable task"
                                   _                 -> return ()
          ScopeProcess _ pr -> return ()
+         ScopeTemplate _   -> err p "pause inside always-block"
 
 validateStat' _ (SStop p) = do
     case ?scope of
          ScopeMethod  _ m -> case methCat m of
-                                  Function          -> err p $ "stop inside function"
-                                  Procedure         -> err p $ "stop inside procedure"
-                                  Task Controllable -> err p $ "stop inside controllable task"
+                                  Function          -> err p "stop inside function"
+                                  Procedure         -> err p "stop inside procedure"
+                                  Task Controllable -> err p "stop inside controllable task"
                                   _                 -> return ()
          ScopeProcess _ pr -> return ()
+         ScopeTemplate _   -> err p "stop inside always-block"
 
 validateStat' _ (SWait p e) = do
     validateExpr' e
     case ?scope of
          ScopeMethod  _ m -> case methCat m of
-                                  Function          -> err p $ "wait inside function"
-                                  Procedure         -> err p $ "wait inside procedure"
-                                  Task Controllable -> err p $ "wait inside controllable task"
+                                  Function          -> err p "wait inside function"
+                                  Procedure         -> err p "wait inside procedure"
+                                  Task Controllable -> err p "wait inside controllable task"
                                   _                 -> return ()
          ScopeProcess _ pr -> return ()
+         ScopeTemplate _   -> err p "wait inside always-block"
 
-validateStat' l (SBreak p) = assert l p $ "break outside a loop"
+validateStat' l (SBreak p) = assert l p "break outside a loop"
 validateStat' _ (SInvoke p m as) = validateCall p m as
 validateStat' _ (SAssert _ e) = do
     validateExpr' e
-    assert (isBool e) (pos e) $ "Assertion must be a boolean expression"
-    assert (exprNoSideEffects e) (pos e) $ "Assertion must be side-effect free"
-    assert (not $ isFunctionScope ?scope) (pos e) $ "Assertions not allowed inside functions"
+    assert (isBool e) (pos e) "Assertion must be a boolean expression"
+    assert (exprNoSideEffects e) (pos e) "Assertion must be side-effect free"
+    assert (not $ isFunctionScope ?scope) (pos e) "Assertions not allowed inside functions"
+    assert (not $ isTemplateScope ?scope) (pos e) "Assertions not allowed inside always-blocks"
 
 validateStat' _ (SAssume _ e) = do
     validateExpr' e
-    assert (isBool e) (pos e) $ "Assumption must be a boolean expression"
-    assert (exprNoSideEffects e) (pos e) $ "Assumption must be side-effect free"
+    assert (isBool e) (pos e) "Assumption must be a boolean expression"
+    assert (exprNoSideEffects e) (pos e) "Assumption must be side-effect free"
 
 validateStat' _ (SAssign _ lhs rhs) = do
     validateExpr' lhs
@@ -302,15 +310,15 @@ validateStat' _ (SAssign _ lhs rhs) = do
 
 validateStat' l (SITE _ i t e) = do
     validateExpr' i
-    assert (isBool i) (pos i) $ "Condition of an if-statement must be a boolean expression"
+    assert (isBool i) (pos i) "Condition of an if-statement must be a boolean expression"
     validateStat' l t
     case e of 
          Just s  -> validateStat' l s
-         Nothing ->  return ()
+         Nothing -> return ()
 
 validateStat' l (SCase p c cs md) = do
     validateExpr' c
-    assert (length cs > 0) p $ "Empty case statement"
+    assert (length cs > 0) p "Empty case statement"
     mapM (\(e,s) -> do validateExpr' e
                        validateStat' l s
                        assert (exprNoSideEffects e) (pos e) "Case label must be side-effect free") cs

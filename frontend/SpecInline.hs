@@ -72,6 +72,7 @@ spec2Internal s =
                  , I.specCTran  = mkMagicReturn : ctran
                  , I.specUTran  = mkIdleTran : utran
                  , I.specWire   = mkWires
+                 , I.specAlways = mkAlways
                  , I.specInit   = (mkInit, I.conj $ (auxinit : pcinit))
                  , I.specGoal   = mkMagicGoal : (map mkGoal $ tmGoal tmMain)
                  , I.specFair   = mkFair $ cproc ++ uproc
@@ -149,6 +150,35 @@ orderWires' g | G.noNodes g == 0  = []
               | otherwise         = ord ++ orderWires' g'
     where (g',ord) = foldl' (\(g,ord) n -> if null $ G.suc g n then (G.delNode n g, ord++[n]) else (g,ord))
                             (g,[]) (G.nodes g)
+
+----------------------------------------------------------------------
+-- Always-block
+----------------------------------------------------------------------
+
+-- Generate transition that performs all always-actions.  It will be
+-- implicitly prepended to all "regular" transitions.
+mkAlways :: (?spec::Spec) => I.Transition
+mkAlways = 
+    let stat = let ?scope = ScopeTemplate tmMain
+                   ?uniq  = newUniq
+               in statSimplify $ SSeq nopos $ map alwBody $ tmAlways tmMain
+        ctx = CFACtx { ctxPID     = []
+                     , ctxScope   = ScopeTemplate tmMain
+                     , ctxCFA     = I.newCFA I.true
+                     , ctxRetLoc  = error "return from an always-block"
+                     , ctxBrkLoc  = error "break outside a loop"
+                     , ctxLHS     = Nothing
+                     , ctxGNMap   = globalNMap
+                     , ctxLNMap   = M.empty
+                     , ctxLastVar = 0
+                     , ctxVar     = []}
+        ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
+                                               ctxPause aft I.true) ctx
+        trans = I.cfaTraceFile (ctxCFA ctx') "always_cfa" $ locTrans (ctxCFA ctx') I.cfaInitLoc
+    in case trans of
+            [t] -> I.cfaTraceFile (I.tranCFA t) "always" $ t
+            _   -> error $ "mkAlways: Invalid always-block.\nstat:" ++ show stat ++ "\ntrans:\n" ++ (intercalate "\n\n"  $ map show trans)
+
 
 
 ----------------------------------------------------------------------
@@ -551,7 +581,7 @@ locTrans cfa loc =
         r = reach cfa S.empty (S.singleton loc)
         -- construct subgraph with only these nodes
         cfa' = foldl' (\g l -> if l==loc || S.member l r then g else G.delNode l g) cfa (G.nodes cfa)
-        -- check for loop freedom
+        -- (This is a good place to check for loop freedom.)
         -- for each final location, compute a subgraph that connects the two
         dst = filter (I.isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
     in --trace ("locTrans loc=" ++ show loc ++ " dst=" ++ show dst ++ " reach=" ++ show r) $

@@ -44,14 +44,15 @@ data Goal = Goal { goalName :: String
 instance PP Goal where
     pp (Goal n c) = text "goal" <+> pp n <+> char '=' <+> pp c
 
-data Spec = Spec { specEnum  :: [Enumeration]
-                 , specVar   :: [Var]
-                 , specCTran :: [Transition]
-                 , specUTran :: [Transition]
-                 , specWire  :: Transition
-                 , specInit  :: (Transition, Expr) -- initial state constraint (constraint_on_spec_variables,constraints_on_aux_variables)
-                 , specGoal  :: [Goal] 
-                 , specFair  :: [Expr]             -- sets of states f s.t. GF(-f)
+data Spec = Spec { specEnum   :: [Enumeration]
+                 , specVar    :: [Var]
+                 , specCTran  :: [Transition]
+                 , specUTran  :: [Transition]
+                 , specWire   :: Transition
+                 , specInit   :: (Transition, Expr) -- initial state constraint (constraint_on_spec_variables,constraints_on_aux_variables)
+                 , specAlways :: Transition
+                 , specGoal   :: [Goal] 
+                 , specFair   :: [Expr]             -- sets of states f s.t. GF(-f)
                  }
 
 instance PP Spec where
@@ -68,6 +69,8 @@ instance PP Spec where
            (text "init: " <+> (pp $ fst $ specInit s))
            $+$
            (text "aux_init: " <+> (pp $ snd $ specInit s))
+           $+$
+           (text "always: " <+> (pp $ specAlways s))
            $+$
            (vcat $ map (($+$ text "") . pp) (specGoal s))
            $+$

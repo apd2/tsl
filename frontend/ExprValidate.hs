@@ -84,6 +84,7 @@ validateExpr' (EUnOp p BNeg e) = do
     assert (isInt e) p $ "Bit-wise negation applied to expression " ++ show e ++ " of non-integral type"
 
 validateExpr' (EUnOp p Deref e) = do
+    assert (not $ isTemplateScope ?scope) p "Pointer dereference inside always-block"
     validateExpr' e
     assert (isPtr e) p $ "Cannot dereference non-pointer expression " ++ show e
 
@@ -150,7 +151,7 @@ validateExpr' (ECase p e cs md) = do
 --    - condition expressions are valid boolean expressions
 --    - value expressions have compatible types
 validateExpr' (ECond p cs md) = do
-    assert (length cs > 0) p $ "Empty case expression"
+    assert (length cs > 0) p "Empty case expression"
     mapM (\(e1,e2) -> do validateExpr' e1
                          validateExpr' e2
                          assert (exprNoSideEffects e1) (pos e1) "Condition must be side-effect free"
@@ -213,24 +214,25 @@ validateExpr' (EStruct p n es) = do
 validateExpr' (ENonDet p) = do
     case ?scope of
          ScopeMethod  _ m -> case methCat m of
-                                  Function            -> err p $ "non-deterministic value inside function"
-                                  Procedure           -> err p $ "non-deterministic value inside procedure"
-                                  Task Uncontrollable -> err p $ "non-deterministic value inside uncontrollable task"
+                                  Function            -> err p "non-deterministic value inside function"
+                                  Procedure           -> err p "non-deterministic value inside procedure"
+                                  Task Uncontrollable -> err p "non-deterministic value inside uncontrollable task"
                                   _                   -> return ()
          ScopeProcess _ pr -> return ()
+         ScopeTemplate _   -> err p "non-deterministic value inside always-block"
 
 
 -- Common code to validate method calls in statement and expression contexts
 validateCall :: (?spec::Spec, ?scope::Scope, MonadError String me) => Pos -> MethodRef -> [Expr] -> me ()
 validateCall p mref as = do
-    let isfunc = case ?scope of
-                      ScopeMethod _ meth -> methCat meth == Function
-                      _                  -> False
+    let isfunc = isFunctionScope ?scope
+        istm   = isTemplateScope ?scope
     (t,m) <- checkMethod ?scope mref
     assert ((length $ methArg m) == length as) p $
            "Method " ++ sname m ++ " takes " ++ show (length $ methArg m) ++ 
            " arguments, but is invoked with " ++ show (length as) ++ " arguments"
     assert ((not isfunc) || (methCat m == Function)) (pos mref) $ show (methCat m) ++ " invocation not allowed in function context"
+    assert ((not istm) || (elem (methCat m) [Function,Procedure])) (pos mref) $ show (methCat m) ++ " invocation not allowed in template context"
     mapM (\(marg,a) -> do validateExpr' a
                           checkTypeMatch (ObjArg (ScopeMethod t m) marg) a
                           assert ((not isfunc) || exprNoSideEffects a) (pos a) $ "Expression " ++ show a ++ " has side effects "

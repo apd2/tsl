@@ -33,6 +33,7 @@ import Const
 
 reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "...", "::", "->"]
 reservedNames = ["after",
+                 "always",
                  "assert",
                  "assign",
                  "assume", 
@@ -215,44 +216,47 @@ data TemplateItem = TDerive        Derive
                   | TVarDecl       GVar
                   | TWire          Wire
                   | TInitBlock     Init
+                  | TAlways        Always
                   | TProcessDecl   Process
                   | TMethod        Method
                   | TGoalDecl      Goal
 
 mkTemplate :: Ident -> [Port] -> [TemplateItem] -> Template
-mkTemplate n ps is = Template nopos n ps drvs consts types vars wires insts inits procs meths goals
-    where drvs = mapMaybe (\i -> case i of 
-                                      TDerive d -> Just d
-                                      _ -> Nothing) is
+mkTemplate n ps is = Template nopos n ps drvs consts types vars wires insts inits als procs meths goals
+    where drvs   = mapMaybe (\i -> case i of 
+                                        TDerive d -> Just d
+                                        _ -> Nothing) is
           consts = mapMaybe (\i -> case i of 
-                                      TConstDecl c -> Just c
-                                      _ -> Nothing) is
-          types = mapMaybe (\i -> case i of 
-                                      TTypeDecl t -> Just t
-                                      _ -> Nothing) is
-          vars = mapMaybe (\i -> case i of 
-                                      TVarDecl v -> Just v
-                                      _ -> Nothing) is
-          insts = mapMaybe (\i -> case i of 
-                                      TInstDecl inst -> Just inst
-                                      _ -> Nothing) is
-          inits = mapMaybe (\i -> case i of 
-                                      TInitBlock init -> Just init
-                                      _ -> Nothing) is
-          wires = mapMaybe (\i -> case i of 
-                                      TWire w -> Just w
-                                      _ -> Nothing) is
-          procs = mapMaybe (\i -> case i of 
-                                      TProcessDecl p -> Just p
-                                      _ -> Nothing) is
-          meths = mapMaybe (\i -> case i of 
-                                      TMethod m -> Just m
-                                      _ -> Nothing) is
-          goals =  mapMaybe (\i -> case i of 
-                                      TGoalDecl g -> Just g
-                                      _ -> Nothing) is
-
-
+                                        TConstDecl c -> Just c
+                                        _ -> Nothing) is
+          types  = mapMaybe (\i -> case i of 
+                                        TTypeDecl t -> Just t
+                                        _ -> Nothing) is
+          vars   = mapMaybe (\i -> case i of 
+                                        TVarDecl v -> Just v
+                                        _ -> Nothing) is
+          insts  = mapMaybe (\i -> case i of 
+                                        TInstDecl inst -> Just inst
+                                        _ -> Nothing) is
+          inits  = mapMaybe (\i -> case i of 
+                                        TInitBlock init -> Just init
+                                        _ -> Nothing) is
+          als    = mapMaybe (\i -> case i of 
+                                        TAlways al -> Just al
+                                        _ -> Nothing) is
+          wires  = mapMaybe (\i -> case i of 
+                                        TWire w -> Just w
+                                        _ -> Nothing) is
+          procs  = mapMaybe (\i -> case i of 
+                                        TProcessDecl p -> Just p
+                                        _ -> Nothing) is
+          meths  = mapMaybe (\i -> case i of 
+                                        TMethod m -> Just m
+                                        _ -> Nothing) is
+          goals  = mapMaybe (\i -> case i of 
+                                        TGoalDecl g -> Just g
+                                        _ -> Nothing) is
+ 
 
 templateImport = withPos $ Port nopos <$> ident <*> ident
 
@@ -262,6 +266,7 @@ templateItem =  TDerive      <$> tderive
             <|> TConstDecl   <$> constant
             <|> TVarDecl     <$> try tvarDecl
             <|> TInitBlock   <$> tinitBlock
+            <|> TAlways      <$> talways
             <|> TProcessDecl <$> tprocessDecl
             <|> TMethod      <$> tmethodDecl
             <|> TGoalDecl    <$> tgoalDecl
@@ -282,6 +287,7 @@ twire        = withPos $ Wire nopos <$> (option False (True <$ reserved "export"
                                     <*> (ident <* reservedOp "=")
                                     <*> optionMaybe (reservedOp "=" *> detexpr)
 tinitBlock   = withPos $ Init nopos <$ reserved "init" <*> detexpr
+talways      = withPos $ Always nopos <$ reserved "always" <*> statement
 tprocessDecl = withPos $ Process nopos <$  reserved "process" 
                                        <*> ident 
                                        <*> statement

@@ -3,6 +3,7 @@
 module NS(Scope(..),
           WithScope(..),
           isFunctionScope,
+          isTemplateScope,
           Type(Type),
           WithType(..),
           lookupTemplate, checkTemplate, getTemplate, 
@@ -72,6 +73,9 @@ isFunctionScope :: Scope -> Bool
 isFunctionScope (ScopeMethod _ m) = methCat m == Function
 isFunctionScope _                 = False
 
+isTemplateScope :: Scope -> Bool
+isTemplateScope (ScopeTemplate _) = True
+isTemplateScope _                 = False
 
 data Type = Type Scope TypeSpec
 

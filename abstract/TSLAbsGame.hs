@@ -220,12 +220,17 @@ varUpdateTrans :: (AllOps c v a, ?spec::Spec) => [(TAbsVar,v)] -> Transition -> 
 varUpdateTrans vs t = do
     -- Main transition
     cache <- varUpdateLoc vs (tranFrom t) (tranCFA t) M.empty
+    -- Always-block
+    let at = specAlways ?spec
+        -- prefill cache with the result computed for the main transition
+        prefill = M.singleton (tranTo at) (cache M.! tranFrom t)
+    cacheA <- varUpdateLoc vs (tranFrom at) (tranCFA at) prefill
     -- Wire update transition
     let wt = specWire ?spec
-        -- prefill cache with the result computed for the main transition
-        prefill = M.singleton (tranTo wt) (cache M.! tranFrom t)
-    cache' <- varUpdateLoc vs (tranFrom wt) (tranCFA wt) M.empty
-    return $ fst $ cache' M.! (tranFrom wt)
+        -- prefill cache with the result computed for the always transition
+        prefill = M.singleton (tranTo wt) (cacheA M.! tranFrom at)
+    cacheW <- varUpdateLoc vs (tranFrom wt) (tranCFA wt) prefill
+    return $ fst $ cacheW M.! (tranFrom wt)
 
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA.  Record the result in a cache that will be used to recursively

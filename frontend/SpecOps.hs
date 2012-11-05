@@ -31,7 +31,6 @@ import ExprOps
 -- TODO:
 --
 -- Checks that require CFG analysis
--- * All loops contain pause
 -- * All exits from non-void methods end with a return statement
 --
 -- Checks to be performed on pre-processed spec
@@ -67,6 +66,7 @@ import ExprOps
 -- * Validate initial assignment expressions in constant declarations
 -- * Validate array size declarations (must be integer constants)
 -- * Validate initial variable assignments
+-- * Validate always-blocks
 -- * Validate RHS of wire assignments
 -- * Validate goals
 -- * Validate call graph
@@ -91,6 +91,7 @@ validateSpec s = do
 
     -- Second pass
     mapM validateTmInit2                      (specTemplate s)
+    mapM validateTmAlways2                    (specTemplate s)
     mapM validateTmMethods2                   (specTemplate s)
     mapM validateTmInstances2                 (specTemplate s)
     validateSpecInstances2
@@ -194,6 +195,7 @@ flatten s = do
     let gvars = concat $ mapInstTree tmFlattenGVars
         wires = concat $ mapInstTree tmFlattenWires
         inits = concat $ mapInstTree tmFlattenInits
+        alws  = concat $ mapInstTree tmFlattenAlwayss
         procs = concat $ mapInstTree tmFlattenProcs
         meths = concat $ mapInstTree tmFlattenMeths
         goals = concat $ mapInstTree tmFlattenGoals
@@ -207,6 +209,7 @@ flatten s = do
                          wires
                          []              -- tmInst
                          inits           -- tmInit
+                         alws            -- tmAlways
                          procs
                          meths
                          goals

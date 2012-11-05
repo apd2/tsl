@@ -4,6 +4,7 @@ module TemplateValidate(checkConcreteTemplate,
                         validateTmInstances,
                         validateTmInstances2,
                         validateTmInit2,
+                        validateTmAlways2,
                         validateTmPorts,
                         validateTmDerives,
                         validateTmNS,
@@ -46,6 +47,7 @@ import Method
 import MethodOps
 import Process
 import ProcessOps
+import StatementOps
 import NS
 
 checkConcreteTemplate :: (?spec::Spec, MonadError String me) => Template -> Pos -> me ()
@@ -129,6 +131,18 @@ validateTmDerives tm = do {mapM (validateDerive tm) (tmDerive tm); return()}
 
 ------------------------------------------------------------------------------
 -- Validate init blocks 
+------------------------------------------------------------------------------
+
+validateAlways2 :: (?spec::Spec, MonadError String me) => Template -> Always -> me ()
+validateAlways2 t a = do
+    let ?scope = ScopeTemplate t
+    validateStat' False (alwBody a)
+
+validateTmAlways2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmAlways2 t = do {mapM (validateAlways2 t) (tmAlways t); return ()}
+
+------------------------------------------------------------------------------
+-- Validate always blocks 
 ------------------------------------------------------------------------------
 
 validateInit2 :: (?spec::Spec, MonadError String me) => Template -> Init -> me ()

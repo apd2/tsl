@@ -64,6 +64,11 @@ uint<16> sendq_tail;
 // note the "invisible" attribute.
 uint<16> sendq_dev_head;
 
+bool send_event;
+
+// reset send event 
+always send_event = false;
+
 // receiver enabled
 bool rx_enabled = false;
 
@@ -284,6 +289,7 @@ task controllable void send_complete(uint<8> c)
     assert (sendq_dev_head != sendq_head); // device must be ahead of what has been reported to the OS
     assert (tx_enabled);                   // transmission must be allowed
     sendq_head = (sendq_head + 1) % UART_SENDQ_SIZE;
+    send_event = true;
 };
 
 // Receive functionality is modelled very loosely in the OS template.
@@ -317,7 +323,7 @@ export procedure void evt_receive(uint<8> c, bool error, bool brk){};
 
 // Infinitely often either queue is empty or the transmitter is disabled or
 // send_complete happens
-goal send_goal = (sendq_head == sendq_tail) || (!tx_enabled); // || (tag == send_complete);
+goal send_goal = (sendq_head == sendq_tail) || (!tx_enabled) || send_event;
 
 /****************************************************************/
 

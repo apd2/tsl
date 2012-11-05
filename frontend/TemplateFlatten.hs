@@ -3,6 +3,7 @@
 module TemplateFlatten(tmFlattenGVars,
                        tmFlattenWires,
                        tmFlattenInits,
+                       tmFlattenAlwayss,
                        tmFlattenProcs,
                        tmFlattenMeths,
                        tmFlattenGoals,
@@ -54,6 +55,12 @@ tmFlattenInits iid tm = map (tmFlattenInit iid tm) (tmInit tm)
 
 tmFlattenInit :: (?spec::Spec) => IID -> Template -> Init -> Init
 tmFlattenInit iid tm i = i {initBody = exprFlatten iid (ScopeTemplate tm) (initBody i)}
+
+tmFlattenAlwayss :: (?spec::Spec) => IID -> Template -> [Always]
+tmFlattenAlwayss iid tm = map (tmFlattenAlways iid tm) (tmAlways tm)
+
+tmFlattenAlways :: (?spec::Spec) => IID -> Template -> Always -> Always
+tmFlattenAlways iid tm a = a {alwBody = statFlatten iid (ScopeTemplate tm) (alwBody a)}
 
 tmFlattenProcs :: (?spec::Spec) => IID -> Template -> [Process]
 tmFlattenProcs iid tm = map (tmFlattenProc iid tm) (tmProcess tm)

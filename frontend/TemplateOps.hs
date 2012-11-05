@@ -64,6 +64,7 @@ tmMapExpr f tm = tm { tmConst    = map (\c -> c{constVal = mapExpr f s (constVal
                     , tmWire     = map (\w -> w{wireType = tspecMapExpr f s (wireType w), 
                                                 wireRHS  = fmap (mapExpr f s) (wireRHS w)})                           (tmWire tm)
                     , tmInit     = map (\i -> i{initBody = mapExpr f s (initBody i)})                                 (tmInit tm)
+                    , tmAlways   = map (\a -> a{alwBody = statMapExpr f s (alwBody a)})                               (tmAlways tm)
                     , tmProcess  = map (\p -> p{procStatement = statMapExpr f (ScopeProcess tm p) (procStatement p)}) (tmProcess tm)
                     , tmMethod   = map (\m -> let sm = ScopeMethod tm m
                                               in m{methRettyp = fmap (tspecMapExpr f s) (methRettyp m),
@@ -80,6 +81,7 @@ tmMapTSpec f tm = tm { tmConst    = map (\c -> Const (pos c) (mapTSpec f s $ tsp
                      , tmTypeDecl = map (\t -> TypeDecl (pos t) (mapTSpec f s $ tspec t) (name t))                      (tmTypeDecl tm)
                      , tmVar      = map (\v -> v{gvarVar  = (gvarVar v){varType = mapTSpec f s $ tspec v}})             (tmVar tm)
                      , tmWire     = map (\w -> w{wireType = mapTSpec f s (wireType w)})                                 (tmWire tm)
+                     , tmAlways   = map (\a -> a{alwBody = statMapTSpec f s (alwBody a)})                               (tmAlways tm)
                      , tmProcess  = map (\p -> p{procStatement = statMapTSpec f s (procStatement p)})                   (tmProcess tm)
                      , tmMethod   = map (\m -> let sm = ScopeMethod tm m
                                                in m{methRettyp = fmap (mapTSpec f s) (methRettyp m),
@@ -238,6 +240,9 @@ tmAllInst t = concatMap (\o -> case o of
 tmAllInit :: (?spec::Spec) => Template -> [Init]
 tmAllInit t = tmInit t ++ (concatMap tmAllInit (tmParents t))
 
+tmAllAlways :: (?spec::Spec) => Template -> [Always]
+tmAllAlways t = tmAlways t ++ (concatMap tmAllAlways (tmParents t))
+
 tmAllProcess :: (?spec::Spec) => Template -> [Process]
 tmAllProcess t = concatMap (\o -> case o of
                                     ObjProcess _ p -> [p]
@@ -277,6 +282,7 @@ tmMergeParents tm = Template (pos tm)
                              (tmAllWire tm)
                              (tmAllInst tm)
                              (tmAllInit tm)
+                             (tmAllAlways tm)
                              (tmAllProcess tm)
                              (tmAllMethod tm)
                              (tmAllGoal tm)
