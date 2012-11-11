@@ -219,12 +219,24 @@ exprExpandPtr   (ESlice e s)      = fmap (\e -> ESlice e s) $ exprExpandPtr e
 -- be recomputed at the next iteration)
 type Cache s u = M.Map Loc ([C.DDNode s u],[TAbsVar])
 
+cacheDeref :: Cache s u -> PDB s u ()
+cacheDeref cache = do
+    m <- pdbCtx
+    lift $ mapM (C.deref m) $ concatMap fst $ M.elems cache
+    return ()
+
+cacheRefLoc :: Cache s u -> Loc -> PDB s u ()
+cacheRefLoc cache loc = do
+    lift $ mapM C.ref $ fst $ cache M.! loc
+    return ()
+
 -- Compute precondition of transition, i.e., variable
 -- update function for empty set of variables
 tranPrecondition :: (?spec::Spec) => Transition -> PDB s u (C.DDNode s u)
 tranPrecondition tran = do
     m <- pdbCtx
     cache <- varUpdateLoc [] (tranFrom tran) (tranCFA tran) (M.singleton (tranTo tran) ([C.bone m],[]))
+    cacheRefLoc cache (tranTo tran)
     return $ head $ fst $ cache M.! (tranFrom tran)
 
 -- Compute update functions for a list of variables wrt to a transition
@@ -234,15 +246,25 @@ varUpdateTrans vs t = do
     cache <- varUpdateLoc vs (tranFrom t) (tranCFA t) M.empty
     -- Always-block
     let at = specAlways ?spec
-        -- prefill cache with the result computed for the main transition
-        prefill = M.singleton (tranTo at) (cache M.! tranFrom t)
+
+    -- prefill cache with the result computed for the main transition
+    cacheRefLoc cache (tranFrom t)
+    let prefill = M.singleton (tranTo at) (cache M.! tranFrom t)
     cacheA <- varUpdateLoc vs (tranFrom at) (tranCFA at) prefill
+    cacheDeref cache
+
     -- Wire update transition
     let wt = specWire ?spec
-        -- prefill cache with the result computed for the always transition
-        prefill = M.singleton (tranTo wt) (cacheA M.! tranFrom at)
+
+    -- prefill cache with the result computed for the always transition
+    cacheRefLoc cacheA (tranFrom at)
+    let prefill = M.singleton (tranTo wt) (cacheA M.! tranFrom at)
     cacheW <- varUpdateLoc vs (tranFrom wt) (tranCFA wt) prefill
-    return $ fst $ cacheW M.! (tranFrom wt)
+    cacheDeref cacheA
+
+    cacheRefLoc cacheW (tranFrom wt)
+    cacheDeref cacheW
+    return $ fst $ cacheW M.! tranFrom wt
 
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA.  Record the result in a cache that will be used to recursively
@@ -254,10 +276,16 @@ varUpdateLoc vs loc cfa cache | null (cfaSuc loc cfa) = do
     rels <- mapM compileVar vs
     return $ M.insert loc (rels, avs) cache
 varUpdateLoc vs loc cfa cache                         = do
-    foldM (\cache (s,loc') -> do cache' <- varUpdateLoc vs loc' cfa cache
-                                 rels   <- varUpdateStat s (cache' M.! loc')
-                                 return $ M.insert loc rels cache')
-          cache (cfaSuc loc cfa)
+    m <- pdbCtx
+    -- Compute update functions in all successor locations
+    cache' <- foldM (\cache (_,loc') -> varUpdateLoc vs loc' cfa cache) cache (cfaSuc loc cfa)
+    -- Compute update functions for each outgoing transition
+    rels <- mapM (\(s, loc') -> varUpdateStat s (cache' M.! loc')) (cfaSuc loc cfa)
+    -- Aggregate results
+    let avs = S.toList $ S.fromList $ concatMap snd rels
+    bdds <- lift $ mapM (C.disj m) $ transpose $ map fst rels
+    lift $ mapM (C.deref m) $ concatMap fst rels
+    return $ M.insert loc (bdds, avs) cache'
 
 -- Compute variable update functions for an individual statement
 varUpdateStat :: (?spec::Spec) => Statement -> ([C.DDNode s u], [TAbsVar]) -> PDB s u ([C.DDNode s u],[TAbsVar])
@@ -282,7 +310,6 @@ varUpdateAsnStat1 :: (?spec::Spec) => Expr -> Expr -> ([C.DDNode s u], [TAbsVar]
 varUpdateAsnStat1 lhs rhs (rels, vs) av = do
     pred <- pdbPred
     let ?pred = pred
-    tmp <- pdbGetExt
     case av of
          (PredVar p) -> do let repl = updatePredAsn lhs rhs p
                                vs'  = formAbsVars repl

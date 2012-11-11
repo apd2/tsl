@@ -128,8 +128,10 @@ compileFormula f = do
     compileFormula' m f
 
 compileFormula' :: (?spec::Spec) => C.STDdManager s u -> Formula -> PDB s u (C.DDNode s u)
-compileFormula' m FTrue             = return $ C.bone m
-compileFormula' m FFalse            = return $ C.bzero m
+compileFormula' m FTrue             = do lift $ C.ref $ C.bone m
+                                         return $ C.bone m
+compileFormula' m FFalse            = do lift $ C.ref $ C.bzero m
+                                         return $ C.bzero m
 compileFormula' m (FBinOp op f1 f2) = do 
     f1' <- compileFormula f1
     f2' <- compileFormula f2
