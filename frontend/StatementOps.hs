@@ -178,7 +178,7 @@ statFlatten' :: (?spec::Spec) => IID -> Scope -> Statement -> Statement
 statFlatten' iid s (SPar p ps)                     = SPar p $ map (\(n,s) -> (itreeFlattenName iid n,s)) ps
 statFlatten' iid s (SInvoke p (MethodRef p' n) as) = SInvoke p (MethodRef p' [itreeFlattenName (itreeRelToAbsPath iid (init n)) (last n)]) as
 statFlatten' iid s (SMagic p (Left g))             = SMagic p $ Left $ itreeFlattenName iid g
-statFlatten' _   _ st          = st
+statFlatten' _   _ st                              = st
 
 -------------------------------------------------------------------------
 -- Validation

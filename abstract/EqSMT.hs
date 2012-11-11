@@ -13,7 +13,8 @@ import qualified Term              as DP
 import qualified SyntaxTree2       as DP
 import qualified SymTab            as DP
 
-import LogicClasses
+--import LogicClasses
+import qualified CuddExplicitDeref as C
 import ISpec
 import IVar
 import IType
@@ -24,19 +25,19 @@ import FCompile
 import BFormula
 import Solver
 
-eqSolver :: (AllOps c v a) => Spec -> Solver c v a Predicate
+eqSolver :: Spec -> Solver Predicate s u
 eqSolver spec = Solver { checkSat  = eqCheckSat  spec
                        , unsatCore = eqUnsatCore spec
                        , equant    = eqEquant    spec}
 
-eqCheckSat :: Spec -> [Predicate] -> SatResult
+eqCheckSat :: Spec -> [(Predicate,Bool)] -> SatResult
 eqCheckSat spec ps = 
     let ?spec = spec
     in if DP.dpSAT (DP.dpContext::EUF) (DP.DNF [map mkPLit ps])
           then SatYes
           else SatNo
 
-eqUnsatCore :: Spec -> [Predicate] -> (SatResult, [Predicate])
+eqUnsatCore :: Spec -> [(Predicate,Bool)] -> (SatResult, [Predicate])
 eqUnsatCore spec ps = 
     let res = eqCheckSat spec ps
         core = foldl' (\pset p -> if eqCheckSat spec (S.toList $ S.delete p pset) == SatNo
@@ -44,22 +45,24 @@ eqUnsatCore spec ps =
                                             else pset)
                       (S.fromList ps) ps
     in if res == SatNo
-          then (res, S.toList core)
+          then (res, map fst $ S.toList core)
           else (res, [])
 
-eqEquant :: (AllOps c v a) => Spec -> [Predicate] -> [String] -> PDB c v a
+eqEquant :: Spec -> [(Predicate,Bool)] -> [String] -> PDB s u (C.DDNode s u)
 eqEquant spec ps vs = do
     let ?spec = spec
     let dnf = DP.dpEQuantVars (DP.dpContext::EUF) (DP.DNF [map mkPLit ps]) (map mkVar vs)
     compileFormula $ dnfToForm dnf
 
-mkPLit :: (?spec::Spec) => Predicate -> DP.PLit
-mkPLit (PAtom op t1 t2) = DP.PLit (mkOp op) (mkTerm t1) (mkTerm t2)
+mkPLit :: (?spec::Spec) => (Predicate,Bool) -> DP.PLit
+mkPLit (PAtom op t1 t2, pol) = DP.PLit (mkOp op pol) (mkTerm t1) (mkTerm t2)
 
-mkOp :: RelOp -> DP.BinOpTyp
-mkOp REq  = DP.Eq
-mkOp RNeq = DP.Neq
-mkOp op   = error $ "EqSMT.mkOp: " ++ show op ++ " is not supported"
+mkOp :: RelOp -> Bool -> DP.BinOpTyp
+mkOp REq  True  = DP.Eq
+mkOp REq  False = DP.Neq
+mkOp RNeq True  = DP.Neq
+mkOp RNeq False = DP.Eq
+mkOp op   _     = error $ "EqSMT.mkOp: " ++ show op ++ " is not supported"
 
 mkTerm :: (?spec::Spec) => Term -> DP.Term
 mkTerm   (TVar n)                = DP.TVar $ mkVar n
