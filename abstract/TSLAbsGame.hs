@@ -206,6 +206,7 @@ exprExpandPtr   (EField e f)      = fmap (\e -> EField e f) $ exprExpandPtr e
 exprExpandPtr   (EIndex a i)      = EIndex <$> exprExpandPtr a <*> exprExpandPtr i
 exprExpandPtr   (EUnOp Deref e)   = casMap (CasTree . (map (\(p, t) -> (FPred p, CasLeaf $ termToExpr t))) . ptrPreds)
                                            $ exprExpandPtr e
+exprExpandPtr   (EUnOp op e)      = fmap (EUnOp op) $ exprExpandPtr e
 exprExpandPtr   (EBinOp op e1 e2) = (EBinOp op) <$> exprExpandPtr e1 <*> exprExpandPtr e2
 exprExpandPtr   (ESlice e s)      = fmap (\e -> ESlice e s) $ exprExpandPtr e
 

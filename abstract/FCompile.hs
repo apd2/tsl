@@ -146,6 +146,11 @@ compileFormula' m (FBinOp op f1 f2) = do
     lift $ C.deref m f1'
     lift $ C.deref m f2'
     return res
+
+compileFormula' m (FNot f)          = do
+    f' <- compileFormula f
+    return $ C.bnot f'
+
 compileFormula' m (FPred p@(PAtom op t1 t2)) =
     case typ t1 of
          Bool   -> do t1' <- compileBoolTerm t1
