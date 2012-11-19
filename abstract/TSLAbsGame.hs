@@ -316,12 +316,17 @@ varUpdateAsnStat1 lhs rhs (rels, vs) av = do
                                vs'  = formAbsVars repl
                            rels' <- mapM (\r -> formSubst r av repl) rels
                            return (rels', S.toList $ S.fromList $ vs ++ vs')
-         _           -> do let repl = fmap exprToTerm 
-                                      $ casMap exprExpandPtr 
+         _           -> do let repl = casMap exprExpandPtr 
                                       $ updateScalAsn lhs rhs (TVar $ varName $ getVar $ avarName av)
-                               vs'  = tcasAbsVars repl
-                           rels' <- mapM (\r -> tcasSubst r av repl) rels
-                           return (rels', S.toList $ S.fromList $ vs ++ vs')
+                           case varType $ getVar $ avarName av of
+                                Bool -> do let frepl = fcasToFormula $ fmap bexprToFormula' repl
+                                               vs' = formAbsVars frepl
+                                           rels' <- mapM (\r -> formSubst r av frepl) rels
+                                           return (rels', S.toList $ S.fromList $ vs ++ vs')
+                                _    -> do let trepl = fmap exprToTerm repl
+                                               vs'  = tcasAbsVars trepl
+                                           rels' <- mapM (\r -> tcasSubst r av trepl) rels
+                                           return (rels', S.toList $ S.fromList $ vs ++ vs')
 
 -- Predicate update by assignment statement
 updatePredAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Predicate -> Formula
