@@ -3,6 +3,7 @@
 module FCompile (TAbsVar,
                  TmpVars,
                  PDBPriv,
+                 newPDBPriv,
                  PDB,
                  pdbGetEnumVars,
                  formAbsVars,
@@ -32,6 +33,9 @@ type TmpVars s u = M.Map TAbsVar [C.DDNode s u]
 type EnumVars = M.Map TAbsVar Int
 
 data PDBPriv s u = PDBPriv (TmpVars s u) EnumVars
+
+newPDBPriv :: PDBPriv s u
+newPDBPriv = PDBPriv M.empty M.empty
 
 type PDB s u x = PredicateDB Predicate (PDBPriv s u) s u x
 
@@ -117,7 +121,6 @@ compileBoolTerm TTrue = do
     return $ C.bone m
 
 compileBoolTerm t = do
-    m <- pdbCtx
     v <- mkTermVar t
     return $ head v
 
