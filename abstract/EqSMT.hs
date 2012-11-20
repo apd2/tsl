@@ -37,7 +37,7 @@ eqCheckSat spec ps =
           then SatYes
           else SatNo
 
-eqUnsatCore :: Spec -> [(Predicate,Bool)] -> (SatResult, [Predicate])
+eqUnsatCore :: Spec -> [(Predicate,Bool)] -> (SatResult, [(Predicate,Bool)])
 eqUnsatCore spec ps = 
     let res = eqCheckSat spec ps
         core = foldl' (\pset p -> if eqCheckSat spec (S.toList $ S.delete p pset) == SatNo
@@ -45,7 +45,7 @@ eqUnsatCore spec ps =
                                             else pset)
                       (S.fromList ps) ps
     in if res == SatNo
-          then (res, map fst $ S.toList core)
+          then (res, S.toList core)
           else (res, [])
 
 eqEquant :: Spec -> [(Predicate,Bool)] -> [String] -> PDB s u (C.DDNode s u)
