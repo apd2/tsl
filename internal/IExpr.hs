@@ -37,7 +37,7 @@ instance (?spec::Spec) => Typed Val where
     typ (BoolVal _)   = Bool
     typ (SIntVal w _) = SInt w
     typ (UIntVal w _) = UInt w
-    typ (EnumVal n)   = Enum $ enumName $ getEnum n
+    typ (EnumVal n)   = Enum $ enumName $ getEnumerator n
 --    typ (PtrVal e)    = Ptr $ typ e
 
 instance PP Val where

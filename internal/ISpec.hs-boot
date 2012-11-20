@@ -7,6 +7,7 @@ import IVar
 
 data Spec
 
-getEnum :: (?spec::Spec) => String -> Enumeration
+getEnumeration :: (?spec::Spec) => String -> Enumeration
+getEnumerator :: (?spec::Spec) => String -> Enumeration
 getVar :: (?spec::Spec) => String -> Var
 

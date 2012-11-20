@@ -76,7 +76,7 @@ termAbsVars t         = [termAbsVar t]
 termWidth :: (?spec::Spec) => Term -> Int
 termWidth t = case typ t of
                    Bool   -> 1
-                   Enum n -> bitWidth $ (length $ enumEnums $ getEnum n) - 1
+                   Enum n -> bitWidth $ (length $ enumEnums $ getEnumeration n) - 1
 
 termAbsVar :: (?spec::Spec) => Term -> TAbsVar
 termAbsVar t = NonPredVar (show t) (termWidth t)
@@ -90,7 +90,7 @@ mkTermVar t = do
          Nothing -> do v' <- pdbAllocTmpVar $ termWidth t
                        let tmap' = M.insert av v' tmap
                            enums' = case typ t of
-                                         Enum n -> M.insert av (length $ enumEnums $ getEnum n) enums
+                                         Enum n -> M.insert av (length $ enumEnums $ getEnumeration n) enums
                                          _      -> enums
                        pdbPutExt $ PDBPriv tmap' enums'
          Just v' -> return ()
