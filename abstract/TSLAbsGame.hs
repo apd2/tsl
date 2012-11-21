@@ -10,6 +10,7 @@ import Data.Maybe
 import Data.List hiding (and)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Debug.Trace
 
 import TSLUtil
 import Common
@@ -37,8 +38,8 @@ tslAbsGame spec = AbsGame { gameGoals       = tslGameGoals       spec
                           , gameFair        = tslGameFair        spec
                           , gameInit        = tslGameInit        spec
                           , gameConsistent  = tslGameConsistent  spec
-                          , gameVarUpdateC  = tslGameVarUpdateC  spec
-                          , gameVarUpdateU  = tslGameVarUpdateU  spec
+                          , gameVarUpdateU  = tslGameVarUpdateC  spec
+                          , gameVarUpdateC  = tslGameVarUpdateU  spec
                           }
 
 tslGameGoals :: Spec -> PDB s u [(String, C.DDNode s u)]
@@ -80,6 +81,7 @@ tslGameConsistent spec = do
 
 tslGameVarUpdateC :: Spec -> [(TAbsVar,[C.DDNode s u])] -> PDB s u [C.DDNode s u]
 tslGameVarUpdateC spec vars = do
+    trace "!!!!!!tslGameVarUpdateC" $ return ()
     let ?spec = spec
     m <- pdbCtx
     updatefs <- mapM (varUpdateTrans vars) $ specCTran spec
@@ -89,6 +91,7 @@ tslGameVarUpdateC spec vars = do
 
 tslGameVarUpdateU :: Spec -> [(TAbsVar,[C.DDNode s u])] -> PDB s u [C.DDNode s u]
 tslGameVarUpdateU spec vars = do
+    trace "!!!!!!tslGameVarUpdateU" $ return ()
     let ?spec = spec
     m <- pdbCtx
     updatefs <- mapM (varUpdateTrans vars) $ specUTran spec

@@ -300,7 +300,7 @@ mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
 ----------------------------------------------------------------------
 
 mkVars :: (?spec::Spec) => ([I.Var], I.Enumeration, I.Expr)
-mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ pvars), 
+mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ fpvars ++ pvars), 
           tenum, 
           I.conj $ teninit ++ peninit ++ [errinit, taginit, maginit, continit, pidinit])
     where
@@ -337,10 +337,16 @@ mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar :
     tvars = concatMap (concat . mapPTreeTask (\pid m -> (mkEnVarDecl pid (Just m)) : (taskVars (Just pid) m)))
                       $ tmProcess tmMain
 
+    -- For each root process:
+    -- * local variables
+    pvars = concatMap (\p -> map (\v -> let ?scope = ScopeProcess tmMain p 
+                                        in mkVarDecl (varMem v) (Just [sname p]) Nothing v) (procVar p)) 
+                      $ tmProcess tmMain
+
     -- For each forked process:
     -- * enabling variable
-    pvars = concatMap (mapPTreeFProc (\pid _ -> mkEnVarDecl pid Nothing))
-                      $ tmProcess tmMain
+    fpvars = concatMap (mapPTreeFProc (\pid _ -> mkEnVarDecl pid Nothing))
+                       $ tmProcess tmMain
 
     -- Initialise $en vars to false
     teninit = concatMap (mapPTreeTask (\pid m -> mkEnVar pid (Just m) I.=== I.false)) $ tmProcess tmMain
@@ -355,7 +361,7 @@ mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar :
 
     taskVars :: Maybe PID -> Method -> [I.Var]
     taskVars mpid m = 
-        (let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) mpid (Just m) v) (methVar m)) ++ 
+        (let ?scope = ScopeMethod tmMain m in map (\v -> mkVarDecl (varMem v) mpid (Just m) v) (methVar m)) ++ 
         (let ?scope = ScopeMethod tmMain m in map (mkVarDecl False mpid (Just m)) (methArg m)) ++
         maybeToList (mkRetVarDecl mpid m)
 
