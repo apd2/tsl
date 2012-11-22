@@ -11,12 +11,13 @@ import Data.List hiding (and)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Debug.Trace
+import Text.PrettyPrint
 
+import PP
 import TSLUtil
 import Common
 import AbsGame
 import PredicateDB
---import LogicClasses
 import qualified CuddExplicitDeref as C
 import qualified BDDHelpers        as C
 import ISpec
@@ -38,8 +39,8 @@ tslAbsGame spec = AbsGame { gameGoals       = tslGameGoals       spec
                           , gameFair        = tslGameFair        spec
                           , gameInit        = tslGameInit        spec
                           , gameConsistent  = tslGameConsistent  spec
-                          , gameVarUpdateU  = tslGameVarUpdateC  spec
-                          , gameVarUpdateC  = tslGameVarUpdateU  spec
+                          , gameVarUpdateU  = tslGameVarUpdateU  spec
+                          , gameVarUpdateC  = tslGameVarUpdateC  spec
                           }
 
 tslGameGoals :: Spec -> PDB s u [(String, C.DDNode s u)]
@@ -81,7 +82,7 @@ tslGameConsistent spec = do
 
 tslGameVarUpdateC :: Spec -> [(TAbsVar,[C.DDNode s u])] -> PDB s u [C.DDNode s u]
 tslGameVarUpdateC spec vars = do
-    trace "!!!!!!tslGameVarUpdateC" $ return ()
+    --trace "!!!!!!tslGameVarUpdateC" $ return ()
     let ?spec = spec
     m <- pdbCtx
     updatefs <- mapM (varUpdateTrans vars) $ specCTran spec
@@ -91,7 +92,7 @@ tslGameVarUpdateC spec vars = do
 
 tslGameVarUpdateU :: Spec -> [(TAbsVar,[C.DDNode s u])] -> PDB s u [C.DDNode s u]
 tslGameVarUpdateU spec vars = do
-    trace "!!!!!!tslGameVarUpdateU" $ return ()
+    --trace "!!!!!!tslGameVarUpdateU" $ return ()
     let ?spec = spec
     m <- pdbCtx
     updatefs <- mapM (varUpdateTrans vars) $ specUTran spec
@@ -324,6 +325,7 @@ varUpdateAsnStat1 lhs rhs (rels, vs) av = do
                            case varType $ getVar $ avarName av of
                                 Bool -> do let frepl = fcasToFormula $ fmap bexprToFormula' repl
                                                vs' = formAbsVars frepl
+                                           --trace ("varUpdateAsnStat1(" ++ show av ++ ", " ++ (intercalate "," $ map show vs) ++ ") " ++ show lhs ++ ":=" ++ show rhs ++ " = " ++ show frepl) $ return ()
                                            rels' <- mapM (\r -> formSubst r av frepl) rels
                                            return (rels', S.toList $ S.fromList $ vs ++ vs')
                                 _    -> do let trepl = fmap exprToTerm repl
@@ -341,8 +343,13 @@ updatePredAsn lhs rhs p = pSubstScalCas p sc'
 -- corresponding next-state values of the term expressed as concatenation 
 -- of slices of the rhs and the original term.
 updateScalAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Term -> ECascade
-updateScalAsn e                rhs (TSlice t s) = fmap (\e -> exprSlice e s) (updateScalAsn e rhs t)
-updateScalAsn (ESlice e (l,h)) rhs t            = 
+updateScalAsn lhs rhs t = {-trace ("updateScalAsn(" ++ show t ++ ") " ++ show lhs ++ ":=" ++ show rhs ++ " = " ++ render (nest' $ pp res))-} res
+    where res = updateScalAsn' lhs rhs t
+
+updateScalAsn' :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Term -> ECascade
+
+updateScalAsn' e                rhs (TSlice t s) = fmap (\e -> exprSlice e s) (updateScalAsn' e rhs t)
+updateScalAsn' (ESlice e (l,h)) rhs t            = 
     fmap (\b -> if b
                    then econcat $
                         (if l == 0 then [] else [termToExpr $ TSlice t (0,l-1)] ++
@@ -351,7 +358,7 @@ updateScalAsn (ESlice e (l,h)) rhs t            =
                    else termToExpr t) 
          $ lhsTermEq e t
     where w = typeWidth e
-updateScalAsn lhs              rhs t            = 
+updateScalAsn' lhs              rhs t            = 
     fmap (\b -> if b then rhs else termToExpr t) $ lhsTermEq lhs t
 
 

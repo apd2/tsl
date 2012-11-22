@@ -70,6 +70,9 @@ instance PP Expr where
     pp (EBinOp op e1 e2) = parens $ pp e1 <+> pp op <+> pp e2
     pp (ESlice e s)      = pp e <> pp s
 
+instance Show Expr where
+    show = render . pp
+
 instance (?spec::Spec) => Typed Expr where
     typ (EVar n)                               = typ $ getVar n
     typ (EConst v)                             = typ v

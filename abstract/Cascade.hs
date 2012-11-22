@@ -10,7 +10,9 @@ module Cascade(Cascade(..),
 import Data.Functor
 import Control.Applicative
 import Data.List
+import Text.PrettyPrint
 
+import PP
 import TSLUtil
 import ISpec
 import IExpr
@@ -39,6 +41,13 @@ instance Functor Cascade where
 instance Applicative Cascade where
     pure  x    = CasLeaf x
     (<*>) cf c = casMap (\f -> fmap f c) cf
+
+instance (PP a) => PP (Cascade a) where
+    pp (CasLeaf x)  = pp x
+    pp (CasTree bs) = vcat $ map (\(f,c) -> pp f <> char ':' $$ (nest' $ pp c)) bs
+
+instance (PP a) => Show (Cascade a) where
+    show = render . pp
 
 type FCascade = Cascade Formula
 type BCascade = Cascade Bool

@@ -8,9 +8,11 @@ module BFormula(BoolBOp(..),
                 boolOpToBOp) where
 
 import Data.List
+import Text.PrettyPrint
 
 import Predicate
 import Common
+import PP
 
 -- Logical operations
 data BoolBOp = Conj 
@@ -24,6 +26,9 @@ bopToBoolOp And = Conj
 bopToBoolOp Or  = Disj
 bopToBoolOp Imp = Impl
 bopToBoolOp Eq  = Equiv
+
+instance PP BoolBOp where
+    pp = pp . boolOpToBOp
 
 boolOpToBOp :: BoolBOp -> BOp
 boolOpToBOp Conj  = And
@@ -39,6 +44,16 @@ data Formula = FTrue
              | FBinOp   BoolBOp Formula Formula
              | FNot     Formula
              deriving (Eq)
+
+instance PP Formula where
+    pp FTrue             = text "true"
+    pp FFalse            = text "false"
+    pp (FPred p)         = parens $ pp p
+    pp (FBinOp op f1 f2) = parens $ pp f1 <+> pp op <+> pp f2
+    pp (FNot f)          = char '!' <> (parens $ pp f)
+
+instance Show Formula where
+    show = render . pp
 
 fdisj :: [Formula] -> Formula
 fdisj fs = case disjuncts'' of 
