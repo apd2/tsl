@@ -70,7 +70,7 @@ spec2Internal s =
                                   concatMap pVar cproc ++ 
                                   concatMap pVar uproc
                  , I.specCTran  = mkMagicReturn : ctran
-                 , I.specUTran  = mkIdleTran : utran
+                 , I.specUTran  = {-mkIdleTran :-} utran
                  , I.specWire   = mkWires
                  , I.specAlways = mkAlways
                  , I.specInit   = (mkInit, I.conj $ (auxinit : pcinit))
