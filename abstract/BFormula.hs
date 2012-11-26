@@ -28,7 +28,11 @@ bopToBoolOp Imp = Impl
 bopToBoolOp Eq  = Equiv
 
 instance PP BoolBOp where
-    pp = pp . boolOpToBOp
+    pp Conj  = text "&&"
+    pp Disj  = text "||"
+    pp Impl  = text "->"
+    pp Equiv = text "<->"
+    --pp = pp . boolOpToBOp
 
 boolOpToBOp :: BoolBOp -> BOp
 boolOpToBOp Conj  = And

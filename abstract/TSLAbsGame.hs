@@ -249,6 +249,9 @@ varUpdateTrans :: (?spec::Spec) => [(TAbsVar,[C.DDNode s u])] -> Transition -> P
 varUpdateTrans vs t = do
     -- Main transition
     cache <- varUpdateLoc vs (tranFrom t) (tranCFA t) M.empty
+
+    return $ fst $ cache M.! tranFrom t
+
     -- Always-block
     let at = specAlways ?spec
 
@@ -294,6 +297,10 @@ varUpdateLoc vs loc cfa cache                         = do
 
 -- Compute variable update functions for an individual statement
 varUpdateStat :: (?spec::Spec) => Statement -> ([C.DDNode s u], [TAbsVar]) -> PDB s u ([C.DDNode s u],[TAbsVar])
+varUpdateStat (SAssume (EConst (BoolVal True))) (rels, vs) = do
+    m    <- pdbCtx
+    lift $ mapM C.ref rels
+    return (rels,vs)
 varUpdateStat (SAssume e) (rels, vs) = do
     pred <- pdbPred
     m    <- pdbCtx
@@ -325,7 +332,7 @@ varUpdateAsnStat1 lhs rhs (rels, vs) av = do
                            case varType $ getVar $ avarName av of
                                 Bool -> do let frepl = fcasToFormula $ fmap bexprToFormula' repl
                                                vs' = formAbsVars frepl
-                                           --trace ("varUpdateAsnStat1(" ++ show av ++ ", " ++ (intercalate "," $ map show vs) ++ ") " ++ show lhs ++ ":=" ++ show rhs ++ " = " ++ show frepl) $ return ()
+                                           trace ("varUpdateAsnStat1(" ++ show av ++ ", " ++ (intercalate "," $ map show vs) ++ ") " ++ show lhs ++ ":=" ++ show rhs ++ " = " ++ show frepl) $ return ()
                                            rels' <- mapM (\r -> formSubst r av frepl) rels
                                            return (rels', S.toList $ S.fromList $ vs ++ vs')
                                 _    -> do let trepl = fmap exprToTerm repl

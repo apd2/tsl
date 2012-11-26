@@ -227,7 +227,8 @@ formSubst rel av f = do
     con  <- lift $ C.band m rel' eq
     lift $ C.deref m rel'
     lift $ C.deref m eq
-    cube <- lift $ C.conj m v'
+    --cube <- lift $ C.conj m v'
+    cube <- lift $ C.nodesToCube m v'
     res  <- lift $ C.bexists m con cube
     lift $ C.deref m cube
     lift $ C.deref m con

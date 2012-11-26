@@ -63,7 +63,7 @@ spec2Internal s =
                                                   $ uproc ++ cproc
            (pidvar, pidenum) = mkPIDVarDecl $ map pPID $ cproc ++ uproc
            -- Uncontrollable transitions
-           utran = concatMap pBody uproc
+           utran = concatMap pBody (uproc ++ cproc)
        in I.Spec { I.specEnum   = pidenum : tagenum : (senum ++ pcenums)
                  , I.specVar    = pidvar : (pcvars ++ vars) ++ 
                                   concat cvars ++ 
