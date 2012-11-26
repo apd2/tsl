@@ -28,7 +28,12 @@ import Solver
 eqSolver :: Spec -> Solver Predicate s u
 eqSolver spec = Solver { checkSat  = eqCheckSat  spec
                        , unsatCore = eqUnsatCore spec
-                       , equant    = eqEquant    spec}
+                       , equant    = eqEquant    spec
+                       , predVars  = eqPredVars  spec}
+
+eqPredVars :: Spec -> Predicate -> [(String, VarCategory)]
+eqPredVars spec (PAtom _ t1 t2) = let ?spec = spec
+                                  in map (\v -> (varName v, varCat v)) $ termVar t1 ++ termVar t2
 
 eqCheckSat :: Spec -> [(Predicate,Bool)] -> SatResult
 eqCheckSat spec ps = 
