@@ -3,6 +3,7 @@
 module EqSMT(eqSolver) where
 
 import Data.List
+import Debug.Trace
 import qualified Data.Set as S
 
 import qualified DecisionProcedure as DP
@@ -33,7 +34,7 @@ eqSolver spec = Solver { checkSat  = eqCheckSat  spec
 
 eqPredVars :: Spec -> Predicate -> [(String, VarCategory)]
 eqPredVars spec (PAtom _ t1 t2) = let ?spec = spec
-                                  in map (\v -> (varName v, varCat v)) $ termVar t1 ++ termVar t2
+                                  in S.toList $ S.fromList $ map (\v -> (varName v, varCat v)) $ termVar t1 ++ termVar t2
 
 eqCheckSat :: Spec -> [(Predicate,Bool)] -> SatResult
 eqCheckSat spec ps = 
@@ -56,7 +57,11 @@ eqUnsatCore spec ps =
 eqEquant :: Spec -> [(Predicate,Bool)] -> [String] -> PDB s u (C.DDNode s u)
 eqEquant spec ps vs = do
     let ?spec = spec
-    let dnf = DP.dpEQuantVars (DP.dpContext::EUF) (DP.DNF [map mkPLit ps]) (map mkVar vs)
+    let dnf0 = DP.DNF [map mkPLit ps]
+        vs'  = S.toList $ S.fromList vs
+        qvs  = map mkVar vs'
+        dnf  = {-trace ("eqEquant " ++ show dnf0 ++ " qvars: " ++ show qvs) $-} DP.dpEQuantVars (DP.dpContext::EUF) dnf0 qvs
+    --trace ("dnf = " ++ show dnf) $ return ()
     compileFormula $ dnfToForm dnf
 
 mkPLit :: (?spec::Spec) => (Predicate,Bool) -> DP.PLit
@@ -80,8 +85,9 @@ mkTerm   (TSlice t s)            = DP.TSlice s $ mkTerm t
 mkTerm   t                       = error $ "EqSMT.mkTerm " ++ show t
 
 mkVar :: (?spec::Spec) => String -> DP.Var
-mkVar n = DP.Var [(varName v,Nothing)] (mkType $ varType v) DP.VarState
+mkVar n = {-trace ("mkVar " ++ n ++ ", type " ++ show t) -} DP.Var [(varName v,Nothing)] t DP.VarState
     where v = getVar n
+          t = mkType $ varType v
 
 mkType :: (?spec::Spec) => Type -> DP.TypeDef
 mkType (UInt w)    = DP.Int w
@@ -92,14 +98,14 @@ dnfToForm :: (?spec::Spec) => DP.DNF -> Formula
 dnfToForm (DP.DNF dnf) = fdisj $ map (fconj . map plitToPred) dnf
 
 plitToPred :: (?spec::Spec) => DP.PLit -> Formula
-plitToPred (DP.PLit op t1 t2) = fAtom (opToRelOp op) (dptermToTerm t1) (dpTermToTerm t2)
+plitToPred (DP.PLit op t1 t2) = fAtom (opToRelOp op) (dpTermToTerm t1) (dpTermToTerm t2)
 
 opToRelOp :: DP.BinOpTyp -> RelOp
 opToRelOp DP.Eq  = REq
 opToRelOp DP.Neq = RNeq
 
-dptermToTerm :: (?spec::Spec) => DP.Term -> Term
-dptermToTerm (DP.TVar (DP.Var [(n,Nothing)] _ _)) = TVar n
-dptermToTerm (DP.TVar (DP.Var ns            t c)) = TField (dpTermToTerm $ DP.TVar $ DP.Var (init ns) t c) (fst $ last ns)
+dpTermToTerm :: (?spec::Spec) => DP.Term -> Term
+dpTermToTerm (DP.TVar (DP.Var [(n,Nothing)] _ _)) = TVar n
+dpTermToTerm (DP.TVar (DP.Var ns            t c)) = TField (dpTermToTerm $ DP.TVar $ DP.Var (init ns) t c) (fst $ last ns)
 dpTermToTerm (DP.TLit i w)                        = TUInt w i
 dpTermToTerm (DP.TSlice s t)                      = TSlice (dpTermToTerm t) s

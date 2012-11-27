@@ -105,8 +105,8 @@ typeMatch x y =
         Type sy ty = typ' y
     in case (tx, ty) of
             (BoolSpec _         , BoolSpec _)         -> True
-            (SIntSpec _ _       , SIntSpec _ _)       -> True
-            (UIntSpec _ _       , UIntSpec _ _)       -> True
+            (SIntSpec _ wx      , SIntSpec _ wy)      -> wx == wy
+            (UIntSpec _ wx      , UIntSpec _ wy)      -> wx == wy
             (StructSpec _ fsx   , StructSpec _ fsy)   -> length fsx == length fsy &&
                                                          (and $ map (\(fx,fy) -> name fx == name fy && 
                                                                                  typeMatch (Type sx $ tspec fx) (Type sy $ tspec fy))
@@ -134,10 +134,10 @@ typeComparable x y =
         Type sy ty = typ' y
     in case (tx, ty) of
             (BoolSpec _         , BoolSpec _)         -> True
-            (SIntSpec _ _       , SIntSpec _ _)       -> True
-            (UIntSpec _ _       , UIntSpec _ _)       -> True
-            (UIntSpec _ _       , SIntSpec _ _)       -> True
-            (SIntSpec _ _       , UIntSpec _ _)       -> True
+            (SIntSpec _ wx      , SIntSpec _ wy)      -> wx == wy
+            (UIntSpec _ wx      , UIntSpec _ wy)      -> wx == wy
+--            (UIntSpec _ _       , SIntSpec _ _)       -> True
+--            (SIntSpec _ _       , UIntSpec _ _)       -> True
             (StructSpec _ fsx   , StructSpec _ fsy)   -> length fsx == length fsy &&
                                                          (and $ map (\(fx,fy) -> name fx == name fy && 
                                                                                  typeIso (Type sx $ tspec fx) (Type sy $ tspec fy))
