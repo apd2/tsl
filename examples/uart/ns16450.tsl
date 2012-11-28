@@ -2,23 +2,23 @@ template ns16450(uart_os os)
 
 derive uart_dev;
 
-const uint<32> IER = 1;
+const uint<32> IER = 32'd1;
 
-const uint<4> IER_MSI   = 3; /* Enable Modem status interrupt */
-const uint<4> IER_RLSI  = 2;
-const uint<4> IER_THRI  = 1;
-const uint<4> IER_RDI   = 0;
+const uint<4> IER_MSI   = 4'd3; /* Enable Modem status interrupt */
+const uint<4> IER_RLSI  = 4'd2;
+const uint<4> IER_THRI  = 4'd1;
+const uint<4> IER_RDI   = 4'd0;
 
-const uint<32> LSR = 5;
+const uint<32> LSR = 32'd5;
 
-const uint<4> LSR_FIFOE = 7; /* Fifo error */
-const uint<4> LSR_TEMT  = 6; /* Transmitter empty */
-const uint<4> LSR_THRE  = 5; /* Transmit-hold-register empty */
-const uint<4> LSR_BI    = 4; /* Break interrupt indicator */
-const uint<4> LSR_FE    = 3; /* Frame error indicator */
-const uint<4> LSR_PE    = 2; /* Parity error indicator */
-const uint<4> LSR_OE    = 1; /* Overrun error indicator */
-const uint<4> LSR_DR    = 0; /* Receiver data ready */
+const uint<4> LSR_FIFOE = 4'd7; /* Fifo error */
+const uint<4> LSR_TEMT  = 4'd6; /* Transmitter empty */
+const uint<4> LSR_THRE  = 4'd5; /* Transmit-hold-register empty */
+const uint<4> LSR_BI    = 4'd4; /* Break interrupt indicator */
+const uint<4> LSR_FE    = 4'd3; /* Frame error indicator */
+const uint<4> LSR_PE    = 4'd2; /* Parity error indicator */
+const uint<4> LSR_OE    = 4'd1; /* Overrun error indicator */
+const uint<4> LSR_DR    = 4'd0; /* Receiver data ready */
 
 // TODO
 

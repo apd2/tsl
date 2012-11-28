@@ -332,7 +332,7 @@ varUpdateAsnStat1 lhs rhs (rels, vs) av = do
                            case varType $ getVar $ avarName av of
                                 Bool -> do let frepl = fcasToFormula $ fmap bexprToFormula' repl
                                                vs' = formAbsVars frepl
-                                           trace ("varUpdateAsnStat1(" ++ show av ++ ", " ++ (intercalate "," $ map show vs) ++ ") " ++ show lhs ++ ":=" ++ show rhs ++ " = " ++ show frepl) $ return ()
+                                           --trace ("varUpdateAsnStat1(" ++ show av ++ ", " ++ (intercalate "," $ map show vs) ++ ") " ++ show lhs ++ ":=" ++ show rhs ++ " = " ++ show frepl) $ return ()
                                            rels' <- mapM (\r -> formSubst r av frepl) rels
                                            return (rels', S.toList $ S.fromList $ vs ++ vs')
                                 _    -> do let trepl = fmap exprToTerm repl

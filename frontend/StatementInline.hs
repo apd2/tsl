@@ -105,7 +105,7 @@ statToCFA before stat           = do after <- ctxInsLoc
 
 -- Only safe to call from statToCFA.  Do not call this function directly!
 statToCFA' :: (?spec::Spec, ?procs::[ProcTrans]) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
-statToCFA' before after (SVarDecl _ _) = ctxInsTrans before after I.nop
+--statToCFA' before after (SVarDecl _ _) = ctxInsTrans before after I.nop
 statToCFA' before after (SReturn _ rval) = do
     -- add transition before before to return location
     lhs   <- gets ctxLHS

@@ -300,7 +300,7 @@ mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
 ----------------------------------------------------------------------
 
 mkVars :: (?spec::Spec) => ([I.Var], I.Enumeration, I.Expr)
-mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ fpvars ++ pvars), 
+mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ ivars ++ fpvars ++ pvars), 
           tenum, 
           I.conj $ teninit ++ peninit ++ [errinit, taginit, maginit, continit, pidinit])
     where
@@ -327,14 +327,19 @@ mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar :
 
     -- For each controllable task:
     -- * local variables, input arguments, output arguments, retval
-    cvars = concatMap (taskVars Nothing)
+    cvars = concatMap (taskVars Nothing True)
                       $ filter ((== Task Controllable) . methCat)
                       $ tmMethod tmMain
 
     -- For each task in the process tree:
     -- * local variables, input arguments, output arguments, retval
     -- * enabling variable
-    tvars = concatMap (concat . mapPTreeTask (\pid m -> (mkEnVarDecl pid (Just m)) : (taskVars (Just pid) m)))
+    tvars = concatMap (concat . mapPTreeTask (\pid m -> (mkEnVarDecl pid (Just m)) : (taskVars (Just pid) True m)))
+                      $ tmProcess tmMain
+
+    -- For each inlined task: 
+    -- * local variables, input arguments, output arguments
+    ivars = concatMap (concat . mapPTreeInlinedTask (\pid m -> taskVars (Just pid) False m))
                       $ tmProcess tmMain
 
     -- For each root process:
@@ -359,11 +364,11 @@ mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar :
     pidinit  = mkPIDVar   I.=== mkPIDEnum pidIdle
     errinit  = mkErrVar   I.=== I.false
 
-    taskVars :: Maybe PID -> Method -> [I.Var]
-    taskVars mpid m = 
+    taskVars :: Maybe PID -> Bool -> Method -> [I.Var]
+    taskVars mpid ret m = 
         (let ?scope = ScopeMethod tmMain m in map (\v -> mkVarDecl (varMem v) mpid (Just m) v) (methVar m)) ++ 
         (let ?scope = ScopeMethod tmMain m in map (mkVarDecl False mpid (Just m)) (methArg m)) ++
-        maybeToList (mkRetVarDecl mpid m)
+        (if ret then maybeToList (mkRetVarDecl mpid m) else [])
 
 ----------------------------------------------------------------------
 -- CFA transformation
@@ -477,7 +482,20 @@ procTreeRec pid scope stat lmap = tasks ++ forked
              $ procCallees scope stat
     -- spawned processes
     forked = concatMap (fprocTree pid scope lmap) $ forkedProcs stat
-    
+
+-- Map a function over all inlined tasks called by the process
+mapPTreeInlinedTask :: (?spec::Spec) => (PID -> Method -> a) -> Process -> [a]
+mapPTreeInlinedTask f p = mapPTreeInlinedTask' f [sname p] (ScopeProcess tmMain p) (procStatement p)
+
+mapPTreeInlinedTask' :: (?spec::Spec) => (PID -> Method -> a) -> PID -> Scope -> Statement -> [a]
+mapPTreeInlinedTask' f pid s stat = 
+    (concatMap (\m -> (f pid m) : (mapPTreeInlinedTask' f pid (ScopeMethod tmMain m) (fromRight $ methBody m)))
+               $ filter ((==Task Invisible) . methCat)
+               $ procCallees s stat)
+    ++
+    (concatMap (\(n,st) -> mapPTreeInlinedTask' f (pid++[sname n]) s st) $ forkedProcs stat)
+
+
 -- Map a function over all tasks called by the process
 mapPTreeTask :: (?spec::Spec) => (PID -> Method -> a) -> Process -> [a]
 mapPTreeTask f p = mapPTreeTask' f [sname p] (ScopeProcess tmMain p) (procStatement p)
@@ -497,8 +515,8 @@ mapPTreeFProc f p = mapPTreeFProc' f [sname p] (ScopeProcess tmMain p) (procStat
 mapPTreeFProc' :: (?spec::Spec) => (PID -> Statement -> a) -> PID -> Scope -> Statement -> [a]
 mapPTreeFProc' f pid s stat = 
     case pid of 
-         [n] -> [f pid stat]
-         _   -> []
+         [n] -> []
+         _   -> [f pid stat]
     ++
     (concatMap (\(s',(n,st)) -> mapPTreeFProc' f (pid++[sname n]) s' st) $ forkedProcsRec s stat)
 
@@ -627,15 +645,18 @@ utranSuffix pid updatepc updatecont (I.Transition from to cfa) =
                            then let (cfa2, loc1) = I.cfaInsTrans' final (I.SAssume $ mkPCVar pid I.=== mkPC pid from) cfa1
                                 in I.cfaInsTrans' loc1 (mkPCVar pid I.=: mkPC pid to) cfa2
                            else (cfa1, final)
+        -- Transition only available in uncontrollable states
+        (cfa4, aftucont) = I.cfaInsTrans' aftpc (I.SAssume $ mkContVar I.=== I.false) cfa3
+
         -- non-deterministically reset the cont to true if inside a magic block
-        (cfa6,aftcont) = if updatecont 
-                            then let (cfa4, loc3)    = I.cfaInsTrans' aftpc (I.SAssume $ mkMagicVar I.=== I.true) cfa3
-                                     (cfa5, aftcont) = I.cfaInsTrans' loc3  (mkContVar I.=: I.false) cfa4
-                                 in (I.cfaInsTrans aftpc aftcont I.nop cfa5, aftcont)
-                  else (cfa3, aftpc)
+        (cfa7,aftcont) = if updatecont 
+                            then let (cfa5, loc3)    = I.cfaInsTrans' aftucont (I.SAssume $ mkMagicVar I.=== I.true) cfa4
+                                     (cfa6, aftcont) = I.cfaInsTrans' loc3  (mkContVar I.=: I.false) cfa5
+                                 in (I.cfaInsTrans aftucont aftcont I.nop cfa6, aftcont)
+                  else (cfa4, aftucont)
         -- set $pid
-        (cfa7, after)   = I.cfaInsTrans' aftcont (mkPIDVar I.=: mkPIDEnum pid) cfa6
-    in I.Transition init after cfa7
+        (cfa8, after)   = I.cfaInsTrans' aftcont (mkPIDVar I.=: mkPIDEnum pid) cfa7
+    in I.Transition init after cfa8
 
 tranAppend :: I.Transition -> I.Statement -> I.Transition
 tranAppend (I.Transition from to cfa) s = I.Transition from to' cfa'
