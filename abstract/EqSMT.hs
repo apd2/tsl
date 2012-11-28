@@ -26,7 +26,7 @@ import FCompile
 import BFormula
 import Solver
 
-eqSolver :: Spec -> Solver Predicate s u
+eqSolver :: Spec -> Solver Predicate (PDBPriv s u) s u
 eqSolver spec = Solver { checkSat  = eqCheckSat  spec
                        , unsatCore = eqUnsatCore spec
                        , equant    = eqEquant    spec
