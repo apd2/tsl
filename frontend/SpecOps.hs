@@ -153,9 +153,10 @@ checkCall (ScopeProcess _ pr) (p, (t,m)) =
 checkCall (ScopeMethod _ m1) (p, (t,m2)) = do
     let c1 = methCat m1
         c2 = methCat m2
-    assert (c1 /= Task Controllable) p                                     $ "Task invocations inside controllable tasks are currently not allowed"
-    assert (not $ (c1 == Task Uncontrollable) && (c2 == Task Invisible)) p $ "Invisible task invoked in uncontrollable task context"
-    assert (not $ (c1 == Task Invisible) && (c2 == Task Controllable)) p   $ "Controllable task invoked in invisible task context"
+    assert (not $ c1 == Task Controllable && c2 == Task Controllable) p   $ "Controllable task invoked in controllable task context"
+    assert (not $ c1 == Task Controllable && c2 == Task Uncontrollable) p $ "Uncontrollable task invoked in controllable task context"
+    assert (not $ c1 == Task Uncontrollable && c2 == Task Invisible) p    $ "Invisible task invoked in uncontrollable task context"
+    assert (not $ c1 == Task Invisible && c2 == Task Controllable) p      $ "Controllable task invoked in invisible task context"
 
 -- Map function over all expressions in the spec
 specMapExpr :: (Scope -> Expr -> Expr) -> Spec -> Spec

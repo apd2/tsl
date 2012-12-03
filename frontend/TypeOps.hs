@@ -16,6 +16,7 @@ import Data.List
 import qualified Data.Map as M
 import qualified Data.Graph.Inductive.Graph as G
 import qualified Data.Graph.Inductive.Tree as G
+import Debug.Trace
 
 import TSLUtil
 import Name
@@ -128,11 +129,12 @@ checkTypeMatch x y = do
 
 
 -- Objects of these types can be compared using == and !=
-typeComparable :: (?spec::Spec, WithType a, WithType b) => a -> b -> Bool
+typeComparable :: (?spec::Spec, WithType a, WithType b, Show a, Show b) => a -> b -> Bool
 typeComparable x y =     
     let Type sx tx = typ' x
         Type sy ty = typ' y
-    in case (tx, ty) of
+    in --trace ("typeComparable " ++ show x ++ " " ++ show y) $
+       case (tx, ty) of
             (BoolSpec _         , BoolSpec _)         -> True
             (SIntSpec _ wx      , SIntSpec _ wy)      -> wx == wy
             (UIntSpec _ wx      , UIntSpec _ wy)      -> wx == wy

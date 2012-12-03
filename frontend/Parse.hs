@@ -278,7 +278,7 @@ tderive      = withPos $ Derive nopos <$  reserved "derive"
 instDecl     = withPos $ Instance nopos <$  reserved "instance"
                                         <*> ident
                                         <*> ident
-                                        <*> (parens $ commaSep ident)
+                                        <*> (option [] (parens $ commaSep ident))
 tvarDecl     = withPos $ GVar nopos <$> (option False (True <$ reserved "export")) 
                                     <*> varDecl
 twire        = withPos $ Wire nopos <$> (option False (True <$ reserved "export")) 

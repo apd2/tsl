@@ -55,7 +55,7 @@ syn keyword tslStorageClass     const controllable uncontrollable invisible expo
 syn keyword tslOperator	        default true false
 
 "Keywords for ADTs
-syn keyword tslType	        bool uint sint stuct enum void typedef
+syn keyword tslType	        bool uint sint struct enum void typedef
 
 syn sync lines=250
 
