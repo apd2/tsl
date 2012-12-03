@@ -6,6 +6,7 @@ module TVarOps(varMapExpr,
 
 import Control.Monad.Error
 
+import TSLUtil
 import Pos
 import Name
 import Spec
@@ -26,7 +27,11 @@ instance (?spec::Spec, ?scope::Scope) => WithType Var where
     typ = Type ?scope . tspec
 
 validateVar :: (?spec::Spec, MonadError String me) => Scope -> Var -> me ()
-validateVar s v = validateTypeSpec s (tspec v)
+validateVar s v = do
+    case varType v of
+         EnumSpec p _ -> err p $ "Enumeration declared inside variable declaration. Use typedef instead."
+         _            -> return ()
+    validateTypeSpec s (tspec v)
 
 validateVar2 :: (?spec::Spec, MonadError String me) => Scope -> Var -> me ()
 validateVar2 s v = do
