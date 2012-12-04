@@ -27,6 +27,7 @@ import Data.Maybe
 import qualified Data.Map as M
 import Control.Monad.Error
 import Control.Applicative
+import Debug.Trace
 
 import TSLUtil
 import Pos

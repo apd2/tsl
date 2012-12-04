@@ -76,9 +76,9 @@ validateSpec s = do
     let ?spec = s
     -- First pass
     validateSpecNS
-    mapM validateTmInstances                  (specTemplate s)
     mapM validateTmPorts                      (specTemplate s)
     mapM validateTmDerives                    (specTemplate s)
+    mapM validateTmInstances                  (specTemplate s)
     validateSpecDerives
     mapM validateTmNS                         (specTemplate s)
     mapM (validateTypeSpec ScopeTop . tspec)  (specType s)

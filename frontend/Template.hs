@@ -60,6 +60,9 @@ instance PP Instance where
                                  [] -> empty
                                  _  -> parens $ hsep $ punctuate comma $ map pp p
 
+instance Show Instance where
+    show = render . pp
+
 instance WithPos Instance where
     pos       = ipos
     atPos i p = i{ipos = p}
