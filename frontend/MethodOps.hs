@@ -123,4 +123,6 @@ validateMeth t m = do
          Nothing      -> return ()
     case methFullBody t m of 
          Left (mb,ma) -> do {mapM (validateStat ?scope) (catMaybes [mb,ma]); return()}
-         Right b      -> validateStat ?scope b
+         Right b      -> do validateStat ?scope b
+                            assert (not $ (isJust $ methRettyp m) && (not $ statReturns b)) (pos m) 
+                                   $ "Method " ++ show ?scope ++ " can terminate without returning a value"

@@ -10,6 +10,7 @@ module StatementOps(mapStat,
                     statObjs,
                     statObjsRec,
                     methObjsRec,
+                    statReturns,
                     validateStat,
                     validateStat') where
 
@@ -179,6 +180,15 @@ statFlatten' iid s (SPar p ps)                     = SPar p $ map (\(n,s) -> (it
 statFlatten' iid s (SInvoke p (MethodRef p' n) as) = SInvoke p (MethodRef p' [itreeFlattenName (itreeRelToAbsPath iid (init n)) (last n)]) as
 statFlatten' iid s (SMagic p (Left g))             = SMagic p $ Left $ itreeFlattenName iid g
 statFlatten' _   _ st                              = st
+
+-- True if the statement returns a value on all execution paths.
+statReturns :: Statement -> Bool
+statReturns (SReturn  _ r)             = isJust r
+statReturns (SSeq     _ ss)            = statReturns $ last ss
+statReturns (SChoice  _  ss)           = all statReturns ss
+statReturns (SITE     _ _ t (Just e))  = statReturns t && statReturns e
+statReturns (SCase    _ _ cs (Just d)) = all statReturns (d: (map snd cs))
+statReturns _                          = False
 
 -------------------------------------------------------------------------
 -- Validation
