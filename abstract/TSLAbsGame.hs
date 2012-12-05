@@ -362,7 +362,7 @@ updateScalAsn' (ESlice e (l,h)) rhs t            =
     fmap (\b -> if b
                    then econcat $
                         (if l == 0 then [] else [termToExpr $ TSlice t (0,l-1)]) ++
-                        [ESlice rhs (l,h)] ++
+                        [rhs] ++
                         (if h == w - 1 then [] else [termToExpr $ TSlice t (h+1, w - 1)])
                    else termToExpr t) 
          $ lhsTermEq e t
