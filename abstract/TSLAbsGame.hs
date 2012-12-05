@@ -342,8 +342,10 @@ varUpdateAsnStat1 lhs rhs (rels, vs) av = do
 
 -- Predicate update by assignment statement
 updatePredAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Predicate -> Formula
-updatePredAsn lhs rhs p = pSubstScalCas p sc'
+updatePredAsn lhs rhs p = {-trace ("updatePredAsn (" ++ show lhs ++ ":=" ++ show rhs ++ ", " ++ show p ++ ") = " ++ show res)-} res
     where sc' = map (updateScalAsn lhs rhs) $ pScalars p
+          res = pSubstScalCas p sc'
+
  
 -- Takes lhs and rhs of assignment statement and a term
 -- Computes possible overlaps of the lhs with the term and

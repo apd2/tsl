@@ -97,9 +97,12 @@ instance (?spec::Spec) => Typed Expr where
 
 -- TODO: optimise slicing of concatenations
 exprSlice :: (?spec::Spec) => Expr -> Slice -> Expr
-exprSlice e                  (l,h) | l == 0 && h == typeWidth e - 1 = e
-exprSlice (ESlice e (l',h')) (l,h)                                  = exprSlice e (l'+l,l'+h)
-exprSlice e                  s                                      = ESlice e s
+exprSlice e                      (l,h) | l == 0 && h == typeWidth e - 1 = e
+exprSlice (ESlice e (l',h'))     (l,h)                                  = exprSlice e (l'+l,l'+h)
+exprSlice (EBinOp BConcat e1 e2) (l,h) | l > typeWidth e1 - 1           = exprSlice e2 (l - typeWidth e1, h - typeWidth e1)
+                                       | h <= typeWidth e1 - 1          = exprSlice e1 (l,h)
+                                       | otherwise                      = econcat [exprSlice e1 (l,typeWidth e1-1), exprSlice e2 (0, h - typeWidth e1)]
+exprSlice e                      s                                      = ESlice e s
 
 ---- Extract all scalars from expression
 exprScalars :: Expr -> Type -> [Expr]
@@ -122,7 +125,6 @@ conj es = foldl' (\e1 e2 -> EBinOp And e1 e2) (head es) (tail es)
 econcat :: [Expr] -> Expr
 econcat [e]        = e
 econcat (e1:e2:es) = econcat $ (EBinOp BConcat e1 e2):es
-econcat es         = error $ "econcat " ++ show es
 
 true = EConst $ BoolVal True
 false = EConst $ BoolVal False
