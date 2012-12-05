@@ -122,6 +122,7 @@ conj es = foldl' (\e1 e2 -> EBinOp And e1 e2) (head es) (tail es)
 econcat :: [Expr] -> Expr
 econcat [e]        = e
 econcat (e1:e2:es) = econcat $ (EBinOp BConcat e1 e2):es
+econcat es         = error $ "econcat " ++ show es
 
 true = EConst $ BoolVal True
 false = EConst $ BoolVal False

@@ -359,9 +359,9 @@ updateScalAsn' e                rhs (TSlice t s) = fmap (\e -> exprSlice e s) (u
 updateScalAsn' (ESlice e (l,h)) rhs t            = 
     fmap (\b -> if b
                    then econcat $
-                        (if l == 0 then [] else [termToExpr $ TSlice t (0,l-1)] ++
+                        (if l == 0 then [] else [termToExpr $ TSlice t (0,l-1)]) ++
                         [ESlice rhs (l,h)] ++
-                        if h == w - 1 then [] else [termToExpr $ TSlice t (h+1, w - 1)])
+                        (if h == w - 1 then [] else [termToExpr $ TSlice t (h+1, w - 1)])
                    else termToExpr t) 
          $ lhsTermEq e t
     where w = typeWidth e
