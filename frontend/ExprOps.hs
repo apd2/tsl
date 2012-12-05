@@ -37,6 +37,7 @@ import NS
 import Val
 import TVar
 import StatementOps
+import Ops
 
 -- Map function over subexpression of expression
 mapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Expr -> Expr
@@ -93,50 +94,27 @@ eval' (EField _ e f) _        = let StructVal v = val $ eval e
 --eval' (EIndex _ a i) _        = let ArrayVal av = val $ eval a
 --                                    iv          = evalInt i
 --                                in val $ av !! (fromInteger iv)
-eval' (EUnOp _ Not e) t       = BoolVal $ not $ evalBool e
-eval' (EUnOp _ BNeg e) t      = IntVal $ foldl' (\v idx -> complementBit v idx) (evalInt e) [0..typeWidth t - 1]
-eval' (EUnOp _ AddrOf e) t    = PtrVal e
-eval' (EBinOp  _ Eq e1 e2) t  = BoolVal $ eval e1 == eval e2
-eval' (EBinOp  _ Neq e1 e2) t = BoolVal $ eval e1 /= eval e2
-eval' (EBinOp  _ Lt e1 e2) t  = BoolVal $ eval e1 <  eval e2
-eval' (EBinOp  _ Gt e1 e2) t  = BoolVal $ eval e1 >  eval e2
-eval' (EBinOp  _ Lte e1 e2) t = BoolVal $ eval e1 <= eval e2
-eval' (EBinOp  _ Gte e1 e2) t = BoolVal $ eval e1 >= eval e2
-eval' (EBinOp  _ op e1 e2) t | elem op [And,Or,Imp] = 
+eval' (EUnOp _ op e) _ | isArithUOp op = let i = evalInt e
+                                         in IntVal $ fst3 $ arithUOp op (i, typeSigned e, typeWidth e)
+eval' (EUnOp _ Not e) _       = BoolVal $ not $ evalBool e
+eval' (EUnOp _ AddrOf e) _    = PtrVal e
+eval' (EBinOp  _ Eq e1 e2) _  = BoolVal $ eval e1 == eval e2
+eval' (EBinOp  _ Neq e1 e2) _ = BoolVal $ eval e1 /= eval e2
+eval' (EBinOp  _ Lt e1 e2) _  = BoolVal $ eval e1 <  eval e2
+eval' (EBinOp  _ Gt e1 e2) _  = BoolVal $ eval e1 >  eval e2
+eval' (EBinOp  _ Lte e1 e2) _ = BoolVal $ eval e1 <= eval e2
+eval' (EBinOp  _ Gte e1 e2) _ = BoolVal $ eval e1 >= eval e2
+eval' (EBinOp  _ op e1 e2) _ | elem op [And,Or,Imp] = 
                                 let b1 = evalBool e1
                                     b2 = evalBool e2
                                 in BoolVal $ case op of
                                                   And -> b1 && b2
                                                   Or  -> b1 || b2
                                                   Imp -> (not b1) || b2
-eval' (EBinOp  _ op e1 e2) t | elem op [BAnd,BOr,BXor] = 
+eval' (EBinOp  _ op e1 e2) _ | isArithBOp op = 
                                 let i1 = evalInt e1
                                     i2 = evalInt e2
-                                    f = case op of
-                                             BAnd -> (&&)
-                                             BOr  -> (||)
-                                             BXor -> (\b1 b2 -> (b1 && not b2) || (b2 && not b1))
-                                in IntVal $
-                                   foldl' (\v idx -> case f (testBit i1 idx) (testBit i2 idx) of
-                                                          True  -> setBit v idx
-                                                          False -> v) 
-                                          0 [0..typeWidth t - 1]
-eval' (EBinOp  _ op e1 e2) t | op == BConcat = 
-                                let i1 = abs $ evalInt e1
-                                    i2 = abs $ evalInt e2
-                                in IntVal $ i1 + (i2 `shiftL` typeWidth e1)
-eval' (EBinOp _ op e1 e2) t | elem op [Plus,BinMinus,Mod,Mul] = 
-                               let i1 = evalInt e1
-                                   i2 = evalInt e2
-                               in -- perform requested operation and truncate all bits beyond result width
-                                  IntVal $
-                                  case op of
-                                       Plus     -> i1 + i2
-                                       BinMinus -> i1 - i2
-                                       Mod      -> mod i1 i2
-                                       Mul      -> i1 * i2
-                                  .&.
-                                  (sum $ map bit [0..typeWidth t - 1])
+                                in IntVal $ fst3 $ arithBOp op (i1, typeSigned e1, typeWidth e1) (i2, typeSigned e1, typeWidth e2)
 eval' (ETernOp _ e1 e2 e3) _  = if evalBool e1
                                    then val $ eval e2
                                    else val $ eval e3
@@ -363,21 +341,20 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
     typ (EField  _ e f)         = typ $ objGet (ObjType $ typ e) f 
     typ (EPField _ e f)         = typ $ objGet (ObjType $ Type s t) f where Type s (PtrSpec _ t) = typ' e
     typ (EIndex  _ e i)         = Type s t where Type s (ArraySpec _ t _) = typ' e
-    typ (EUnOp   _ UMinus e)    = case typ' e of
-                                       t@(Type s (SIntSpec p w)) -> t
-                                       Type s (UIntSpec p w)     -> Type s $ SIntSpec p w
-    typ (EUnOp   p Not e)       = Type ?scope $ BoolSpec p
+    typ (EUnOp   p op e) | isArithUOp op = case arithUOpType op (s,w) of
+                                                (True, w')  -> Type ?scope (SIntSpec p w')
+                                                (False, w') -> Type ?scope (UIntSpec p w')
+                                           where (s,w) = (typeSigned e, typeWidth e)
     typ (EUnOp   _ BNeg e)      = typ e
+    typ (EUnOp   p Not e)       = Type ?scope $ BoolSpec p
     typ (EUnOp   _ Deref e)     = Type s t where Type s (PtrSpec _ t) = typ' e
     typ (EUnOp   p AddrOf e)    = Type s (PtrSpec p t) where Type s t = typ' e
     typ (EBinOp  p op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] = Type ?scope $ BoolSpec p
-                             | elem op [BAnd,BOr,BXor] = typ e1
-                             | op == BConcat = Type ?scope (UIntSpec p $ typeWidth e1 + typeWidth e2)
-                             | elem op [Plus,Mul] = case (tspec e1, tspec e2) of
-                                                         ((UIntSpec _ w1), (UIntSpec _ w2)) -> Type ?scope $ UIntSpec p (max w1 w2)
-                                                         _                                  -> Type ?scope $ SIntSpec p (max (typeWidth e1) (typeWidth e2))
-                             | op == BinMinus = Type ?scope (SIntSpec p (max (typeWidth e1) (typeWidth e2)))
-                             | op == Mod = typ e1
+                             | isArithBOp op = case arithBOpType op (s1,w1) (s2,w2) of
+                                                    (True, w')  -> Type ?scope (SIntSpec p w')
+                                                    (False, w') -> Type ?scope (UIntSpec p w')
+                                               where (s1,w1) = (typeSigned e1, typeWidth e1)
+                                                     (s2,w2) = (typeSigned e2, typeWidth e2)
     typ (ETernOp _ _ e2 e3)     = maxType [e2, e3]
     typ (ECase _ _ cs md)       = maxType $ (map snd cs) ++ maybeToList md
     typ (ECond _ cs md)         = maxType $ (map snd cs) ++ maybeToList md

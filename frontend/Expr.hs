@@ -15,7 +15,7 @@ import Data.Bits
 import Numeric
 import Data.Char
 
-import Common
+import Ops
 import PP
 import Pos
 import Name

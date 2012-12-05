@@ -2,6 +2,7 @@ module IType(Field(..),
              Type(..),
              Typed(..),
              typeWidth,
+             typeSigned,
              Enumeration(..)) where
 
 import Text.PrettyPrint
@@ -50,6 +51,11 @@ instance Typed Type where
 
 typeWidth :: (Typed a) => a -> Int
 typeWidth = twidth . typ
+
+typeSigned :: (Typed a) => a -> Bool
+typeSigned x = case typ x of
+                    SInt _ -> True
+                    UInt _ -> False
 
 
 data Enumeration = Enumeration { enumName  :: String

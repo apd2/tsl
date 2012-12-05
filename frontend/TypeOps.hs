@@ -8,6 +8,7 @@ module TypeOps(mapTSpec,
                checkTypeMatch,
                typeComparable,
                typeWidth,
+               typeSigned,
                isInt, isBool, isPtr, isArray, isStruct,
                tdeclGraph) where
 
@@ -158,6 +159,13 @@ typeWidth x = case tspec $ typ' x of
                    SIntSpec _ w -> w
                    UIntSpec _ w -> w
                    _            -> error $ "typeWidth: non-integral type"
+
+typeSigned :: (?spec::Spec, WithType a) => a -> Bool
+typeSigned x = case tspec $ typ' x of
+                   SIntSpec _ _ -> True
+                   UIntSpec _ _ -> False
+                   _            -> error $ "typeSigned: non-integral type"
+
 
 ---------------------------------------------------------------------
 -- TypeDecl dependency graph

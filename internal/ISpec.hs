@@ -16,7 +16,7 @@ import Text.PrettyPrint
 import PP
 import Util hiding (name)
 import TSLUtil
-import Common
+import Ops
 import IType
 import IExpr
 import IVar

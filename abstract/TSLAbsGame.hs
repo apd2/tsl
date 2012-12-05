@@ -15,7 +15,7 @@ import Text.PrettyPrint
 
 import PP
 import TSLUtil
-import Common
+import Ops
 import AbsGame
 import PredicateDB
 import qualified CuddExplicitDeref as C

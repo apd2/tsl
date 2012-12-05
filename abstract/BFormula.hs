@@ -1,3 +1,5 @@
+{-# LANGUAGE ImplicitParams #-}
+
 module BFormula(BoolBOp(..),
                 Formula(..),
                 fdisj,
@@ -11,8 +13,9 @@ import Data.List
 import Text.PrettyPrint
 
 import Predicate
-import Common
+import Ops
 import PP
+import ISpec
 
 -- Logical operations
 data BoolBOp = Conj 
@@ -84,8 +87,13 @@ fnot FTrue  = FFalse
 fnot FFalse = FTrue
 fnot f      = FNot f
 
-fAtom :: RelOp -> Term -> Term -> Formula
-fAtom REq l r | l < r     = FPred $ PAtom REq l r
-              | otherwise = FPred $ PAtom REq r l
-fAtom RNeq l r = FNot $ fAtom REq l r
+fAtom :: (?spec::Spec) => RelOp -> Term -> Term -> Formula
+fAtom op t1 t2 = fAtom' op (termSimplify t1) (termSimplify t2)
+
+fAtom' :: (?spec::Spec) => RelOp -> Term -> Term -> Formula
+fAtom' REq  l r | l == r                         = FTrue
+fAtom' REq  l r | isConstTerm l && isConstTerm r = if evalConstTerm l == evalConstTerm r then FTrue  else FFalse
+fAtom' REq  l r | l < r                          = FPred $ PAtom REq l r
+                | otherwise                      = FPred $ PAtom REq r l
+fAtom' RNeq l r                                  = fnot $ fAtom' REq l r
 

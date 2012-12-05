@@ -9,7 +9,9 @@ module Predicate(ArithUOp(..),
                  Term(..),
                  termCategory,
                  termVar,
-                 tConcat,
+                 termSimplify,
+                 isConstTerm,
+                 evalConstTerm,
                  isMemTerm,
                  RelOp(..),
                  bopToRelOp,
@@ -22,7 +24,7 @@ module Predicate(ArithUOp(..),
 import Text.PrettyPrint
 
 import PP
-import Common
+import Ops
 import ISpec
 import IExpr
 import IVar
@@ -102,11 +104,6 @@ instance PP Term where
 instance Show Term where
     show = render . pp
 
--- TODO: merge adjacent terms
-tConcat :: [Term] -> Term
-tConcat [t]        = t
-tConcat (t1:t2:ts) = tConcat $ (TBinOp ABConcat t1 t2):ts
-
 isMemTerm :: (?spec::Spec) => Term -> Bool
 isMemTerm (TVar n)     = varMem $ getVar n
 isMemTerm (TField t _) = isMemTerm t
@@ -126,6 +123,15 @@ termVar (TIndex a i)     = termVar a ++ termVar i
 termVar (TUnOp _ t)      = termVar t
 termVar (TBinOp _ t1 t2) = termVar t1 ++ termVar t2
 termVar (TSlice t _)     = termVar t
+
+isConstTerm :: (?spec::Spec) => Term -> Bool
+isConstTerm = null . termVar
+
+evalConstTerm :: Term -> Term
+evalConstTerm = exprToTerm . EConst . evalConstExpr . termToExpr
+
+termSimplify :: Term -> Term
+termSimplify = exprToTerm . exprSimplify . termToExpr
 
 termCategory :: (?spec::Spec) => Term -> VarCategory
 termCategory t = if any ((==VarTmp) . varCat) $ termVar t
@@ -185,16 +191,17 @@ exprToTerm :: Expr -> Term
 exprToTerm = norm . exprToTerm'
 
 exprToTerm' :: Expr -> Term
-exprToTerm' (EVar n)               = TVar   n
-exprToTerm' (EConst (SIntVal w i)) = TSInt w i
-exprToTerm' (EConst (UIntVal w i)) = TUInt w i
-exprToTerm' (EConst (EnumVal e))   = TEnum  e
-exprToTerm' (EField s f)           = TField (exprToTerm' s) f
-exprToTerm' (EIndex a i)           = TIndex (exprToTerm' a) (exprToTerm' i)
-exprToTerm' (EUnOp AddrOf e)       = TAddr  (exprToTerm' e)
-exprToTerm' (EUnOp op e)           = TUnOp  (uopToArithOp op) (exprToTerm' e)
-exprToTerm' (EBinOp op e1 e2)      = TBinOp (bopToArithOp op) (exprToTerm' e1) (exprToTerm' e2)
-exprToTerm' (ESlice e s)           = TSlice (exprToTerm' e) s
+exprToTerm' (EVar n)                = TVar   n
+exprToTerm' (EConst (BoolVal True)) = TTrue
+exprToTerm' (EConst (SIntVal w i))  = TSInt w i
+exprToTerm' (EConst (UIntVal w i))  = TUInt w i
+exprToTerm' (EConst (EnumVal e))    = TEnum  e
+exprToTerm' (EField s f)            = TField (exprToTerm' s) f
+exprToTerm' (EIndex a i)            = TIndex (exprToTerm' a) (exprToTerm' i)
+exprToTerm' (EUnOp AddrOf e)        = TAddr  (exprToTerm' e)
+exprToTerm' (EUnOp op e)            = TUnOp  (uopToArithOp op) (exprToTerm' e)
+exprToTerm' (EBinOp op e1 e2)       = TBinOp (bopToArithOp op) (exprToTerm' e1) (exprToTerm' e2)
+exprToTerm' (ESlice e s)            = TSlice (exprToTerm' e) s
 
 termToExpr :: Term -> Expr
 termToExpr (TVar n)          = EVar   n
