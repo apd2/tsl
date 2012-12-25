@@ -1,11 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module TSLUtil(mapFst,
-               mapSnd,
-               fst3,
-               snd3,
-               trd3,
-               fromLeft,
+module TSLUtil(fromLeft,
                fromRight,
                err,
                assert,
@@ -29,21 +24,11 @@ import Util hiding (name)
 import Pos
 import Name
 
-mapFst :: (a->b) -> (a,c) -> (b,c)
-mapFst f (x,y) = (f x,y)
-
-mapSnd :: (c->b) -> (a,c) -> (a,b)
-mapSnd f (x,y) = (x,f y)
-
 fromLeft :: (Either a b) -> a
 fromLeft (Left x) = x
 
 fromRight :: (Either a b) -> b
 fromRight (Right x) = x
-
-fst3 (x,y,z) = x
-snd3 (x,y,z) = y
-trd3 (x,y,z) = z
 
 err :: (MonadError String me) => Pos -> String -> me a
 err p e = throwError $ spos p ++ ": " ++ e

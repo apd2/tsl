@@ -18,6 +18,7 @@ import qualified IExpr as I
 import qualified IType as I
 import qualified IVar  as I
 import TSLUtil
+import Util hiding (name)
 import NS
 import Pos
 import Name

@@ -20,6 +20,7 @@ import Data.List
 import Debug.Trace
 
 import TSLUtil
+import Util hiding (name)
 import Pos
 import Name
 import Expr

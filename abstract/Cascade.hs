@@ -14,6 +14,7 @@ import Text.PrettyPrint
 
 import PP
 import TSLUtil
+import Util
 import ISpec
 import IExpr
 import BFormula

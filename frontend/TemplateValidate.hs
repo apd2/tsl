@@ -30,6 +30,7 @@ import Control.Applicative
 import Debug.Trace
 
 import TSLUtil
+import Util hiding (name)
 import Pos
 import Name
 import Type
