@@ -64,13 +64,15 @@ spec2Internal s =
            (pidvar, pidenum) = mkPIDVarDecl $ map pPID $ cproc ++ uproc
            -- Uncontrollable transitions
            utran = concatMap pBody (uproc ++ cproc)
-       in I.Spec { I.specEnum   = pidenum : tagenum : (senum ++ pcenums)
+           -- built-in enums used in translating choice{} statements
+           choiceenum = map mkChoiceEnumDecl [0..9]
+       in I.Spec { I.specEnum   = choiceenum ++ (pidenum : tagenum : (senum ++ pcenums))
                  , I.specVar    = pidvar : (pcvars ++ vars) ++ 
                                   concat cvars ++ 
                                   concatMap pVar cproc ++ 
                                   concatMap pVar uproc
                  , I.specCTran  = mkMagicReturn : ctran
-                 , I.specUTran  = {-mkIdleTran :-} utran
+                 , I.specUTran  = mkIdleTran : utran
                  , I.specWire   = mkWires
                  , I.specAlways = mkAlways
                  , I.specInit   = (mkInit, I.conj $ (auxinit : pcinit))
@@ -670,5 +672,3 @@ splitLoc loc cfa = (loc, loc', cfa3)
           cfa1         = foldl' (\cfa (f,t,_) -> G.delEdge (f,t) cfa) cfa i 
           (cfa2, loc') = I.cfaInsLoc I.LNone cfa1
           cfa3         = foldl' (\cfa (f,t,l) -> G.insEdge (f,loc',l) cfa) cfa2 i
-
-

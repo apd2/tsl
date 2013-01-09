@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
 module Inline where
 
@@ -216,6 +216,23 @@ mkErrVar = I.EVar mkErrVarName
 mkErrVarDecl :: I.Var
 mkErrVarDecl = I.Var False I.VarState mkErrVarName I.Bool
 
+mkChoiceTypeName :: Int -> String
+mkChoiceTypeName n = "$choice" ++ show n
+
+mkChoiceType :: Int -> I.Type
+mkChoiceType n = I.Enum $ mkChoiceTypeName n
+
+mkChoiceValName :: String -> Int -> String
+mkChoiceValName tname i = tname ++ "_" ++ show i
+
+mkChoice :: I.Var -> Int -> I.Expr
+mkChoice v i = I.EConst $ I.EnumVal $ mkChoiceValName tname i
+    where I.Enum tname = I.varType v 
+
+mkChoiceEnumDecl :: Int -> I.Enumeration
+mkChoiceEnumDecl i = I.Enumeration {..}
+    where enumName  = mkChoiceTypeName i
+          enumEnums = map (mkChoiceValName enumName) [0..i-1]
 
 type NameMap = M.Map Ident I.Expr
 

@@ -29,6 +29,7 @@ import ExprInline
 import qualified ISpec as I
 import qualified IExpr as I
 import qualified CFA   as I
+import qualified IVar  as I
 
 statSimplify :: (?spec::Spec, ?scope::Scope, ?uniq::Uniq) => Statement -> Statement
 statSimplify s = sSeq (pos s) $ statSimplify' s
@@ -197,8 +198,10 @@ statToCFA' before after (SFor _ (minit, cond, inc) body) = do
     ctxInsTrans aftinc loopback I.nop
 
 statToCFA' before after (SChoice _ ss) = do
-    mapM (\s -> do aft <- statToCFA before s
-                   ctxInsTrans aft after I.nop) ss
+    v <- ctxInsTmpVar $ mkChoiceType $ length ss
+    mapIdxM (\s i -> do aftAssume <- ctxInsTrans' before (I.SAssume $ I.EVar (I.varName v) I.=== mkChoice v i)
+                        aft <- statToCFA aftAssume s
+                        ctxInsTrans aft after I.nop) ss
     return ()
 
 statToCFA' before after (SBreak _) = do
