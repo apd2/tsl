@@ -297,14 +297,14 @@ data CFACtx = CFACtx { ctxPID     :: PID           -- PID of the process being c
                      , ctxRetLoc  :: I.Loc         -- return location
                      , ctxBrkLoc  :: I.Loc         -- break location
                      , ctxLHS     :: Maybe I.Expr  -- LHS expression
-                     , ctxGNMap   :: NameMap       -- global variable visible in current scope
+                     , ctxGNMap   :: NameMap       -- global variables visible in current scope
                      , ctxLNMap   :: NameMap       -- local variable map
                      , ctxLastVar :: Int           -- counter used to generate unique variable names
                      , ctxVar     :: [I.Var]       -- temporary vars
                      }
 
 ctxInsLoc :: State CFACtx I.Loc
-ctxInsLoc = ctxInsLocLab I.LNone
+ctxInsLoc = ctxInsLocLab (I.LInst I.ActNone)
 
 ctxInsLocLab :: I.LocLabel -> State CFACtx I.Loc
 ctxInsLocLab lab = do
@@ -313,26 +313,25 @@ ctxInsLocLab lab = do
     put $ ctx {ctxCFA = cfa'}
     return loc
 
+ctxLocSetAct :: I.Loc -> I.LocAction -> State CFACtx ()
+ctxLocSetAct loc act = modify (\ctx -> ctx {ctxCFA = I.cfaLocSetAct loc act $ ctxCFA ctx})
 
---ctxLabelLoc :: I.Loc -> I.LocLabel -> State CFACtx ()
---ctxLabelLoc loc lab = modify $ (\ctx -> ctx {ctxCFA = I.cfaLabelLoc loc lab $ ctxCFA ctx})
+ctxInsTrans :: I.Loc -> I.Loc -> I.TranLabel -> State CFACtx ()
+ctxInsTrans from to t = modify (\ctx -> ctx {ctxCFA = I.cfaInsTrans from to t $ ctxCFA ctx})
 
-ctxInsTrans :: I.Loc -> I.Loc -> I.Statement -> State CFACtx ()
-ctxInsTrans from to stat = modify $ (\ctx -> ctx {ctxCFA = I.cfaInsTrans from to stat $ ctxCFA ctx})
+ctxInsTransMany :: I.Loc -> I.Loc -> [I.TranLabel] -> State CFACtx ()
+ctxInsTransMany from to ts = modify $ (\ctx -> ctx {ctxCFA = I.cfaInsTransMany from to ts $ ctxCFA ctx})
 
-ctxInsTransMany :: I.Loc -> I.Loc -> [I.Statement] -> State CFACtx ()
-ctxInsTransMany from to stats = modify $ (\ctx -> ctx {ctxCFA = I.cfaInsTransMany from to stats $ ctxCFA ctx})
-
-ctxInsTrans' :: I.Loc -> I.Statement -> State CFACtx I.Loc
-ctxInsTrans' from stat = do
+ctxInsTrans' :: I.Loc -> I.TranLabel -> State CFACtx I.Loc
+ctxInsTrans' from t = do
     to <- ctxInsLoc
-    ctxInsTrans from to stat
+    ctxInsTrans from to t
     return to
 
-ctxInsTransMany' :: I.Loc -> [I.Statement] -> State CFACtx I.Loc
-ctxInsTransMany' from stats = do
+ctxInsTransMany' :: I.Loc -> [I.TranLabel] -> State CFACtx I.Loc
+ctxInsTransMany' from ts = do
     to <- ctxInsLoc
-    ctxInsTransMany from to stats
+    ctxInsTransMany from to ts
     return to
 
 ctxInsTmpVar :: I.Type -> State CFACtx I.Var
@@ -350,19 +349,19 @@ ctxInsTmpVar t = do
     return v
 
 ctxPause :: I.Loc -> I.Expr -> State CFACtx I.Loc
-ctxPause loc cond = do after <- ctxInsLocLab (I.LPause cond)
-                       ctxInsTrans loc after I.nop
+ctxPause loc cond = do after <- ctxInsLocLab (I.LPause I.ActNone cond)
+                       ctxInsTrans loc after I.TranNop
                        case cond of
                             (I.EConst (I.BoolVal True)) -> return after
-                            _                           -> ctxInsTrans' after (I.SAssume cond)
+                            _                           -> ctxInsTrans' after (I.TranStat $ I.SAssume cond)
 
 ctxFinal :: I.Loc -> State CFACtx I.Loc
-ctxFinal loc = do after <- ctxInsLocLab I.LFinal
-                  ctxInsTrans loc after I.nop
+ctxFinal loc = do after <- ctxInsLocLab (I.LFinal I.ActNone)
+                  ctxInsTrans loc after I.TranNop
                   return after
 
-ctxErrTrans :: I.Loc -> I.Statement -> State CFACtx ()
-ctxErrTrans loc stat = modify $ (\ctx -> ctx {ctxCFA = I.cfaErrTrans loc stat $ ctxCFA ctx})
+ctxErrTrans :: I.Loc -> I.TranLabel -> State CFACtx ()
+ctxErrTrans loc t = modify $ (\ctx -> ctx {ctxCFA = I.cfaErrTrans loc t $ ctxCFA ctx})
 
 ctxPutBrkLoc :: I.Loc -> State CFACtx ()
 ctxPutBrkLoc loc = modify $ (\ctx -> ctx {ctxBrkLoc = loc})

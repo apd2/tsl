@@ -297,12 +297,8 @@ varUpdateLoc vs loc cfa cache                         = do
     return $ M.insert loc (bdds, avs) cache'
 
 -- Compute variable update functions for an individual statement
-varUpdateStat :: (?spec::Spec) => Statement -> ([C.DDNode s u], [TAbsVar]) -> PDB s u ([C.DDNode s u],[TAbsVar])
-varUpdateStat (SAssume (EConst (BoolVal True))) (rels, vs) = do
-    m    <- pdbCtx
-    lift $ mapM C.ref rels
-    return (rels,vs)
-varUpdateStat (SAssume e) (rels, vs) = do
+varUpdateStat :: (?spec::Spec) => TranLabel -> ([C.DDNode s u], [TAbsVar]) -> PDB s u ([C.DDNode s u],[TAbsVar])
+varUpdateStat (TranStat (SAssume e)) (rels, vs) = do
     pred <- pdbPred
     m    <- pdbCtx
     let ?pred = pred
@@ -313,8 +309,13 @@ varUpdateStat (SAssume e) (rels, vs) = do
     lift $ C.deref m rel
     return (fs, S.toList $ S.fromList $ vs ++ vs')
 
-varUpdateStat (SAssign e1 e2) (rels, vs) = 
+varUpdateStat (TranStat (SAssign e1 e2)) (rels, vs) = 
     foldM (varUpdateAsnStat1 e1 e2) (rels,[]) vs
+
+varUpdateStat _ (rels, vs) = do
+    m    <- pdbCtx
+    lift $ mapM C.ref rels
+    return (rels,vs)
 
 -- Given a list of variable update relations computed so far and  
 -- assignment statement, recompute individual abstract variable and 

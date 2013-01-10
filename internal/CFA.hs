@@ -2,9 +2,10 @@
 
 module CFA(Statement(..),
            (=:),
-           nop,
            Loc,
+           LocAction(..),
            LocLabel(..),
+           TranLabel(..),
            CFA,
            isDelayLabel,
            newCFA,
@@ -13,6 +14,7 @@ module CFA(Statement(..),
            cfaInitLoc,
            cfaInsLoc,
            cfaLocLabel,
+           cfaLocSetAct,
            cfaInsTrans,
            cfaInsTransMany,
            cfaInsTrans',
@@ -40,7 +42,13 @@ import Debug.Trace
 
 import PP
 import Util hiding (name,trace)
+import NS
 import IExpr
+import Pos
+
+-- Frontend imports
+import qualified Statement as F
+import qualified Expr      as F
 
 
 -- Atomic statement
@@ -57,23 +65,44 @@ instance Show Statement where
 (=:) :: Expr -> Expr -> Statement
 (=:) e1 e2 = SAssign e1 e2
 
-nop :: Statement
-nop = SAssume $ true
-
+------------------------------------------------------------
 -- Control-flow automaton
+------------------------------------------------------------
+
 type Loc = G.Node
-data LocLabel = LNone 
-              | LPause Expr
-              | LFinal 
-type CFA = G.Gr LocLabel Statement
+
+-- Syntactic element associated with CFA location
+data LocAction = ActStat F.Statement
+               | ActExpr F.Expr
+               | ActNone
+
+data LocLabel = LInst  {locAct :: LocAction}
+              | LPause {locAct :: LocAction, locExpr :: Expr}
+              | LFinal {locAct :: LocAction}
 
 instance PP LocLabel where
-    pp LNone      = empty
-    pp (LPause e) = pp e
-    pp LFinal     = text "F"
+    pp (LInst  _)   = empty
+    pp (LPause _ e) = pp e
+    pp (LFinal _)   = text "F"
 
 instance Show LocLabel where
     show = render . pp
+
+data TranLabel = TranCall Scope
+               | TranReturn
+               | TranNop
+               | TranStat Statement
+
+instance PP TranLabel where
+    pp (TranCall s)  = text "call" <+> text (show s)
+    pp TranReturn    = text "return"
+    pp TranNop       = text ""
+    pp (TranStat st) = pp st
+
+instance Show TranLabel where
+    show = render . pp
+
+type CFA = G.Gr LocLabel TranLabel
 
 instance PP CFA where
     pp cfa = text "states:"
@@ -132,12 +161,12 @@ cfaToDot cfa title = G.graphviz cfa' title (6.0, 11.0) (1,1) G.Portrait
                        take maxLabel s ++ "\n" ++ format (drop maxLabel s)
 
 isDelayLabel :: LocLabel -> Bool
-isDelayLabel (LPause _) = True
-isDelayLabel LFinal     = True
-isDelayLabel LNone      = False
+isDelayLabel (LPause _ _) = True
+isDelayLabel (LFinal _)   = True
+isDelayLabel (LInst _)    = False
 
-newCFA :: Expr -> CFA 
-newCFA initcond = G.insNode (cfaInitLoc,LPause initcond) $ G.insNode (cfaErrLoc,(LPause false)) G.empty
+newCFA :: F.Statement -> Expr -> CFA 
+newCFA stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) initcond) $ G.insNode (cfaErrLoc,(LPause ActNone false)) G.empty
 
 cfaErrLoc :: Loc
 cfaErrLoc = 0
@@ -155,43 +184,47 @@ cfaInsLoc lab cfa = (G.insNode (loc,lab) cfa, loc)
 cfaLocLabel :: Loc -> CFA -> LocLabel
 cfaLocLabel loc cfa = fromJustMsg "cfaLocLabel" $ G.lab cfa loc
 
-cfaInsTrans :: Loc -> Loc -> Statement -> CFA -> CFA
+cfaLocSetAct :: Loc -> LocAction -> CFA -> CFA
+cfaLocSetAct loc act cfa = G.gmap (\(to, id, n, from) -> 
+                                    (to, id, if id == loc then n {locAct = act} else n, from)) cfa
+
+
+cfaInsTrans :: Loc -> Loc -> TranLabel -> CFA -> CFA
 cfaInsTrans from to stat cfa = G.insEdge (from,to,stat) cfa
 
-cfaInsTransMany :: Loc -> Loc -> [Statement] -> CFA -> CFA
-cfaInsTransMany from to [] cfa = cfaInsTrans from to nop cfa
+cfaInsTransMany :: Loc -> Loc -> [TranLabel] -> CFA -> CFA
+cfaInsTransMany from to [] cfa = cfaInsTrans from to TranNop cfa
 cfaInsTransMany from to stats cfa = cfaInsTrans aft to (last stats) cfa'
-    where (cfa', aft) = foldl' (\(cfa, loc) stat -> let (cfa',loc') = cfaInsLoc LNone cfa
-                                                    in (cfaInsTrans loc loc' stat cfa', loc'))
+    where (cfa', aft) = foldl' (\(cfa, loc) stat -> cfaInsTrans' loc stat cfa) 
                                (cfa, from) (init stats)
 
-cfaInsTrans' :: Loc -> Statement -> CFA -> (CFA, Loc)
+cfaInsTrans' :: Loc -> TranLabel -> CFA -> (CFA, Loc)
 cfaInsTrans' from stat cfa = (cfaInsTrans from to stat cfa', to)
-    where (cfa', to) = cfaInsLoc LNone cfa
+    where (cfa', to) = cfaInsLoc (LInst ActNone) cfa
 
-cfaInsTransMany' :: Loc -> [Statement] -> CFA -> (CFA, Loc)
+cfaInsTransMany' :: Loc -> [TranLabel] -> CFA -> (CFA, Loc)
 cfaInsTransMany' from stats cfa = (cfaInsTransMany from to stats cfa', to)
-    where (cfa', to) = cfaInsLoc LNone cfa
+    where (cfa', to) = cfaInsLoc (LInst ActNone) cfa
 
-cfaErrTrans :: Loc -> Statement -> CFA -> CFA
+cfaErrTrans :: Loc -> TranLabel -> CFA -> CFA
 cfaErrTrans loc stat cfa =
     let (cfa',loc') = cfaInsTrans' loc stat cfa
-    in cfaInsTrans loc' cfaErrLoc (EVar cfaErrVarName =: true) cfa'
+    in cfaInsTrans loc' cfaErrLoc (TranStat $ EVar cfaErrVarName =: true) cfa'
 
-cfaSuc :: Loc -> CFA -> [(Statement,Loc)]
+cfaSuc :: Loc -> CFA -> [(TranLabel,Loc)]
 cfaSuc loc cfa = map swap $ G.lsuc cfa loc
 
 -- Add error transitions for all potential null-pointer dereferences
 cfaAddNullPtrTrans :: CFA -> Expr -> CFA
 cfaAddNullPtrTrans cfa nul = foldl' (addNullPtrTrans1 nul) cfa (G.labEdges cfa)
 
-addNullPtrTrans1 :: Expr -> CFA -> (Loc,Loc,Statement) -> CFA
-addNullPtrTrans1 nul cfa (from , _, SAssign e1 e2) = case cond of
-                                                          EConst (BoolVal False) -> cfa
-                                                          _ -> cfaErrTrans from (SAssume cond) cfa
+addNullPtrTrans1 :: Expr -> CFA -> (Loc,Loc,TranLabel) -> CFA
+addNullPtrTrans1 nul cfa (from , _, TranStat (SAssign e1 e2)) = case cond of
+                                                                     EConst (BoolVal False) -> cfa
+                                                                     _ -> cfaErrTrans from (TranStat $ SAssume cond) cfa
     where cond = disj $ map (=== nul) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)
     
-addNullPtrTrans1 _   cfa (_    , _, SAssume _)     = cfa
+addNullPtrTrans1 _   cfa (_    , _, _)                        = cfa
 
 
 cfaPruneUnreachable :: CFA -> [Loc] -> CFA
@@ -201,5 +234,3 @@ cfaPruneUnreachable cfa keep =
           then cfa   
           else --trace ("cfaPruneUnreachable: " ++ show cfa ++ "\n"++ show unreach) $
                cfaPruneUnreachable (foldl' (\cfa n -> G.delNode n cfa) cfa unreach) keep
-
-
