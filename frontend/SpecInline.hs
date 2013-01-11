@@ -121,13 +121,10 @@ mkWires =
                    ?uniq  = newUniq
                in statSimplify $ SSeq nopos $ map (\w -> SAssign nopos (ETerm nopos [name w]) (fromJust $ wireRHS w)) wires
         ctx = CFACtx { ctxPID     = []
-                     , ctxScope   = ScopeTemplate tmMain
-                     , ctxCFA     = I.newCFA stat I.true
-                     , ctxRetLoc  = error "return from a wire assignment"
-                     , ctxBrkLoc  = error "break outside a loop"
-                     , ctxLHS     = Nothing
+                     , ctxStack   = [(ScopeTemplate tmMain, error "return from a wire assignment", Nothing, M.empty)]
+                     , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
+                     , ctxBrkLocs = [error "break outside a loop"]
                      , ctxGNMap   = globalNMap
-                     , ctxLNMap   = M.empty
                      , ctxLastVar = 0
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
@@ -165,13 +162,10 @@ mkAlways =
                    ?uniq  = newUniq
                in statSimplify $ SSeq nopos $ map alwBody $ tmAlways tmMain
         ctx = CFACtx { ctxPID     = []
-                     , ctxScope   = ScopeTemplate tmMain
-                     , ctxCFA     = I.newCFA stat I.true
-                     , ctxRetLoc  = error "return from an always-block"
-                     , ctxBrkLoc  = error "break outside a loop"
-                     , ctxLHS     = Nothing
+                     , ctxStack   = [(ScopeTemplate tmMain, error "return from an always-block", Nothing, M.empty)]
+                     , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
+                     , ctxBrkLocs = [error "break outside a loop"]
                      , ctxGNMap   = globalNMap
-                     , ctxLNMap   = M.empty
                      , ctxLastVar = 0
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
@@ -234,13 +228,10 @@ mkCond descr e extra =
         stat = SSeq nopos (ss ++ [SAssume nopos cond'])
 
         ctx = CFACtx { ctxPID     = []
-                     , ctxScope   = ScopeTemplate tmMain
-                     , ctxCFA     = I.newCFA stat I.true
-                     , ctxRetLoc  = error $ "return from " ++ descr
-                     , ctxBrkLoc  = error "break outside a loop"
-                     , ctxLHS     = Nothing
+                     , ctxStack   = [(ScopeTemplate tmMain, error $ "return from " ++ descr, Nothing, M.empty)]
+                     , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
+                     , ctxBrkLocs = error "break outside a loop"
                      , ctxGNMap   = globalNMap
-                     , ctxLNMap   = M.empty
                      , ctxLastVar = 0
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
@@ -260,7 +251,7 @@ mkCond descr e extra =
 mkIdleTran :: (?spec::Spec) => I.Transition
 mkIdleTran =
     let (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc (I.TranStat $ I.SAssume $ mkContVar I.=== I.false) 
-                                          (I.newCFA (SSeq nopos []) I.true)
+                                          (I.newCFA (ScopeTemplate tmMain) (SSeq nopos []) I.true)
     in utranSuffix pidIdle False True (I.Transition I.cfaInitLoc aftguard cfa0)
 
 ----------------------------------------------------------------------
@@ -273,7 +264,7 @@ contGuard = I.SAssume $ I.conj $ [mkMagicVar I.=== I.true, mkContVar I.=== I.tru
 
 mkCTran :: (?spec::Spec) => Method -> (I.Transition, [I.Var])
 mkCTran m = (I.Transition I.cfaInitLoc after cfa4, vs)
-    where (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc (I.TranStat contGuard) (I.newCFA (SSeq nopos []) I.true)
+    where (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc (I.TranStat contGuard) (I.newCFA (ScopeTemplate tmMain) (SSeq nopos []) I.true)
           -- tag
           (cfa1, afttag)   = I.cfaInsTrans' aftguard (I.TranStat $ mkTagVar I.=: tagMethod m) cfa0
           -- arguments
@@ -295,7 +286,7 @@ mkCTran m = (I.Transition I.cfaInitLoc after cfa4, vs)
 
 mkMagicReturn :: (?spec::Spec) => I.Transition
 mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
-    where (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc (I.TranStat contGuard) (I.newCFA (SSeq nopos []) I.true)
+    where (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc (I.TranStat contGuard) (I.newCFA (ScopeTemplate tmMain) (SSeq nopos []) I.true)
           (cfa1, aftmagic) = I.cfaInsTrans' aftguard (I.TranStat $ mkMagicVar I.=: I.false) cfa0
           (cfa2, after)    = I.cfaInsTrans' aftmagic (I.TranStat $ mkContVar I.=: I.false)  cfa1
 
@@ -383,14 +374,12 @@ mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar :
 -- whose syntactic scope the present process is located.
 procToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Process -> (I.CFA, [I.Var])
 procToCFA pid proc = I.cfaTraceFile (ctxCFA ctx') (pidToName pid) $ (ctxCFA ctx', ctxVar ctx')
-    where ctx = CFACtx { ctxPID     = pid 
-                       , ctxScope   = ScopeProcess tmMain proc
-                       , ctxCFA     = I.newCFA (procStatement proc) I.true
-                       , ctxRetLoc  = error "return from a process"
-                       , ctxBrkLoc  = error "break outside a loop"
-                       , ctxLHS     = Nothing
+    where scope = ScopeProcess tmMain proc 
+          ctx = CFACtx { ctxPID     = pid 
+                       , ctxStack   = [(scope, error "return from a process", Nothing, procLMap pid proc)]
+                       , ctxCFA     = I.newCFA scope (procStatement proc) I.true
+                       , ctxBrkLocs = error "break outside a loop"
                        , ctxGNMap   = globalNMap
-                       , ctxLNMap   = procLMap pid proc
                        , ctxLastVar = 0
                        , ctxVar     = []}
           ctx' = execState (do aft <- procStatToCFA (procStatement proc) I.cfaInitLoc
@@ -402,13 +391,10 @@ fprocToCFA pid lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (pidToName pid)
     where guard = mkEnVar pid Nothing I.=== I.true
           -- Add process-local variables to nmap
           ctx = CFACtx { ctxPID     = pid 
-                       , ctxScope   = parscope
-                       , ctxCFA     = I.newCFA stat guard
-                       , ctxRetLoc  = error "return from a forked process"
-                       , ctxBrkLoc  = error "break outside a loop"
-                       , ctxLHS     = Nothing
+                       , ctxStack   = [(parscope, error "return from a forked process", Nothing, lmap)]
+                       , ctxCFA     = I.newCFA parscope stat guard
+                       , ctxBrkLocs = error "break outside a loop"
                        , ctxGNMap   = globalNMap
-                       , ctxLNMap   = lmap
                        , ctxLastVar = 0
                        , ctxVar     = []}
           ctx' = execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume guard
@@ -429,20 +415,17 @@ taskToCFA pid meth ctl = I.cfaTraceFile (ctxCFA ctx') (pidToName pid ++ "_" ++ s
           scope = ScopeMethod tmMain meth
           stat = fromRight $ methBody meth
           ctx = CFACtx { ctxPID     = pid 
-                       , ctxScope   = scope
-                       , ctxCFA     = I.newCFA stat guard
-                       , ctxRetLoc  = I.cfaInitLoc
-                       , ctxBrkLoc  = error "break outside a loop"
-                       , ctxLHS     = mkRetVar (Just pid) meth
+                       , ctxStack   = []
+                       , ctxCFA     = I.newCFA scope stat guard
+                       , ctxBrkLocs = error "break outside a loop"
                        , ctxGNMap   = globalNMap
-                       , ctxLNMap   = methodLMap pid meth
                        , ctxLastVar = 0
                        , ctxVar     = []}
           ctx' = execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume guard
                                aftcall <- ctxInsTrans' aftguard $ I.TranCall scope
                                retloc  <- ctxInsLoc
                                ctxInsTrans retloc I.cfaInitLoc (I.TranStat reset)
-                               ctxPutRetLoc retloc
+                               ctxPushScope scope retloc (mkRetVar (Just pid) meth) (methodLMap pid meth)
                                aftbody <- procStatToCFA stat aftcall
                                ctxInsTrans aftbody retloc I.TranReturn) ctx
 
@@ -581,12 +564,12 @@ cfaToIProcess pid (cfa,vs) = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nr
     r = S.toList $ reachable $ S.singleton I.cfaInitLoc
     trans' = map (utranSuffix pid True False) $ filter (\t -> elem (I.tranFrom t) r) trans
     final = filter (\loc -> case I.cfaLocLabel loc cfa of
-                                 I.LFinal _ -> True
-                                 _          -> False) r
+                                 I.LFinal _ _ -> True
+                                 _            -> False) r
     pcenum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) r
     wait   = map (\loc -> case I.cfaLocLabel loc cfa of
-                               I.LFinal _      -> (loc, I.true)
-                               I.LPause _ cond -> (loc, cond)) r
+                               I.LFinal _ _      -> (loc, I.true)
+                               I.LPause _ _ cond -> (loc, cond)) r
 
     reachable :: S.Set I.Loc -> S.Set I.Loc
     reachable locs = if S.null $ locs' S.\\ locs

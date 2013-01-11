@@ -76,14 +76,16 @@ data LocAction = ActStat F.Statement
                | ActExpr F.Expr
                | ActNone
 
+type Stack = [Scope]
+
 data LocLabel = LInst  {locAct :: LocAction}
-              | LPause {locAct :: LocAction, locExpr :: Expr}
-              | LFinal {locAct :: LocAction}
+              | LPause {locAct :: LocAction, locStack :: Stack, locExpr :: Expr}
+              | LFinal {locAct :: LocAction, locStack :: Stack}
 
 instance PP LocLabel where
-    pp (LInst  _)   = empty
-    pp (LPause _ e) = pp e
-    pp (LFinal _)   = text "F"
+    pp (LInst  _)     = empty
+    pp (LPause _ _ e) = pp e
+    pp (LFinal _ _)   = text "F"
 
 instance Show LocLabel where
     show = render . pp
@@ -161,12 +163,12 @@ cfaToDot cfa title = G.graphviz cfa' title (6.0, 11.0) (1,1) G.Portrait
                        take maxLabel s ++ "\n" ++ format (drop maxLabel s)
 
 isDelayLabel :: LocLabel -> Bool
-isDelayLabel (LPause _ _) = True
-isDelayLabel (LFinal _)   = True
-isDelayLabel (LInst _)    = False
+isDelayLabel (LPause _ _ _) = True
+isDelayLabel (LFinal _ _)   = True
+isDelayLabel (LInst _)      = False
 
-newCFA :: F.Statement -> Expr -> CFA 
-newCFA stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) initcond) $ G.insNode (cfaErrLoc,(LPause ActNone false)) G.empty
+newCFA :: Scope -> F.Statement -> Expr -> CFA 
+newCFA scope stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [scope] initcond) $ G.insNode (cfaErrLoc,(LPause ActNone [scope] false)) G.empty
 
 cfaErrLoc :: Loc
 cfaErrLoc = 0

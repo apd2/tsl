@@ -99,9 +99,7 @@ statToCFA before s@(SWait _ c)    = do ctxLocSetAct before (I.ActStat s)
                                        ci <- exprToIExprDet c
                                        ctxPause before ci
 statToCFA before s@(SStop _)      = do ctxLocSetAct before (I.ActStat s)
-                                       after <- ctxInsLocLab (I.LFinal I.ActNone)
-                                       ctxInsTrans before after I.TranNop
-                                       return after
+                                       ctxFinal before
 statToCFA before   (SVarDecl _ _) = return before
 statToCFA before   s@stat         = do ctxLocSetAct before (I.ActStat s)
                                        after <- ctxInsLoc
@@ -114,12 +112,11 @@ statToCFA' before after (SReturn _ rval) = do
     -- add transition before before to return location
     lhs   <- gets ctxLHS
     ret   <- gets ctxRetLoc
-    scope <- gets ctxScope
     case rval of 
          Nothing -> ctxInsTrans before ret I.TranReturn
          Just v  -> case lhs of
                          Nothing  -> ctxInsTrans before ret I.TranReturn
-                         Just lhs -> do ScopeMethod _ m <- gets ctxScope
+                         Just lhs -> do scope@(ScopeMethod _ m) <- gets ctxScope
                                         let t = fromJust $ methRettyp m
                                         vi <- exprToIExprs v t
                                         let asns = map I.TranStat
@@ -145,32 +142,29 @@ statToCFA' before after (SPar _ ps) = do
     ctxInsTrans aftdisable after I.TranNop
 
 statToCFA' before after (SForever _ stat) = do
-    brkLoc <- gets ctxBrkLoc
-    ctxPutBrkLoc after
+    ctxPushBrkLoc after
     -- create target for loopback transition
     loopback <- ctxInsTrans' before I.TranNop
     -- loc' = end of loop body
     loc' <- statToCFA loopback stat
     -- loop-back transition
     ctxInsTrans loc' loopback I.TranNop
-    ctxPutBrkLoc brkLoc
+    ctxPopBrkLoc
 
 statToCFA' before after (SDo _ stat cond) = do
-    brkLoc <- gets ctxBrkLoc
     cond' <- exprToIExpr cond (BoolSpec nopos)
-    ctxPutBrkLoc after
+    ctxPushBrkLoc after
     -- create target for loopback transition
     loopback <- ctxInsTrans' before I.TranNop
     aftbody <- statToCFA loopback stat
     ctxLocSetAct aftbody (I.ActExpr cond)
-    ctxPutBrkLoc brkLoc
+    ctxPopBrkLoc
     -- loop-back transition
     ctxInsTrans aftbody loopback (I.TranStat $ I.SAssume cond')
     -- exit loop transition
     ctxInsTrans aftbody after (I.TranStat $ I.SAssume $ I.EUnOp Not cond')
 
 statToCFA' before after (SWhile _ cond stat) = do
-    brkLoc <- gets ctxBrkLoc
     cond' <- exprToIExpr cond (BoolSpec nopos)
     -- create target for loopback transition
     loopback <- ctxInsTrans' before I.TranNop
@@ -179,14 +173,13 @@ statToCFA' before after (SWhile _ cond stat) = do
     -- after condition has been checked, before the body
     befbody <- ctxInsTrans' loopback (I.TranStat $ I.SAssume cond')
     -- body
-    ctxPutBrkLoc after
+    ctxPushBrkLoc after
     aftbody <- statToCFA befbody stat
     -- loop-back transition
     ctxInsTrans aftbody loopback I.TranNop
-    ctxPutBrkLoc brkLoc
+    ctxPopBrkLoc
 
 statToCFA' before after (SFor _ (minit, cond, inc) body) = do
-    brkLoc <- gets ctxBrkLoc
     cond' <- exprToIExpr cond (BoolSpec nopos)
     aftinit <- case minit of
                     Nothing   -> return before
@@ -197,11 +190,11 @@ statToCFA' before after (SFor _ (minit, cond, inc) body) = do
     ctxInsTrans loopback after (I.TranStat $ I.SAssume $ I.EUnOp Not cond')
     -- before loop body
     befbody <- ctxInsTrans' loopback $ I.TranStat $ I.SAssume cond'
-    ctxPutBrkLoc after
+    ctxPushBrkLoc after
     aftbody <- statToCFA befbody body
     -- after increment is performed at the end of loop iteration
     aftinc <- statToCFA aftbody inc
-    ctxPutBrkLoc brkLoc
+    ctxPopBrkLoc
     -- loopback transition
     ctxInsTrans aftinc loopback I.TranNop
 
@@ -287,9 +280,8 @@ statToCFA' before after (SMagic _ obj) = do
 methInline :: (?spec::Spec,?procs::[ProcTrans]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
 methInline before after meth args mlhs = do
     -- save current context
-    befctx <- get
-    let pid = ctxPID befctx
-        scope = ScopeMethod tmMain meth
+    pid <- gets ctxPID
+    let scope = ScopeMethod tmMain meth
     lhs <- case mlhs of
                 Nothing  -> return Nothing
                 Just lhs -> (liftM Just) $ exprToIExprDet lhs
@@ -300,21 +292,16 @@ methInline before after meth args mlhs = do
 --                      _      -> return aftarg
     -- set return location
     retloc <- ctxInsLoc
-    ctxPutRetLoc retloc
     -- clear break location
-    ctxPutBrkLoc $ error "break outside a loop"
+    ctxPushBrkLoc $ error "break outside a loop"
     -- change syntactic scope
-    ctxPutScope scope
-    -- set LHS
-    ctxPutLHS lhs
-    -- build local map consisting of method arguments and local variables
-    ctxPutLNMap $ methodLMap pid meth
+    ctxPushScope scope retloc lhs (methodLMap pid meth)
     -- build CFA of the method
     aftcall <- ctxInsTrans' aftarg (I.TranCall scope)
     aftbody <- statToCFA aftcall (fromRight $ methBody meth)
     ctxInsTrans aftbody retloc I.TranReturn
     -- restore syntactic scope
-    ctxPutScope $ ctxScope befctx
+    ctxPopScope
     -- copy out arguments
     aftout <- copyOutArgs retloc meth args
 --    aftpause2 <- case methCat meth of
@@ -323,10 +310,7 @@ methInline before after meth args mlhs = do
     -- nop-transition to after
     ctxInsTrans aftout after I.TranNop
     -- restore context
-    ctxPutBrkLoc $ ctxBrkLoc befctx
-    ctxPutRetLoc $ ctxRetLoc befctx
-    ctxPutLNMap  $ ctxLNMap  befctx
-    ctxPutLHS    $ ctxLHS    befctx
+    ctxPopBrkLoc
 
 
 taskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()

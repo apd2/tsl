@@ -291,17 +291,41 @@ getEnumName n =
 -- State maintained during CFA construction
 -----------------------------------------------------------
 
-data CFACtx = CFACtx { ctxPID     :: PID           -- PID of the process being constructed
-                     , ctxScope   :: Scope         -- current syntactic scope
-                     , ctxCFA     :: I.CFA         -- CFA constructed so far
-                     , ctxRetLoc  :: I.Loc         -- return location
-                     , ctxBrkLoc  :: I.Loc         -- break location
-                     , ctxLHS     :: Maybe I.Expr  -- LHS expression
-                     , ctxGNMap   :: NameMap       -- global variables visible in current scope
-                     , ctxLNMap   :: NameMap       -- local variable map
-                     , ctxLastVar :: Int           -- counter used to generate unique variable names
-                     , ctxVar     :: [I.Var]       -- temporary vars
+data CFACtx = CFACtx { ctxPID     :: PID                                     -- PID of the process being constructed
+                     , ctxStack   :: [(Scope, I.Loc, Maybe I.Expr, NameMap)] -- stack of syntactic scopes: (scope, return location, LHS, local namemap)
+                     , ctxCFA     :: I.CFA                                   -- CFA constructed so far
+                     , ctxBrkLocs :: [I.Loc]                                 -- stack break location
+                     , ctxGNMap   :: NameMap                                 -- global variables visible in current scope
+                     , ctxLastVar :: Int                                     -- counter used to generate unique variable names
+                     , ctxVar     :: [I.Var]                                 -- temporary vars
                      }
+
+ctxScope :: CFACtx -> Scope
+ctxScope = fst4 . head . ctxStack
+
+ctxRetLoc :: CFACtx -> I.Loc
+ctxRetLoc = snd4 . head . ctxStack
+
+ctxLHS :: CFACtx -> Maybe I.Expr
+ctxLHS = trd4 . head . ctxStack
+
+ctxLNMap :: CFACtx -> NameMap
+ctxLNMap = frt4 . head . ctxStack
+
+ctxPushScope :: Scope -> I.Loc -> Maybe I.Expr -> NameMap -> State CFACtx ()
+ctxPushScope scope retloc lhs nmap = modify (\ctx -> ctx {ctxStack = (scope, retloc, lhs, nmap) : (ctxStack ctx)})
+
+ctxPopScope :: State CFACtx ()
+ctxPopScope = modify (\ctx -> ctx {ctxStack = tail $ ctxStack ctx})
+
+ctxBrkLoc :: CFACtx -> I.Loc
+ctxBrkLoc = head . ctxBrkLocs
+
+ctxPushBrkLoc :: I.Loc -> State CFACtx ()
+ctxPushBrkLoc loc = modify (\ctx -> ctx {ctxBrkLocs = loc : (ctxBrkLocs ctx)})
+
+ctxPopBrkLoc :: State CFACtx ()
+ctxPopBrkLoc = modify (\ctx -> ctx {ctxBrkLocs = tail $ ctxBrkLocs ctx})
 
 ctxInsLoc :: State CFACtx I.Loc
 ctxInsLoc = ctxInsLocLab (I.LInst I.ActNone)
@@ -349,31 +373,18 @@ ctxInsTmpVar t = do
     return v
 
 ctxPause :: I.Loc -> I.Expr -> State CFACtx I.Loc
-ctxPause loc cond = do after <- ctxInsLocLab (I.LPause I.ActNone cond)
+ctxPause loc cond = do stack <- gets ctxStack
+                       after <- ctxInsLocLab (I.LPause I.ActNone (map fst4 stack) cond)
                        ctxInsTrans loc after I.TranNop
                        case cond of
                             (I.EConst (I.BoolVal True)) -> return after
                             _                           -> ctxInsTrans' after (I.TranStat $ I.SAssume cond)
 
 ctxFinal :: I.Loc -> State CFACtx I.Loc
-ctxFinal loc = do after <- ctxInsLocLab (I.LFinal I.ActNone)
+ctxFinal loc = do stack <- gets ctxStack
+                  after <- ctxInsLocLab (I.LFinal I.ActNone (map fst4 stack))
                   ctxInsTrans loc after I.TranNop
                   return after
 
 ctxErrTrans :: I.Loc -> I.TranLabel -> State CFACtx ()
 ctxErrTrans loc t = modify $ (\ctx -> ctx {ctxCFA = I.cfaErrTrans loc t $ ctxCFA ctx})
-
-ctxPutBrkLoc :: I.Loc -> State CFACtx ()
-ctxPutBrkLoc loc = modify $ (\ctx -> ctx {ctxBrkLoc = loc})
-
-ctxPutRetLoc :: I.Loc -> State CFACtx ()
-ctxPutRetLoc loc = modify $ (\ctx -> ctx {ctxRetLoc = loc})
-
-ctxPutLNMap :: NameMap -> State CFACtx ()
-ctxPutLNMap m = modify $ (\ctx -> ctx {ctxLNMap = m})
-
-ctxPutLHS :: Maybe I.Expr -> State CFACtx ()
-ctxPutLHS lhs = modify $ (\ctx -> ctx {ctxLHS = lhs})
-
-ctxPutScope :: Scope -> State CFACtx ()
-ctxPutScope s = modify $ (\ctx -> ctx {ctxScope = s})
