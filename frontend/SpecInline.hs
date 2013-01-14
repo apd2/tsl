@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, TupleSections #-}
+{-# LANGUAGE ImplicitParams, TupleSections, RecordWildCards #-}
 
 -- Convert flattened spec to internal representation
 module SpecInline (spec2Internal) where
@@ -19,6 +19,7 @@ import qualified IExpr as I
 import qualified CFA   as I
 import qualified IType as I
 import qualified IVar  as I
+import qualified CFASpec as C
 import Pos
 import Name
 import NS
@@ -41,17 +42,16 @@ import Inline
 spec2Internal :: Spec -> I.Spec
 spec2Internal s = 
     let ?spec = specSimplify s -- preprocessing
-    in let senum = mapMaybe (\d -> case tspec d of
+    in let cspec = spec2CFA
+           senum = mapMaybe (\d -> case tspec d of
                                         EnumSpec _ es -> Just $ I.Enumeration (sname d) (map sname es)
                                         _             -> Nothing) (specType ?spec)
            (vars, tagenum, auxinit) = mkVars
            -- Controllable transitions
            (ctran, cvars) = unzip $ map mkCTran $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain
            -- Uncontrollable processes
-           uproc = concatMap procTree $ tmProcess tmMain
-           cproc = map (\m -> let ?procs = [] in cfaToIProcess [sname m] $ taskToCFA [] m True) 
-                       $ filter ((== Task Controllable) . methCat)
-                       $ tmMethod tmMain
+           uproc = concatMap (cprocToTrans []) $ C.specProc cspec
+           cproc = map (ctaskToTrans []) $ C.specCTask cspec 
            -- PC variables, associated enums and initial assignments.
            -- Only create PC variables for processes with >1 states.
            (pcvars, pcenums, pcinit) = unzip3 
@@ -73,12 +73,21 @@ spec2Internal s =
                                   concatMap pVar uproc
                  , I.specCTran  = mkMagicReturn : ctran
                  , I.specUTran  = mkIdleTran : utran
-                 , I.specWire   = mkWires
-                 , I.specAlways = mkAlways
+                 , I.specWire   = cfaToITransition (C.specWire cspec) "wires"
+                 , I.specAlways = cfaToITransition (C.specAlways cspec) "always"
                  , I.specInit   = (mkInit, I.conj $ (auxinit : pcinit))
                  , I.specGoal   = mkMagicGoal : (map mkGoal $ tmGoal tmMain)
                  , I.specFair   = mkFair $ cproc ++ uproc
                  }
+
+spec2CFA :: (?spec::Spec) => C.Spec
+spec2CFA = C.Spec{..}
+    where specWire   = mkWires
+          specAlways = mkAlways
+          specProc   = map procToCProc $ tmProcess tmMain
+          specCTask  = map (\m -> C.Task (sname m) (let ?procs = [] in taskToCFA [] m True))
+                       $ filter ((== Task Controllable) . methCat)
+                       $ tmMethod tmMain
 
 
 ------------------------------------------------------------------------------
@@ -113,7 +122,7 @@ methSimplify tm m = let ?scope = ScopeMethod tm m
 
 -- Generate transition that assigns all wire variables.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkWires :: (?spec::Spec) => I.Transition
+mkWires :: (?spec::Spec) => I.CFA
 mkWires = 
     let wires = orderWires
         -- Generate assignment statement for each wire
@@ -129,10 +138,7 @@ mkWires =
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                                ctxPause aft I.true) ctx
-        trans = I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ locTrans (ctxCFA ctx') I.cfaInitLoc
-    in case trans of
-            [t] -> I.cfaTraceFile (I.tranCFA t) "wires" $ t
-            _   -> error $ "mkWires: Invalid wire expression.\nstat:" ++ show stat ++ "\ntrans:\n" ++ (intercalate "\n\n"  $ map show trans)
+    in I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ ctxCFA ctx'
 
 
 -- Build total order of wires so that for each wire, all wires that
@@ -156,7 +162,7 @@ orderWires' g | G.noNodes g == 0  = []
 
 -- Generate transition that performs all always-actions.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkAlways :: (?spec::Spec) => I.Transition
+mkAlways :: (?spec::Spec) => I.CFA
 mkAlways = 
     let stat = let ?scope = ScopeTemplate tmMain
                    ?uniq  = newUniq
@@ -170,12 +176,7 @@ mkAlways =
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                                ctxPause aft I.true) ctx
-        trans = I.cfaTraceFile (ctxCFA ctx') "always_cfa" $ locTrans (ctxCFA ctx') I.cfaInitLoc
-    in case trans of
-            [t] -> I.cfaTraceFile (I.tranCFA t) "always" $ t
-            _   -> error $ "mkAlways: Invalid always-block.\nstat:" ++ show stat ++ "\ntrans:\n" ++ (intercalate "\n\n"  $ map show trans)
-
-
+    in I.cfaTraceFile (ctxCFA ctx') "always_cfa" $ ctxCFA ctx'
 
 ----------------------------------------------------------------------
 -- Fair sets
@@ -369,42 +370,33 @@ mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar :
 -- CFA transformation
 ----------------------------------------------------------------------
 
--- Convert process to CFA
--- For a forked process the mparpid argument is the PID of the process in 
--- whose syntactic scope the present process is located.
-procToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Process -> (I.CFA, [I.Var])
-procToCFA pid proc = I.cfaTraceFile (ctxCFA ctx') (pidToName pid) $ (ctxCFA ctx', ctxVar ctx')
-    where scope = ScopeProcess tmMain proc 
-          ctx = CFACtx { ctxPID     = pid 
-                       , ctxStack   = [(scope, error "return from a process", Nothing, procLMap pid proc)]
-                       , ctxCFA     = I.newCFA scope (procStatement proc) I.true
-                       , ctxBrkLocs = error "break outside a loop"
-                       , ctxGNMap   = globalNMap
-                       , ctxLastVar = 0
-                       , ctxVar     = []}
-          ctx' = execState (do aft <- procStatToCFA (procStatement proc) I.cfaInitLoc
-                               ctxFinal aft) ctx
-
--- Convert forked process to CFA
-fprocToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
-fprocToCFA pid lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (pidToName pid) $ (ctxCFA ctx', ctxVar ctx')
-    where guard = mkEnVar pid Nothing I.=== I.true
+-- Convert normal or forked process to CFA
+procToCFA :: (?spec::Spec, ?procs::[C.Process]) => PID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
+procToCFA pid lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (pidToName pid) $ (ctxCFA ctx', ctxVar ctx')
+    where -- top-level processes are not guarded
+          guarded = length pid > 1
+          guard = if guarded 
+                     then mkEnVar pid Nothing I.=== I.true
+                     else I.true
           -- Add process-local variables to nmap
           ctx = CFACtx { ctxPID     = pid 
-                       , ctxStack   = [(parscope, error "return from a forked process", Nothing, lmap)]
+                       , ctxStack   = [(parscope, error "return from a process", Nothing, lmap)]
                        , ctxCFA     = I.newCFA parscope stat guard
                        , ctxBrkLocs = error "break outside a loop"
                        , ctxGNMap   = globalNMap
                        , ctxLastVar = 0
                        , ctxVar     = []}
-          ctx' = execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume guard
-                               final <- procStatToCFA stat aftguard
-                               ctxFinal final) ctx
+          ctx' = execState (do aftguard <- if guarded
+                                              then ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume guard
+                                              else return I.cfaInitLoc
+                               aft <- procStatToCFA stat aftguard
+                               ctxFinal aft
+                               ctxPruneUnreachable) ctx
 
 -- Convert controllable or uncontrollable task to CFA.
 -- The ctl argument indicates that a controllable transition is to be
 -- generated (using tag instead of enabling variable)
-taskToCFA :: (?spec::Spec, ?procs::[ProcTrans]) => PID -> Method -> Bool -> (I.CFA, [I.Var])
+taskToCFA :: (?spec::Spec, ?procs::[C.Process]) => PID -> Method -> Bool -> (I.CFA, [I.Var])
 taskToCFA pid meth ctl = I.cfaTraceFile (ctxCFA ctx') (pidToName pid ++ "_" ++ sname meth) $ (ctxCFA ctx', ctxVar ctx')
     where guard = if ctl
                      then mkTagVar I.=== tagMethod meth
@@ -427,42 +419,42 @@ taskToCFA pid meth ctl = I.cfaTraceFile (ctxCFA ctx') (pidToName pid ++ "_" ++ s
                                ctxInsTrans retloc I.cfaInitLoc (I.TranStat reset)
                                ctxPushScope scope retloc (mkRetVar (Just pid) meth) (methodLMap pid meth)
                                aftbody <- procStatToCFA stat aftcall
-                               ctxInsTrans aftbody retloc I.TranReturn) ctx
+                               ctxInsTrans aftbody retloc I.TranReturn
+                               ctxPruneUnreachable) ctx
 
--- Recursively construct LTS for the process and its children
-procTree :: (?spec::Spec) => Process -> [ProcTrans]
-procTree p = 
-    let pid      = [sname p]
-        scope    = ScopeProcess tmMain p
-        children = procTreeRec pid scope (procStatement p) (procLMap pid p)
-        iproc    = let ?procs = children in cfaToIProcess pid $ procToCFA pid p
-    in iproc : children
+-- Recursively construct CFA's for the process and its children
+procToCProc :: (?spec::Spec) => Process -> C.Process
+procToCProc p = fprocToCProc [] ((ScopeProcess tmMain p), (name p, (procStatement p)))
 
-fprocTree :: (?spec::Spec) => PID -> Scope -> NameMap -> (Ident, Statement) -> [ProcTrans]
-fprocTree parpid parscope lmap (n,stat) = 
-    let pid      = parpid ++ [sname n]
-        children = procTreeRec pid parscope stat lmap
-        iproc    = let ?procs = children in cfaToIProcess pid $ fprocToCFA pid lmap parscope stat
-    in iproc : children
+fprocToCProc :: (?spec::Spec) => PID -> (Scope, (Ident, Statement)) -> C.Process 
+fprocToCProc parpid (scope, (n,stat)) = C.Process{..}
+    where lmap         = case scope of
+                              ScopeProcess _ p -> procLMap p
+                              ScopeMethod  _ m -> methodLMap parpid m
+          pid          = parpid ++ [sname n]
+          procName     = sname n
+          procChildren = map (fprocToCProc pid) $ forkedProcsRec scope stat
+          procCFA      = let ?procs = procChildren in procToCFA pid lmap scope stat
+          procTask     = map (let ?procs = procChildren in taskToCTask pid)
+                             $ filter (((flip elem) [Task Controllable, Task Uncontrollable]) . methCat)
+                             $ procCallees scope stat
 
-taskProcTree :: (?spec::Spec) => PID -> Method -> [ProcTrans]
-taskProcTree parpid meth = 
-    let pid      = parpid ++ [sname meth]
-        children = procTreeRec parpid (ScopeMethod tmMain meth) (fromRight $ methBody meth) (methodLMap parpid meth)
-        iproc    = let ?procs = children in cfaToIProcess pid $ taskToCFA parpid meth False
-    in iproc : children
+taskToCTask :: (?spec::Spec, ?procs::[C.Process]) => PID -> Method -> C.Task
+taskToCTask parpid meth = C.Task{..}
+    where taskName = sname meth
+          taskCFA  = taskToCFA parpid meth False
 
--- Recursive step of the algorithm: find all child subprocesses of a statement
-procTreeRec :: (?spec::Spec) => PID -> Scope -> Statement -> NameMap -> [ProcTrans]
-procTreeRec pid scope stat lmap = tasks ++ forked
-    where
-    -- controllable/uncontrollable tasks invoked by the process
-    tasks  = concatMap (taskProcTree pid)
-             $ filter (((flip elem) [Task Controllable, Task Uncontrollable]) . methCat)
-             $ procCallees scope stat
-    -- spawned processes
-    forked = concatMap (fprocTree pid scope lmap) $ forkedProcs stat
 
+cprocToTrans :: (?spec::Spec) => PID -> C.Process -> [ProcTrans]
+cprocToTrans parpid p =  cfaToIProcess pid (C.procCFA p) 
+                      :  concatMap (cprocToTrans pid) (C.procChildren p) 
+                      ++ map (ctaskToTrans pid) (C.procTask p)
+    where pid = parpid ++ [C.procName p]
+
+ctaskToTrans :: PID -> C.Task -> ProcTrans
+ctaskToTrans parpid t = cfaToIProcess pid (C.taskCFA t)
+   where pid = parpid ++ [C.taskName t]
+    
 -- Map a function over all inlined tasks called by the process
 mapPTreeInlinedTask :: (?spec::Spec) => (PID -> Method -> a) -> Process -> [a]
 mapPTreeInlinedTask f p = mapPTreeInlinedTask' f [sname p] (ScopeProcess tmMain p) (procStatement p)
@@ -551,32 +543,29 @@ forkedProcsRec s stat =
 -- CFA to LTS transformation
 ---------------------------------------------------------------
 
+cfaToITransition :: I.CFA -> String -> I.Transition
+cfaToITransition cfa name = case trans of
+                                 [t] -> I.cfaTraceFile (I.tranCFA t) name $ t
+                                 _   -> error $ "cfaToITransition: Invalid CFA:\n" ++ (intercalate "\n\n"  $ map show trans)
+      where trans = locTrans cfa I.cfaInitLoc
+
+-- Convert CFA to a lits of transitions.
+-- Assume that unreachable states have already been pruned.
 cfaToIProcess :: PID -> (I.CFA,[I.Var]) -> ProcTrans
 cfaToIProcess pid (cfa,vs) = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreachable: " ++ (intercalate ", " $ map show r)) $
                              I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ pidToName pid) $
                              ProcTrans pid trans' vs final pcenum wait
     where
     -- compute a set of transitions for each location labelled with pause or final
-    trans = concatMap (locTrans cfa . fst)
-                      $ filter (I.isDelayLabel . snd)
-                      $ G.labNodes cfa
+    states = map fst $ filter (I.isDelayLabel . snd) $ G.labNodes cfa
+    trans = concatMap (locTrans cfa) states
     -- filter out unreachable transitions
-    r = S.toList $ reachable $ S.singleton I.cfaInitLoc
-    trans' = map (utranSuffix pid True False) $ filter (\t -> elem (I.tranFrom t) r) trans
-    final = filter (\loc -> case I.cfaLocLabel loc cfa of
-                                 I.LFinal _ _ -> True
-                                 _            -> False) r
-    pcenum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) r
+    trans' = map (utranSuffix pid True False) trans
+    final = I.cfaFinal cfa
+    pcenum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) states
     wait   = map (\loc -> case I.cfaLocLabel loc cfa of
                                I.LFinal _ _      -> (loc, I.true)
-                               I.LPause _ _ cond -> (loc, cond)) r
-
-    reachable :: S.Set I.Loc -> S.Set I.Loc
-    reachable locs = if S.null $ locs' S.\\ locs
-                        then locs'
-                        else reachable locs'
-        where locs' = S.union locs (S.unions $ map suc $ S.toList locs)
-    suc loc = S.fromList $ map I.tranTo $ filter ((==loc) . I.tranFrom) trans
+                               I.LPause _ _ cond -> (loc, cond)) states
 
 
 locTrans :: I.CFA -> I.Loc -> [I.Transition]

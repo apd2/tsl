@@ -37,6 +37,8 @@ tmMain = head $ specTemplate ?spec
 -- Process ID (path in the process tree)
 ----------------------------------------------------------------------
 
+type PID = [String]
+
 data ProcTrans = ProcTrans { pPID    :: PID
                            , pBody   :: [I.Transition]
                            , pVar    :: [I.Var]
@@ -44,8 +46,6 @@ data ProcTrans = ProcTrans { pPID    :: PID
                            , pPCEnum :: I.Enumeration
                            , pPauses :: [(I.Loc, I.Expr)]  -- process locations and corresponding wait conditions
                            }
-
-type PID = [String]
 
 instance PP ProcTrans where
     pp p = text "ProcTrans" <+> (text $ pidToName $ pPID p) <+>
@@ -241,8 +241,8 @@ methodLMap pid meth =
     M.fromList $ map (\v -> (name v, mkVar (Just pid) (Just meth) v)) (methVar meth) ++
                  map (\a -> (name a, mkVar (Just pid) (Just meth) a)) (methArg meth)
 
-procLMap :: PID -> Process -> NameMap
-procLMap pid p = M.fromList $ map (\v -> (name v, mkVar (Just pid) Nothing v)) (procVar p)
+procLMap :: Process -> NameMap
+procLMap p = M.fromList $ map (\v -> (name v, mkVar (Just [sname p]) Nothing v)) (procVar p)
 
 globalNMap :: (?spec::Spec) => NameMap
 globalNMap = M.fromList $ gvars ++ wires ++ enums
@@ -388,3 +388,7 @@ ctxFinal loc = do stack <- gets ctxStack
 
 ctxErrTrans :: I.Loc -> I.TranLabel -> State CFACtx ()
 ctxErrTrans loc t = modify $ (\ctx -> ctx {ctxCFA = I.cfaErrTrans loc t $ ctxCFA ctx})
+
+ctxPruneUnreachable :: State CFACtx ()
+ctxPruneUnreachable = modify (\ctx -> ctx {ctxCFA = I.cfaPruneUnreachable (ctxCFA ctx) [I.cfaInitLoc]})
+

@@ -21,6 +21,7 @@ module CFA(Statement(..),
            cfaInsTransMany',
            cfaErrTrans,
            cfaSuc,
+           cfaFinal,
            cfaAddNullPtrTrans,
            cfaPruneUnreachable,
            cfaTrace,
@@ -216,6 +217,11 @@ cfaErrTrans loc stat cfa =
 cfaSuc :: Loc -> CFA -> [(TranLabel,Loc)]
 cfaSuc loc cfa = map swap $ G.lsuc cfa loc
 
+cfaFinal :: CFA -> [Loc]
+cfaFinal cfa = map fst $ filter (\n -> case snd n of
+                                            LFinal _ _ -> True
+                                            _          -> False) $ G.labNodes cfa
+
 -- Add error transitions for all potential null-pointer dereferences
 cfaAddNullPtrTrans :: CFA -> Expr -> CFA
 cfaAddNullPtrTrans cfa nul = foldl' (addNullPtrTrans1 nul) cfa (G.labEdges cfa)
@@ -231,8 +237,8 @@ addNullPtrTrans1 _   cfa (_    , _, _)                        = cfa
 
 cfaPruneUnreachable :: CFA -> [Loc] -> CFA
 cfaPruneUnreachable cfa keep = 
-    let unreach = filter (\n -> (not $ elem n ([cfaInitLoc, cfaErrLoc] ++ keep)) && (null $ G.pre cfa n)) $ G.nodes cfa
+    let unreach = filter (\n -> (not $ elem n keep) && (null $ G.pre cfa n)) $ G.nodes cfa
     in if null unreach 
-          then cfa   
+          then cfa
           else --trace ("cfaPruneUnreachable: " ++ show cfa ++ "\n"++ show unreach) $
                cfaPruneUnreachable (foldl' (\cfa n -> G.delNode n cfa) cfa unreach) keep
