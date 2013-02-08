@@ -105,6 +105,8 @@ mkVarS mpid mmeth s = I.EVar $ mkVarNameS mpid mmeth s
 mkVarDecl :: (?spec::Spec, WithName a, WithType a) => Bool -> Maybe PID -> Maybe Method -> a -> I.Var
 mkVarDecl mem mpid mmeth x = I.Var mem I.VarState (mkVarName mpid mmeth x) (mkType $ typ x)
 
+parseVarName :: String -> (Maybe PID, Maybe String, String)
+
 -- Variable that stores return value of a task
 mkRetVar :: Maybe PID -> Method -> Maybe I.Expr
 mkRetVar mpid meth = case methRettyp meth of
@@ -128,6 +130,17 @@ mkEnVar pid mmeth = I.EVar $ mkEnVarName pid mmeth
 mkEnVarDecl :: PID -> Maybe Method -> I.Var
 mkEnVarDecl pid mmeth = I.Var False I.VarState (mkEnVarName pid mmeth) I.Bool
 
+mkWaitForTask :: PID -> Method -> I.Expr
+mkWaitForTask pid meth = envar I.=== I.false
+    where envar = mkEnVar pid (Just meth)
+
+isWaitForTask :: I.Expr -> Maybe String
+isWaitForTask (EBinOp Eq (I.EVar name) e2) | e2 == I.false = 
+    case parseVarName name of
+         (_, ms, "$en") -> ms
+         _              -> Nothing
+isWaitForTask _   _ = Nothing
+
 mkPCVarName :: PID -> String
 mkPCVarName pid = mkVarNameS (Just pid) Nothing "$pc"
 
@@ -142,6 +155,9 @@ mkPCEnum pid loc = mkVarNameS (Just pid) Nothing $ "$pc" ++ show loc
 
 mkPC :: PID -> I.Loc -> I.Expr
 mkPC pid loc = I.EConst $ I.EnumVal $ mkPCEnum pid loc 
+
+pcEnumToLoc :: Val -> I.Loc
+
 
 -- PID of the last process to make a transition
 mkPIDVarName :: String
@@ -372,17 +388,28 @@ ctxInsTmpVar t = do
                           , ctxVar     = v:(ctxVar ctx)})
     return v
 
+ctxFrames :: State CFACtx Stack
+ctxFrames = do
+    cfastack <- gets ctxStack
+    -- CFACtx stack stores return locations in stack frames,  but the Stack 
+    -- type stores current locations in frames.  Shift ret locations by one 
+    -- and append current location in the end. 
+    let scopes = map fst4 stack
+        locs   = (tail $ map snd4 stack) ++ [loc]
+    return $ map (uncurry Frame) $ zip scopes locs
+
+
 ctxPause :: I.Loc -> I.Expr -> State CFACtx I.Loc
-ctxPause loc cond = do stack <- gets ctxStack
-                       after <- ctxInsLocLab (I.LPause I.ActNone (map fst4 stack) cond)
+ctxPause loc cond = do stack <- ctxFrames
+                       after <- ctxInsLocLab (I.LPause I.ActNone stack cond)
                        ctxInsTrans loc after I.TranNop
                        case cond of
                             (I.EConst (I.BoolVal True)) -> return after
                             _                           -> ctxInsTrans' after (I.TranStat $ I.SAssume cond)
 
 ctxFinal :: I.Loc -> State CFACtx I.Loc
-ctxFinal loc = do stack <- gets ctxStack
-                  after <- ctxInsLocLab (I.LFinal I.ActNone (map fst4 stack))
+ctxFinal loc = do stack <- ctxFrames
+                  after <- ctxInsLocLab (I.LFinal I.ActNone stack)
                   ctxInsTrans loc after I.TranNop
                   return after
 

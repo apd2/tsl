@@ -274,7 +274,8 @@ statToCFA' before after (SCase _ e cs mdef) = do
 
 statToCFA' before after (SMagic _ obj) = do
     -- magic block flag
-    aftmag <- ctxInsTrans' before $ I.TranStat $ mkMagicVar I.=: I.true
+    aftcheck <- ctxInsTrans' before $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.false
+    aftmag <- ctxInsTrans' aftcheck $ I.TranStat $ mkMagicVar I.=: I.true
     -- wait for magic flag to be false
     aftwait <- ctxPause aftmag $ mkMagicVar I.=== I.false
     ctxInsTrans aftwait after I.TranNop
@@ -327,7 +328,7 @@ taskCall before after meth args mlhs = do
     -- trigger task
     afttag <- ctxInsTrans' aftarg $ I.TranStat $ envar I.=: I.true
     -- pause and wait for task to complete
-    aftwait <- ctxPause afttag $ envar I.=== I.false
+    aftwait <- ctxPause afttag $ mkWaitForTask pid meth
     -- copy out arguments and retval
     aftout <- copyOutArgs aftwait meth args
     case (mlhs, mkRetVar (Just pid) meth) of

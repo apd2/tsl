@@ -77,7 +77,13 @@ data LocAction = ActStat F.Statement
                | ActExpr F.Expr
                | ActNone
 
-type Stack = [Scope]
+-- Stack frame
+data Frame = Frame {
+    fScope :: Scope,
+    fLoc   :: I.Loc
+}
+
+type Stack = [Frame]
 
 data LocLabel = LInst  {locAct :: LocAction}
               | LPause {locAct :: LocAction, locStack :: Stack, locExpr :: Expr}
@@ -169,7 +175,8 @@ isDelayLabel (LFinal _ _)   = True
 isDelayLabel (LInst _)      = False
 
 newCFA :: Scope -> F.Statement -> Expr -> CFA 
-newCFA scope stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [scope] initcond) $ G.insNode (cfaErrLoc,(LPause ActNone [scope] false)) G.empty
+newCFA scope stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame scope cfaInitLoc] initcond) 
+                           $ G.insNode (cfaErrLoc,LPause ActNone [Frame scope cfaErrLoc] false) G.empty
 
 cfaErrLoc :: Loc
 cfaErrLoc = 0
