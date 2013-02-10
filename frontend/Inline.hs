@@ -3,6 +3,7 @@
 module Inline where
 
 import Data.List
+import Data.List.Split
 import Data.Maybe
 import Control.Monad.State
 import qualified Data.Map as M
@@ -85,7 +86,7 @@ mkVarName mpid mmeth x = mkVarNameS mpid mmeth (sname x)
 
 mkVarNameS :: Maybe PID -> Maybe Method -> String -> String
 mkVarNameS mpid mmeth s = intercalate "/" names
-    where -- don't function and procedure variables with PID
+    where -- don't prefix function and procedure variables with PID
           mpid' = case mmeth of
                        Nothing -> mpid
                        Just m  -> case methCat m of
@@ -106,6 +107,14 @@ mkVarDecl :: (?spec::Spec, WithName a, WithType a) => Bool -> Maybe PID -> Maybe
 mkVarDecl mem mpid mmeth x = I.Var mem I.VarState (mkVarName mpid mmeth x) (mkType $ typ x)
 
 parseVarName :: String -> (Maybe PID, Maybe String, String)
+parseVarName name = (pid, meth, vname)
+    toks = splitOn "/" name
+    vname = last toks
+    (pid, meth) = case init toks of
+                       [] -> (Nothing, Nothing)
+                       toks' -> if (take 2 $ reverse $ last toks') == ")("
+                                   then (Just $ init toks', Just $ init $ init $ last toks')
+                                   else (Just toks', Nothing)
 
 -- Variable that stores return value of a task
 mkRetVar :: Maybe PID -> Method -> Maybe I.Expr
@@ -139,7 +148,12 @@ isWaitForTask (EBinOp Eq (I.EVar name) e2) | e2 == I.false =
     case parseVarName name of
          (_, ms, "$en") -> ms
          _              -> Nothing
-isWaitForTask _   _ = Nothing
+isWaitForTask _ = Nothing
+
+isWaitForMagic :: I.Expr -> Bool
+isWaitForMagic (EBinOp Eq (I.EVar name) e2) | (e2 == I.false) && (name == mkMagicVarName) = True
+                                            | otherwise = False
+isWaitForMagic _ = False
 
 mkPCVarName :: PID -> String
 mkPCVarName pid = mkVarNameS (Just pid) Nothing "$pc"

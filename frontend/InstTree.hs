@@ -44,6 +44,8 @@ mapInstTree' f iid = (f iid (itreeTemplate iid)):
 itreeFlattenName :: IID -> Ident -> Ident
 itreeFlattenName iid i = Ident (pos i) $ intercalate ":" $ map sname (iid ++ [i])
 
+itreeParseName :: Ident -> (IID, Ident)
+
 -- Translate relative path in the instance tree to absolute path
 -- iid  - path to a template in the tree
 -- path - relative path (through port and instance names) from this
