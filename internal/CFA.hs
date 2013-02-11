@@ -234,9 +234,13 @@ cfaAddNullPtrTrans :: CFA -> Expr -> CFA
 cfaAddNullPtrTrans cfa nul = foldl' (addNullPtrTrans1 nul) cfa (G.labEdges cfa)
 
 addNullPtrTrans1 :: Expr -> CFA -> (Loc,Loc,TranLabel) -> CFA
-addNullPtrTrans1 nul cfa (from , _, TranStat (SAssign e1 e2)) = case cond of
-                                                                     EConst (BoolVal False) -> cfa
-                                                                     _ -> cfaErrTrans from (TranStat $ SAssume cond) cfa
+addNullPtrTrans1 nul cfa (from , to, l@TranStat (SAssign e1 e2)) = 
+    case cond of
+         EConst (BoolVal False) -> cfa
+         _ -> let (cfa1, from') = I.cfaInsLoc (I.LInst I.ActNone) cfa
+                  cfa2 = cfaInsTrans from' to l $ G.delEdge (from, to, l) cfa1
+                  cfa3 = cfaInsTrans from from' (TranStat $ SAssume $ neg cond) cfa2
+              in cfaErrTrans from (TranStat $ SAssume cond) cfa3
     where cond = disj $ map (=== nul) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)
     
 addNullPtrTrans1 _   cfa (_    , _, _)                        = cfa

@@ -170,7 +170,7 @@ mkPCEnum pid loc = mkVarNameS (Just pid) Nothing $ "$pc" ++ show loc
 mkPC :: PID -> I.Loc -> I.Expr
 mkPC pid loc = I.EConst $ I.EnumVal $ mkPCEnum pid loc 
 
-pcEnumToLoc :: Val -> I.Loc
+pcEnumToLoc :: String -> I.Loc
 
 
 -- PID of the last process to make a transition

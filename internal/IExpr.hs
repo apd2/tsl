@@ -1,17 +1,19 @@
 {-# LANGUAGE ImplicitParams, TypeSynonymInstances, FlexibleInstances #-}
 
-module IExpr(Val(..),
+module IExpr(LVal(..),
+             Val(..),
              Expr(..),
+             lvalToExpr,
              exprSlice,
              exprScalars,
              (===),
              disj,
              conj,
+             neg,
              econcat,
              true,
              false,
              Slice,
-             LExpr,
              exprSimplify,
              evalConstExpr,
              exprPtrSubexpr) where
@@ -29,19 +31,40 @@ import IType
 import IVar
 import {-# SOURCE #-} ISpec
 
+-- variable address
+type LVal = LVar String
+          | LField LVal String
+          | LIndex LVal Int
+
+lvalToExpr :: LVal -> Expr 
+lvalToExpr (LVar n)     = EVar n
+lvalToExpr (LField s f) = EField (lvalToExpr s) f
+lvalToExpr (LIndex a i) = EIndex (lvalToExpr a) (EConst $ UIntVal 32 i)
+
+instance (?spec::Spec) => Typed LVal where
+    typ (LVar n)     = typ $ getVar n
+    typ (LField s n) = let Struct fs = typ s
+                       in typ $ fromJust $ find (\(Field n _) -> n == f) fs 
+    typ (LIndex a i) = t where Array t _ = typ a
+
+instance PP LVal where
+    pp (LVar n)     = pp n
+    pp (LField s f) = pp s <> char '.' <> pp f
+    pp (LIndex a i) = pp a <> char '[' <> pp i <> char ']'
+
 -- Value
 data Val = BoolVal   Bool
          | SIntVal   {ivalWidth::Int, ivalVal::Integer}
          | UIntVal   {ivalWidth::Int, ivalVal::Integer}
          | EnumVal   String
---         | PtrVal    LExpr
+         | PtrVal    LVal
 
 instance (?spec::Spec) => Typed Val where
     typ (BoolVal _)   = Bool
     typ (SIntVal w _) = SInt w
     typ (UIntVal w _) = UInt w
     typ (EnumVal n)   = Enum $ enumName $ getEnumerator n
---    typ (PtrVal e)    = Ptr $ typ e
+    typ (PtrVal a)    = Ptr $ typ a
 
 instance PP Val where
     pp (BoolVal True)  = text "true"
@@ -49,7 +72,7 @@ instance PP Val where
     pp (SIntVal _ v)   = text $ show v
     pp (UIntVal _ v)   = text $ show v
     pp (EnumVal n)     = text n
---    pp (PtrVal e)      = char '&' <> pp e
+    pp (PtrVal a)      = char '&' ++ pp a
 
 type Slice = (Int, Int)
 
@@ -126,6 +149,9 @@ conj :: [Expr] -> Expr
 conj [] = false
 conj es = foldl' (\e1 e2 -> EBinOp And e1 e2) (head es) (tail es)
 
+neg :: Expr -> Expr
+neg = EUnOp Not
+
 -- TODO: merge adjacent expressions
 econcat :: [Expr] -> Expr
 econcat [e]        = e
@@ -133,8 +159,6 @@ econcat (e1:e2:es) = econcat $ (EBinOp BConcat e1 e2):es
 
 true = EConst $ BoolVal True
 false = EConst $ BoolVal False
-
-type LExpr = Expr
 
 -- Subexpressions dereferenced inside the expression
 exprPtrSubexpr :: Expr -> [Expr]
@@ -161,6 +185,7 @@ evalConstExpr (EUnOp op e) | isArithUOp op       = case s' of
                                                          (v',s',w') = arithUOp op (v,s,w)
 evalConstExpr (EUnOp Not e)                      = BoolVal $ not b
                                                    where BoolVal b = evalConstExpr e
+evalConstExpr (EUnOp AddrOf e)                   = PtrVal $ evalLExpr e
 evalConstExpr (EBinOp op e1 e2) | isArithBOp op  = case s' of
                                                         True  -> SIntVal w' v'
                                                         False -> UIntVal w' v'
@@ -198,3 +223,8 @@ evalConstExpr (ESlice e (l,h)) = UIntVal (h - l + 1)
                                                                   False -> a)
                                            0 [l..h]
                                  where v = ivalVal $ evalConstExpr e
+
+evalLExpr :: Expr -> LVal
+evalLExpr (EVar n)     = LVar n
+evalLExpr (EField s f) = LField (evalLExpr s) f
+evalLExpr (EIndex a i) = LIndex (evalLExpr a) (ivalVal $ evalConstExpr i)
