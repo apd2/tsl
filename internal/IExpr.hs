@@ -4,8 +4,10 @@ module IExpr(LVal(..),
              Val(..),
              Expr(..),
              lvalToExpr,
+             parseVal,
              exprSlice,
              exprScalars,
+             exprVars,
              (===),
              disj,
              conj,
@@ -79,6 +81,17 @@ type Slice = (Int, Int)
 instance PP Slice where
     pp (l,h) = brackets $ pp l <> colon <> pp h
 
+parseVal :: (MonadError String me) => Type -> String -> me Val
+parseVal (SInt w) str = do
+    (w',_,r,v) <- (parse parseRadVal "" str) `catch` (\e -> throwError $ show e)
+    when  (w' > w) $ throwError $ "Width mismatch"
+    return $ SIntVal w v 
+parseVal (UInt w) str = do
+    (w',s,r,v) <- (parse parseRadVal "" str) `catch` (\e -> throwError $ show e)
+    when (w' > w) $ throwError $ "Width mismatch"
+    when s $ throwError $ "Sign mismatch"
+    return $ UIntVal w v 
+
 data Expr = EVar    String
           | EConst  Val
           | EField  Expr String
@@ -137,6 +150,16 @@ exprScalars :: Expr -> Type -> [Expr]
 exprScalars e (Struct fs)  = concatMap (\(Field n t) -> exprScalars (EField e n) t) fs
 exprScalars e (Array  t s) = concatMap (\i -> exprScalars (EIndex e (EConst $ UIntVal (bitWidth $ s-1) $ fromIntegral i)) t) [0..s-1]
 exprScalars e t            = [e]
+
+-- Variables involved in the expression
+exprVars :: (?spec::Spec) => Expr -> [Var]
+exprVars (EVar n)         = [getVar n]
+exprVars (EConst _)       = []
+exprVars (EField e _)     = exprVars e
+exprVars (EIndex a i)     = exprVars a ++ exprVars i
+exprVars (EUnOp _ e)      = exprVars e
+exprVars (EBinOp _ e1 e2) = exprVars e1 ++ exprVars e2
+exprVars (ESlice e _)     = exprVars e
 
 (===) :: Expr -> Expr -> Expr
 e1 === e2 = EBinOp Eq e1 e2

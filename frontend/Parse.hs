@@ -31,6 +31,10 @@ import Type
 import Method
 import Const
 
+-- exports
+litParser = (\(ELit _ w s r v) -> (w,s,r,v)) <$> elit True
+
+
 reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "...", "::", "->"]
 reservedNames = ["after",
                  "always",

@@ -3,6 +3,8 @@ module IType(Field(..),
              Typed(..),
              typeWidth,
              typeSigned,
+             isTypeInt,
+             isTypeScalar,
              Enumeration(..)) where
 
 import Text.PrettyPrint
@@ -57,6 +59,20 @@ typeSigned x = case typ x of
                     SInt _ -> True
                     UInt _ -> False
 
+
+isTypeInt :: (Typed a) => a -> Bool
+isTypeInt x = case typ x of
+                   SInt _ -> True
+                   UInt _ -> True
+                   _      -> False
+
+isTypeScalar :: (Typed a) => a -> Bool
+isTypeScalar x = case typ x of
+                      Bool   -> True
+                      SInt   -> True
+                      Enum _ -> True
+                      Ptr _  -> True
+                      _      -> False
 
 data Enumeration = Enumeration { enumName  :: String
                                , enumEnums :: [String]
