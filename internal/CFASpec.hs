@@ -1,6 +1,7 @@
 module CFASpec(Spec(..),
                Task(..),
                Process(..),
+               specTmpVars,
                specGetProcess,
                specGetCFA,
                specInlineWireAlways) where
@@ -31,6 +32,14 @@ data Process = Process {
     procChildren :: [Process],
     procTask     :: [Task]
 }
+
+specTmpVars :: Spec -> [Var]
+specTmpVars Spec{..} = map procTmpVars specProc ++ map (snd . taskCFA) specCTask
+
+procTmpVars :: Process -> [Var]
+procTmpVars Process{..} = concatMap snd procCFA ++ map (snd . taskCFA) procTask ++ map procTmpVars procChildren
+
+
 
 specGetProcess :: Spec -> PID -> Process
 specGetProcess (name:names) | names == [] = root

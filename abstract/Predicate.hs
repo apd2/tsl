@@ -18,6 +18,7 @@ module Predicate(ArithUOp(..),
                  relOpToBOp,
                  Predicate(..),
                  predCategory,
+                 predToExpr,
                  exprToTerm,
                  termToExpr) where
 
@@ -216,3 +217,5 @@ termToExpr (TUnOp op t)      = EUnOp (arithOpToUOp op) (termToExpr t)
 termToExpr (TBinOp op t1 t2) = EBinOp (arithOpToBOp op) (termToExpr t1) (termToExpr t2)
 termToExpr (TSlice t s)      = ESlice (termToExpr t) s
 
+predToExpr :: Predicate -> Expr
+predToExpr (PAtom op t1 t2) = EBinOp (relOpToBOp op) (termToExpr t1) (termToExpr t2)
