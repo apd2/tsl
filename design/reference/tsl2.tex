@@ -32,7 +32,7 @@
               const,
               controllable, 
               default,
-              deriv,
+              derive,
               do, 
               else, 
               endtemplate,
@@ -84,6 +84,8 @@
 \newcommand{\src}[1]{\texttt{#1}}
 
 \newcommand{\tsl}{TSL2 }
+
+\newcommand{\comment}[1]{{\textit{\textbf{#1}}}}
 
 
 \author{Leonid Ryzhyk}
@@ -240,6 +242,199 @@ template l4_ide_os(l4_ide_drv drv)
 \end{tsllisting}
 
 
+\section{Execution model}
+
+All state transitions in \tsl occur in the context of 
+\emph{processes}.  Multiple processes can be enabled at the same 
+time; however exactly one process participates in each individual 
+transition.  Processes are declared inside templates using the 
+\src{process} keyword.  Such processes become runnable in the 
+initial state of the specification.  Additional processes can be 
+spawned at runtime using the \src{fork} construct.  Syntactic 
+constraints of the language (namely, the lack of support for 
+recursion) guarantee that only a bounded number of processes can 
+be spawned at any time.  
+
+In the following example, template \src{A} contains a single 
+static process \src{psndrcv}, which spawns two subprocesses 
+\src{psend} and \src{preceive}.
+\begin{tsllisting}{}
+template A
+
+process psndrcv {
+  fork {
+    psend:    while (true) send();
+    preceive: while (true) receive();
+  };
+  shutdown();
+};
+...
+
+endtemplate
+\end{tsllisting}
+
+%In addition to statically and dynamically created processes, every 
+%\tsl specification contains an implicit \emph{idle} 
+
+A process state transition starts in the current program location 
+and stops at the next \emph{pause location}.  Pause locations can 
+be explicit or implicit.  Explicit pause locations are declared 
+using \src{pause}, \src{wait}, and \src{stop} constructs.  
+Implicit pause locations are introduced automatically by the 
+compiler in the following cases:
+
+\begin{itemize}
+    \item Before \src{fork} statements~\ref{}
+    \item Before magic blocks~\ref{}
+    \item On entries to and exits from controllable and 
+        uncontrollable tasks~\ref{}
+\end{itemize}
+
+Process behaviour can be factored into \emph{methods}.  A process 
+can invoke methods declared inside its own template as well as in 
+other template instances, via hierarchical names discussed in the 
+previous section.  There are three types of methods in \tsl: 
+\emph{functions}, \emph{procedures}, and \emph{tasks}.  Functions 
+and procedures must complete instantaneously, i.e., they are not 
+allowed to contain explicit or implicit pauses.  In addition, 
+functions are not allowed to have side effects, i.e., they cannot 
+modify any global variables, perform pointer dereferences, or 
+contain assertions (pointer dereferences and assert statements can 
+have the side effect of taking the system into an error state).  
+
+Tasks can take time to execute.  A task can have an optional 
+\src{controllable} or \src{uncontrollable} qualifier.  
+Controllable tasks are the only kind of task that can be invoked 
+from synthesised code; although they can also be called from 
+manually written code.  They are used to model the device register 
+interface and OS callbacks.  Controllable tasks are subject to 
+additional implementation constraint.
+
+Uncontrollable tasks represent driver methods invoked by the OS or 
+the device.  Uncontrollable tasks are the only kind of task that 
+can contain automatically generated code, i.e., a magic block can 
+only be placed inside an uncontrollable task.  
+
+Controllable and uncontrollable task invocations introduce 
+implicit pause locations on entry and return from the task.  In 
+the following example execution of process \src{p1} will consist 
+of three transitions.
+\begin{tsllisting}{}
+template A
+  uint<16> x;
+
+  process p1 {
+    x=1;
+    t1(x);
+  };
+
+  task uncontrollable void t1(uint<16> arg) {};
+endtemplate
+\end{tsllisting}
+The first transition assigns global variable \src{x} and sets the 
+argument of task \src{t1} to be equal to \src{x}.   An implicit 
+pause location is inserted at this point.  The second transition 
+executes the body of task \src{t1}, which completes 
+instantaneously, as it does not contain any pause locations.  
+Another implicit pause is inserted at the task return location.  
+The remainder of the process is executed in the third transition.  
+Note that other processes can run and potentially modify variable 
+values in between transitions 1 and 2 and transitions 2 and 3.
+
+Tasks without \src{controllable} and \src{uncontrollable} 
+qualifiers behave as if the body of the task was inlined at the 
+call location.  No additional pauses are inserted before or after 
+the task.
+
+\section{Variables and wires}
+
+\emph{Variables} are used to store state that persists for the 
+lifetime of the variable.  Variables in \tsl can be declared in 
+the template, process, or method scope.  Template-scope variables, 
+also called \emph{global variables}, are instantiated together 
+with the template and are visible from anywhere inside the 
+template.  In addition, variables declared with the \src{export} 
+qualifier can be accessed from other templates via their 
+hierarchical names.  Process and method variables are only visible 
+within the syntactic scope of the process or method where they are 
+declared.
+
+In contrast to variables, \emph{wires} are simply aliases to 
+expressions defined over global variables and are not allocated 
+their own storage.  Wires keep their values throughout a 
+transition and are updated at the end of the transition.  Initial 
+value of a wire is computed based on initial values of global 
+variables.
+
+\begin{tsllisting}{}
+template A
+  uint<16> x = 0;
+  wire uint<16> w = x + 1;
+endtemplate
+\end{tsllisting}
+
+
+\section{Correctness specifications}\label{s:o:correctness}
+
+\tsl provides several mechanisms for specifying correctness 
+conditions over system behaviour:
+\begin{itemize}
+    \item \emph{Goals.} A goal is a boolean expression over global 
+        variables that must hold infinitely often in any infinite 
+        run of the system.  A template can declare any number of 
+        goals.  In addition, \tsl defines two implicit goals.  The 
+        first one requires the system to be outside of a magic 
+        block infinitely often; in other words, the system cannot 
+        stay inside a magic block forever.  The second implicit 
+        goal requires that the system never enters an \emph{error 
+        state} (see below).
+    \item \emph{Assertions.}  An \src{assert} statement can be 
+        placed anywhere inside processes, tasks, and procedures.  
+        It defines a condition whose violation immediately 
+        transitions the system to an error state.
+    \item \emph{Postconditions}.  Magic block postconditions are 
+        discussed in Section~\ref{s:o:magic} above.
+\end{itemize}
+
+
+
+\section{Magic blocks}\label{s:o:magic}
+
+A \emph{magic block} is a place holder for automatically generated 
+code.  \tsl supports two types of magic blocks.  Magic blocks with 
+\emph{postconditions} specify a condition that must hold upon 
+returning from the magic block.  
+
+%Note that for synthesis to succeed the resulting system must 
+%satisfy all correctness conditions described in the following 
+%section, and not just magic block postconditions.
+
+\begin{tsllisting}{}
+template main
+  task uncontrollable bool probe() {
+    // Magic block with postcondition
+    {...} post((os.reset_status == iosuccess) ||
+               (os.reset_status == ioerror));
+    if (os.reset_status == iosuccess) {
+      return true;
+    } else {
+      return false;
+    };
+};
+endtemplate
+\end{tsllisting}
+
+The second type of magic blocks are magic blocks with 
+\emph{goals}.  These are needed because not all correctness 
+conditions can be captured using postconditions and assertions.  
+For correctness conditions specified using goals (see 
+Section~\ref{s:o:correctness}), the synthesis algorithm computes a 
+strategy for each goal; however the scheduling of strategies is 
+left to the user, i.e., the user decides when to execute each 
+strategy by assigning goals to magic blocks. \comment{TODO: I 
+still have not figured out the exact meaning of this construct.}
+
+%\section{Constraints on the environment}
 
 \chapter{Syntax reference}
 

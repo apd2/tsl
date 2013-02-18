@@ -49,7 +49,7 @@ reservedNames = ["after",
                  "const",
                  "controllable", 
                  "default",
-                 "deriv",
+                 "derive",
                  "do", 
                  "else", 
                  "endtemplate",
@@ -287,7 +287,7 @@ tvarDecl     = withPos $ GVar nopos <$> (option False (True <$ reserved "export"
 twire        = withPos $ Wire nopos <$> (option False (True <$ reserved "export")) 
                                     <*  reserved "wire" 
                                     <*> typeSpec 
-                                    <*> (ident <* reservedOp "=")
+                                    <*> ident 
                                     <*> optionMaybe (reservedOp "=" *> detexpr)
 tinitBlock   = withPos $ Init nopos <$ reserved "init" <*> detexpr
 talways      = withPos $ Always nopos <$ reserved "always" <*> statement
