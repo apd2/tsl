@@ -80,6 +80,29 @@
     #1
 }}{\vspace{3mm}}
 
+\lstnewenvironment{bnflisting}[1]
+{\vspace{3mm}
+ \lstset{
+    backgroundcolor=\color{lgray},
+    basicstyle=\small\ttfamily,
+    keywordstyle=\underbar,
+    identifierstyle=,
+    commentstyle=\slshape,
+    stringstyle=,
+    showstringspaces=false,
+    keywords=,
+    sensitive=false,
+    morecomment=[l]{//},
+    morecomment=[s]{/*}{*/},
+    numberstyle=\tiny,
+    stepnumber=1,
+    numbersep=1pt,
+    emphstyle=\bfseries,
+    belowskip=0pt,
+    aboveskip=0pt,
+    #1
+}}{\vspace{3mm}}
+
 
 \newcommand{\src}[1]{\texttt{#1}}
 
@@ -100,7 +123,7 @@
 
 \chapter{Overview}
 
-\section{Static and dynamic namespaces}
+\section{Static and dynamic namespaces}\label{s:o:namespace}
 
 \tsl supports two namespaces: the \emph{static namespace} and the 
 \emph{dynamic namespace}.  The static namespace is populated with 
@@ -112,7 +135,7 @@ name and syntactic scope.  In contrast, runtime objects can be
 instantiated multiple times within the specification and hence 
 must be referred to relative to their runtime scope.  
 
-\section{Templates}
+\section{Templates}\label{s:o:templates}
 
 Templates are the principal mechanism for managing both static and 
 dynamic namespaces.  A template models an entity, such as a 
@@ -160,11 +183,11 @@ endtemplate
 The template instantiation mechanism gives rise to an 
 \emph{instance tree} with the \src{main} template as its root.  
 Dynamic objects within the tree are accessed using hierarchical 
-names such as \src{a.x}.  This mechanism allows accessing objects 
-down the branch of the instance tree, starting at the local 
-template.  In practice, it is often necessary to access objects 
-instantiated in other parts of the tree.  This is achieved in a 
-structured way using \emph{template ports}.  
+identifiers such as \src{a.x}.  This mechanism allows accessing 
+objects down the branch of the instance tree, starting at the 
+local template.  In practice, it is often necessary to access 
+objects instantiated in other parts of the tree.  This is achieved 
+in a structured way using \emph{template ports}.  
 
 A template port is an alias to a template of a given type bound at 
 the time of instantiation.  For example, template \src{B} below 
@@ -292,15 +315,16 @@ compiler in the following cases:
 
 Process behaviour can be factored into \emph{methods}.  A process 
 can invoke methods declared inside its own template as well as in 
-other template instances, via hierarchical names discussed in the 
-previous section.  There are three types of methods in \tsl: 
-\emph{functions}, \emph{procedures}, and \emph{tasks}.  Functions 
-and procedures must complete instantaneously, i.e., they are not 
-allowed to contain explicit or implicit pauses.  In addition, 
-functions are not allowed to have side effects, i.e., they cannot 
-modify any global variables, perform pointer dereferences, or 
-contain assertions (pointer dereferences and assert statements can 
-have the side effect of taking the system into an error state).  
+other template instances, via hierarchical identifiers discussed 
+in the previous section.  There are three types of methods in 
+\tsl: \emph{functions}, \emph{procedures}, and \emph{tasks}.  
+Functions and procedures must complete instantaneously, i.e., they 
+are not allowed to contain explicit or implicit pauses.  In 
+addition, functions are not allowed to have side effects, i.e., 
+they cannot modify any global variables, perform pointer 
+dereferences, or contain assertions (pointer dereferences and 
+assert statements can have the side effect of taking the system 
+into an error state).  
 
 Tasks can take time to execute.  A task can have an optional 
 \src{controllable} or \src{uncontrollable} qualifier.  
@@ -355,9 +379,9 @@ also called \emph{global variables}, are instantiated together
 with the template and are visible from anywhere inside the 
 template.  In addition, variables declared with the \src{export} 
 qualifier can be accessed from other templates via their 
-hierarchical names.  Process and method variables are only visible 
-within the syntactic scope of the process or method where they are 
-declared.
+hierarchical identifiers.  Process and method variables are only 
+visible within the syntactic scope of the process or method where 
+they are declared.
 
 In contrast to variables, \emph{wires} are simply aliases to 
 expressions defined over global variables and are not allocated 
@@ -438,6 +462,305 @@ still have not figured out the exact meaning of this construct.}
 
 \chapter{Syntax reference}
 
+\section{Literals}\label{s:r:literals}
+
+\tsl supports boolean literals ``\src{true}'' and ``\src{false}'' 
+and Verilog-style binary, octal, decimal and hexadecimal integer 
+literals.  The exact number of bits can be specified for each 
+integer literal.  
+
+\begin{bnflisting}{}
+<intLit> := <decNumber>
+          | [<width>] "'b"  <binNumber>
+          | [<width>] "'sb" <binNumber>
+          | [<width>] "'o"  <octNumber>
+          | [<width>] "'so" <octNumber>
+          | [<width>] "'d"  <decNumber>
+          | [<width>] "'sd" <signedDecNumber>
+          | [<width>] "'h"  <hexNumber>
+          | [<width>] "'sh" <hexNumber>
+<width> := <decNumber>
+\end{bnflisting}
+
+Examples of integer literals:
+\begin{tsllisting}{}
+uint<8> x;
+sint<8> y;
+
+x = 255;
+x = 8'd35;
+x = 8'b01010101;
+x = 8'b1;
+
+y = 8'sb11111111;
+y = 8'sd-6;
+\end{tsllisting}
+
+In case literal width is not specified explicitly, the compiler 
+assumes width sufficient to encode the given integer value, for 
+example literal $5$ is assumed to be $3$ bits wide, as $3$ bits 
+are sufficient to encode values between $0$ and $5$.  The compiler 
+does not perform automatic truncation or extension of integers.  
+For example, the following assignment statement is invalid, as the 
+left and the right-hand sides of assignment have different width:
+
+\begin{tsllisting}{}
+uint<8> x = 0; // error: x has width 8, while
+               // literal 0 has widt 1
+
+uint<8> y = 8'd0; // ok
+\end{tsllisting}
+
+
+\section{Identifiers}\label{s:r:identifiers}
+
+Identifiers are used throughout \tsl specification to refer to 
+static and runtime objects (Section~\ref{s:o:namespace}).  \tsl 
+supports three forms of identifiers:
+
+\paragraph{Simple identifiers.}  A simple identifier is a name of 
+a static or runtime object visible within the current syntactic 
+scope.  This includes objects declared within the current scope or 
+in one of its parent scopes.  For example, simple identifier 
+\src{x} used in a method body can refer to a local variable or 
+argument of the method, template-global variable, or a type or 
+constant declared in the template or top-level scope.
+
+\begin{bnflisting}{}
+<ident> := (<letter> | "_") (<letter> | <digit> | "_")*
+\end{bnflisting}
+
+\paragraph{Static scoped identifiers.} These identifiers refer to 
+static objects declared within template scope.  They can be used 
+to refer to static objects declared in templates other than the 
+local template.
+
+\begin{bnflisting}{}
+<staticIdent> := <ident> "::" <ident>
+\end{bnflisting}
+
+\paragraph{Hierarchical identifiers.}  These identifiers can only 
+be used to refer to runtime objects.  A dynamic identifier is a 
+dot-separated sequence of literals that traverses the instance 
+tree (Section~\ref{s:o:templates}) via port and instance names:
+
+\begin{bnflisting}{}
+<dynIdent> := <ident> ["." <ident>]*
+\end{bnflisting}
+
+The following example illustrates the use of different types of 
+identifiers.
+
+\begin{tsllisting}{}
+template A
+  typedef uint<16> word;
+  export word x;
+endtemplate
+    
+template B(A aa)
+  // Reference to the word type declared in template A
+  // via static scoped identifier;
+  A::word y;
+
+  process proc {
+    // In the following statement:
+    // * y is a simple identifier that refers to a variable
+    //   declared in the local template
+    // * aa.x is a hierarchical identifier that refers to
+    //   variable x declared in template A.
+    y = aa.x;
+  };
+endtemplate
+
+template main
+  // create instances of A and B; connect port aa of
+  // B to the instance of A.
+  instance A a;
+  instance B b(a);
+endtemplate
+\end{tsllisting}
+
+
+\section{Types}
+
+Type expressions can occur in various contexts in a \tsl 
+specification, including variables, method, wire, type, and 
+constant declarations.  The language currently supports arbitrary 
+fixed-width signed and unsigned integers, booleans, enums, 
+structs, arrays, and pointers.
+
+\begin{bnflisting}{}
+<typeSpec>   := ( <sintType>    // signed int
+                | <uintType>    // unsigned int
+                | <boolType>    // boolean
+                | <userType>    // user-defined type name
+                | <enumType>    // enumeration
+                | <structType>) // struct
+                <typeModifier>* // type modifiers
+
+<sintType>   := "sint" "<" <decimalNumber> ">"
+<uintType>   := "uint" "<" <decimalNumber> ">"
+<boolType>   := "bool"
+<userType>   := <staticIdent>
+<enumType>   := "enum" "{" (<ident> ",")*  <ident> "}"
+<structType> := "struct" "{" (<typeSpec> <ident> ";")+ "}"
+
+// A type modifier is either array dimension or the pointer
+// modifier ("*")
+<typeModifier> := ("[" <expr> "]")
+                | "*"
+\end{bnflisting}
+
+\tsl enum's are different from C-style enum's in that they are not 
+integers.  In particular, a variable of enum type cannot be cast 
+to an integer.  Such a variable can only take one of the values in 
+the enumeration and not any other arbitrary integer value.  
+Furthermore, an enum declaration cannot assign integer values to 
+enumerators.
+
+Type expressions are subject to the following constraints:
+\begin{itemize}
+    \item Enumerations can only be declared in \src{typedef}
+        statements, e.g., they cannot be used in variable or 
+        method declarations.  This ensure that every enum type has 
+        a name.
+    \item Variable-size arrays are not supported: array dimensions 
+        must be compile-time constants.
+\end{itemize}
+
+Examples of type expressions:
+
+\begin{tsllisting}{}
+typedef uint<16> t1;
+typedef sint<13> t2;
+typedef enum {e1, e2, e3} t3;
+typedef struct {t1 f1; t2 f2;} t4;
+const t1 c1 = 16'd5;
+typedef t4[c1] arrtype;
+typedef struct {bool f1; uint<16>[10] f2;} * structptr;
+\end{tsllisting}
+
+
+\section{Expressions}
+
+\tsl expressions are constructed from identifiers 
+(Section~\ref{s:r:identifiers}), literals
+(Section~\ref{s:r:literals}), and method applications~\ref{} using 
+operators summarised in the following table in the order of 
+decreasing precedence.
+
+\begin{small}
+\noindent
+\begin{tabular}{|l|l|l|l|p{0.3\linewidth}|}
+    \hline
+    {\bf operator}                   & {\bf syntax} & {\bf arg type} & {\bf res type} & {\bf comment} \\
+    \hline
+    \hline 
+    {\tt[:]}                         & {\tt e[l:h]} & integer        & integer        & bit slice \\
+    {\tt[~]}                         & {\tt e[i]}   & array          & -              & array index \\
+    {\tt.}                           & {\tt e.f}    & struct         & -              & struct field \\
+    {\tt\verb=->=}                   & {\tt\verb=e->f=}  & struct pointer & -              & struct dereference \\
+    \hline
+    \src{!}                          & prefix  & bool           & bool           & boolean negation \\
+    {\tt\verb=~=}                    & prefix  & integer        & integer        & bit-wise negation \\
+    {\tt-}                           & prefix  & integer        & integer        & unary minus \\
+    {\tt*}                           & prefix  & pointer        & -              & pointer dereference \\
+    {\tt \&}                         & prefix  & any            & pointer        & address-of \\
+    \hline
+    {\tt ==, !=}                     & infix   & any            & bool           & \\
+    {\tt\verb#<, <=, >, >=#}         & infix   & integer        & bool           & \\
+    \hline    
+    {\tt\&}                          & infix   & integer        & integer        & bit-wise and \\
+    \hline    
+    {\tt |}                          & infix   & integer        & integer        & bit-wise or \\
+    \hline    
+    {\tt\verb#^#}                    & infix   & integer        & integer        & bit-wise xor \\
+    \hline    
+    {\tt\&\&}                        & infix   & bool           & bool           & boolean and \\
+    \hline    
+    {\tt||}                          & infix   & bool           & bool           & boolean or \\
+    \hline    
+    {\tt\verb#=>#}                   & infix   & bool           & bool           & boolean implication\\
+    \hline    
+    {\tt*}                           & infix   & integer        & integer        & multiplication \\
+    \hline    
+    {\tt\%}                          & infix   & integer        & integer        & residue \\
+    \hline    
+    {\tt+}                           & infix   & integer        & integer        & plus \\
+    \hline    
+    {\tt-}                           & infix   & integer        & integer        & minus \\
+    \hline
+\end{tabular}
+\end{small}
+
+In addition, \tsl supports three kinds of conditional expressions: 
+\src{if-else} expressions (or ternary expressions), 
+\src{case}-expressions, and \src{cond}-expressions.  
+
+\begin{bnflisting}{}
+<ternExp>  := "if" <expr> <expr> "else" <expr>
+<caseExp>  := "case" "(" <expr> ")" "{" 
+                  (<expr> ":" <expr> ";")* 
+                  ["default" ":" <expr> ";"]
+              "}"
+<condExp> := "cond" "{"
+                  (<expr>    ":" <expr> ";")*
+                  ["default" ":" <expr> ";"]
+              "}"
+\end{bnflisting}
+
+A \src{case}-expression chooses a value based on the value of its 
+key expression, whereas a \src{cond}-expression chooses a value to 
+return by evaluating a series of conditions in order.  Note that 
+\src{if-else} expressions are different from \src{if} statements 
+described in Section~\ref{}.
+
+Finally, \tsl supports struct expressions with explicit or implicit 
+field names:
+
+\begin{bnflisting}{}
+<structExp>   := <staticIdent> "{" 
+                     (<namedFields> | <anonFields>) 
+                 "}"
+<namedFields> := "." <ident> "=" <expr> 
+                 [("," "." <ident> "=" <expr>)*]
+<anonFields> := <expr> 
+                 [("," <expr>)*]
+\end{bnflisting}
+
+Note that \tsl does not provide type casting operations.  In 
+particular, it is impossible to convert a pointer to an integer or 
+an integer to a pointer.  In addition, the \tsl compiler enforces the 
+following type and memory safety rules:
+\begin{itemize}
+    \item No arithmetic operations are allowed on pointers
+    \item Bit-wise operators must be applied to integer operands 
+        of the same width
+    \item \src{==} and \src{!=} operations can only be applied to 
+        operators of identical types (including width and 
+        signedness)
+    \item Labels in a \src{case}-expression and conditions in a 
+        \src{cond}-expression must be side-effect free
+    \item All branches of a \src{case}, \src{cond}, or \src{if-else}
+        expression must return values of the same type
+    \item Lower and upper bounds of a bit slice must be constant 
+        expressions, lower bound must be less than or equal to the 
+        upper bound, and both bound must be smaller than the width
+        of the argument.
+\end{itemize}
+
+\section{\tsl file structure}
+
+A \tsl file consists of \emph{import} statements, type 
+declarations, constant declarations, and template declarations.
+
+\begin{bnflisting}{}
+<tslFile>  := <specItem>*
+<specItem> := <import>
+           |  <typedecl>
+           |  <const>
+           |  <template>
+\end{bnflisting}
 
 \section{Import statements}
 

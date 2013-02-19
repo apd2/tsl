@@ -325,6 +325,7 @@ lookupTypeDecl ScopeTop sn@(n:[n'])    = case objLookup ObjSpec n of
 lookupTypeDecl s@(ScopeTemplate t) [n] = case lookupTypeLocal s n of
                                               Nothing -> fmap (,ScopeTop) $ lookupTypeLocal ScopeTop n
                                               Just t  -> Just (t, s)
+lookupTypeDecl (ScopeTemplate t) ns    = lookupTypeDecl ScopeTop ns
 lookupTypeDecl (ScopeMethod t _) ns    = lookupTypeDecl (ScopeTemplate t) ns
 lookupTypeDecl (ScopeProcess t _) ns   = lookupTypeDecl (ScopeTemplate t) ns
 lookupTypeDecl _                 _     = Nothing

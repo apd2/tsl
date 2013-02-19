@@ -118,7 +118,7 @@ validateExpr' (ETernOp p e1 e2 e3) = do
     validateExpr' e1
     validateExpr' e2
     validateExpr' e3
-    assert (isBool e1) (pos e1) $ "First operand " ++ show e1 ++ " of ?: is of non-boolean type"
+    assert (isBool e1) (pos e1) $ "if condition " ++ show e1 ++ " is of non-boolean type"
     assert (typeMatch e2 e3) p $ "Arguments of ternary operator have incompatible types: " ++
                                  show e1 ++ " has type " ++ show (tspec e1) ++ ", " ++
                                  show e2 ++ " has type " ++ show (tspec e2)
