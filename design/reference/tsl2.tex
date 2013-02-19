@@ -4,6 +4,8 @@
 \usepackage[usenames]{xcolor}
 \usepackage{tikz}
 
+%\usepackage[T1]{fontenc}
+
 \definecolor{lgray}{gray}{0.9}
 
 \usepackage{listings}
@@ -370,7 +372,7 @@ qualifiers behave as if the body of the task was inlined at the
 call location.  No additional pauses are inserted before or after 
 the task.
 
-\section{Variables and wires}
+\section{Variables and wires}\label{s:o:variables}
 
 \emph{Variables} are used to store state that persists for the 
 lifetime of the variable.  Variables in \tsl can be declared in 
@@ -640,15 +642,15 @@ typedef t4[c1] arrtype;
 typedef struct {bool f1; uint<16>[10] f2;} * structptr;
 \end{tsllisting}
 
-
 \section{Expressions}
 
 \tsl expressions are constructed from identifiers 
 (Section~\ref{s:r:identifiers}), literals
 (Section~\ref{s:r:literals}), and method applications~\ref{} using 
-operators summarised in the following table in the order of 
+operators summarised in table~\ref{t:ops} in the order of 
 decreasing precedence.
 
+\begin{table}
 \begin{small}
 \noindent
 \begin{tabular}{|l|l|l|l|p{0.3\linewidth}|}
@@ -692,6 +694,8 @@ decreasing precedence.
     \hline
 \end{tabular}
 \end{small}
+\caption{\tsl operators}\label{t:ops}
+\end{table}
 
 In addition, \tsl supports three kinds of conditional expressions: 
 \src{if-else} expressions (or ternary expressions), 
@@ -747,7 +751,57 @@ following type and memory safety rules:
         expressions, lower bound must be less than or equal to the 
         upper bound, and both bound must be smaller than the width
         of the argument.
+    \item The address-of operator (\src{\&}) can only be applied 
+        to memory variables (see Section~\ref{}).
 \end{itemize}
+
+\section{Statements}
+
+Statements are used to describe process behaviour and are used in 
+process and method bodies and always-blocks (Section~\ref{}).
+
+\begin{bnflisting}{}
+<statement> := <varDecl>  // local var declaration
+             | <sseq>     // sequential block
+             | <spar>     // fork block
+             | <sforever> // forever loop
+             | <sdo>      // do loop
+             | <swhile>   // while loop
+             | <sfor>     // for loop
+             | <schoice>  // nondeterministic choice
+             | <spause>   // pause
+             | <swait>    // wait on a condition
+             | <sstop>    // stop
+             | <sbreak>   // break
+             | <sassert>  // assertion
+             | <sassume>  // assumption
+             | <site>     // if-then-else statement
+             | <scase>    // case statement
+             | <sinvoke>  // method invocation
+             | <sassign>  // variable assignment
+             | <sreturn>  // return statement
+             | <smagic>   // magic block
+\end{bnflisting}
+
+\paragraph{Variable declarations}  Variable declaration statements 
+are used to declare local variables visible within the syntactic 
+scope of the process, method or always-block.  A variable 
+declaration consists of an optional \src{mem} qualifier, variable 
+type and name and optional initial assignment:
+\begin{bnflisting}{}
+<varDecl> := ["mem"] <typeSpec> <ident> ["=" <expr>]
+\end{bnflisting}
+The \src{mem} qualifier labels the variable as in-memory variable,
+which allows the address-of operator to be applied to this 
+variable or any of its fields.  In addition, in doing pointer 
+analysis of a \tsl specification, one can assume that a pointer 
+can only point to an in-memory variable of a matching type.
+
+In case variable declaration does not specify an initial value for 
+the variable, the value for the variable is chosen 
+non-deterministically.
+
+\paragraph{Sequential blocks}
 
 \section{\tsl file structure}
 
@@ -829,8 +883,8 @@ template item is one of:
     \item Global variable declaration
     \item Init block
     \item Always block
-    \item Process declaration
-    \item Method declaration
+    \item Process
+    \item Method
     \item Goal
     \item Wire declaration
 \end{itemize}
@@ -841,5 +895,18 @@ declarations were considered in Sections~\ref{s:r:typedecl} and
 \ref{s:r:constant}.  We describe the remaining types of template 
 items below.
 
+\section{Global variable declarations}
+
+\section{Init blocks}
+
+\section{Always blocks}
+
+\section{Process}
+
+\section{Method}
+
+\section{Goal}
+
+\section{Wire declaration}
 
 \end{document}
