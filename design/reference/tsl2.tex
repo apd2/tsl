@@ -757,7 +757,7 @@ declarations, constant declarations, and template declarations.
 \begin{bnflisting}{}
 <tslFile>  := <specItem>*
 <specItem> := <import>
-           |  <typedecl>
+           |  <typeDecl>
            |  <const>
            |  <template>
 \end{bnflisting}
@@ -778,18 +778,68 @@ The \tsl compiler appends this path to each import directory,
 specified via the \src{-I} command line switch, in order, until a  
 file with this name is found.
 
+\section{Type declarations}\label{s:r:typedecl}
+
+Type declarations can be placed in the top-level scope or in a
+template scope.
+
+\begin{bnflisting}{}
+<typeDecl> := "typedef" <typeSpec> <ident>
+\end{bnflisting}
+
+\section{Constant declarations}\label{s:r:constant}
+
+Constant declarations can be placed in the top-level scope or in a
+template scope.  The value of a constant is an expression that can
+be evaluated at compile time.
+
+\begin{bnflisting}{}
+<const> := "const" <typeSpec> <ident> "=" <expr>
+\end{bnflisting}
+
+Examples:
+
+\begin{tsllisting}{}
+typedef struct {bool f1; uint<16> f2;} stype;
+
+const bool     b = true;
+const uint<16> u = 16'd5;
+const stype    s = stype {.f1 = b, .f2 = u};
+\end{tsllisting}
+
 
 \section{Templates}
 
 Templates must be declared within the top-level scope, i.e., 
 nested template declarations are not allowed.  Template 
 declaration has the following syntax:
-\begin{tsllisting}{}
-template <template-name>[(<port-declarations>)]
-  <template-item>*
-endtemplate
-\end{tsllisting}
+\begin{bnflisting}{}
+<template> := "template" <ident> [(<portDeclarations>)]
+                  (<templateItem> ";")*
+              "endtemplate"
+\end{bnflisting}
+Here, \src{<portDeclarations>} are a comma-separated list of 
+port declarations, described in Section~\ref{s:o:templates}.  A 
+template item is one of:
+\begin{itemize}
+    \item Derive statement
+    \item Instance declaration
+    \item Type declaration
+    \item Constant declaration
+    \item Global variable declaration
+    \item Init block
+    \item Always block
+    \item Process declaration
+    \item Method declaration
+    \item Goal
+    \item Wire declaration
+\end{itemize}
 
+Derive statements and instance declarations were considered in 
+Section~\ref{s:o:templates}.  Type declarations and constant 
+declarations were considered in Sections~\ref{s:r:typedecl} and
+\ref{s:r:constant}.  We describe the remaining types of template 
+items below.
 
 
 \end{document}
