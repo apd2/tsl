@@ -61,8 +61,9 @@ exprSimplify' (EBinOp p op a1 a2)       = let (ss1,a1') = exprSimplify a1
                                               (ss2,a2') = exprSimplify a2
                                           in ((ss1++ss2), EBinOp p op a1' a2')
 exprSimplify' e@(ETernOp p a1 a2 a3)    = condSimplify p (Left $ tspec e) [(a1,a2)] (Just a3)
-exprSimplify' e@(ECase p c cs md)       = condSimplify p (Left $ tspec e) cs' md
-                                          where cs' = map (mapFst $ (\e -> EBinOp (pos e) Eq c e)) cs
+exprSimplify' e@(ECase p c cs md)       = mapFst (ss++) $ condSimplify p (Left $ tspec e) cs' md
+                                          where (ss, c') = exprSimplify c
+                                                cs' = map (mapFst $ (\e -> EBinOp (pos e) Eq c' e)) cs
 exprSimplify' e@(ECond p cs md)         = condSimplify p (Left $ tspec e) cs md
 exprSimplify' (ESlice p e (l,h))        = let (ss, e') = exprSimplify e
                                               (ssl,l') = exprSimplify l

@@ -267,18 +267,24 @@ template l4_ide_os(l4_ide_drv drv)
 \end{tsllisting}
 
 
-\section{Execution model}
+\section{Execution model}\label{s:o:execmodel}
 
 All state transitions in \tsl occur in the context of 
 \emph{processes}.  Multiple processes can be enabled at the same 
 time; however exactly one process participates in each individual 
-transition.  Processes are declared inside templates using the 
-\src{process} keyword.  Such processes become runnable in the 
-initial state of the specification.  Additional processes can be 
-spawned at runtime using the \src{fork} construct.  Syntactic 
-constraints of the language (namely, the lack of support for 
-recursion) guarantee that only a bounded number of processes can 
-be spawned at any time.  
+transition.  Process transitions are atomic with respect to other 
+processes.  Process that perform the next transition is chosen by 
+the scheduler among enabled processes.  Scheduling is fair, i.e., 
+if a process stays enabled sufficiently long, it will eventually 
+get scheduled.
+
+Processes are declared inside templates using the \src{process} 
+keyword.  Such processes become runnable in the initial state of 
+the specification.  Additional processes can be spawned at runtime 
+using the \src{fork} construct.  Syntactic constraints of the 
+language (namely, the lack of support for recursion) guarantee 
+that only a bounded number of processes can be spawned at any 
+time.  
 
 In the following example, template \src{A} contains a single 
 static process \src{psndrcv}, which spawns two subprocesses 
@@ -288,8 +294,8 @@ template A
 
 process psndrcv {
   fork {
-    psend:    while (true) send();
-    preceive: while (true) receive();
+    psend:    forever send();
+    preceive: forever receive();
   };
   shutdown();
 };
@@ -755,6 +761,42 @@ following type and memory safety rules:
         to memory variables (see Section~\ref{}).
 \end{itemize}
 
+\subsection{Non-deterministic expression}
+
+Special expression \src{*} is used to generate non-deterministic 
+values of arbitrary type.  The exact type is derived from the 
+context, as illustrated in this example:
+\begin{tsllisting}{}
+x = *;  // Generate random value of the same type as x.
+f(*,*); // Generate random values that match argument 
+        // types of f.
+\end{tsllisting}
+Note that \src{*} cannot be used as an atom in a bigger expression,
+for example, the following is not valid:
+\begin{tsllisting}{}
+x = * + 2; // Invalid use of *
+\end{tsllisting}
+
+\subsection{L-expressions}\label{s:r:lexpr}
+
+\emph{L-expressions} are a subset of \tsl expressions that can be 
+used as the left-hand side of assignments statement and as output 
+arguments of methods.  L-expressions are defined by the following 
+rules:
+\begin{enumerate}
+    \item A variable name is an L-expression
+    \item All valid expressions of the form \src{*e} and 
+        \src{e->f} are L-expressions.
+    \item If \src{e} is an L-expression then the following are 
+        also L-expressions:
+        \begin{itemize}
+            \item \src{e.f}
+            \item \src{e[i]}
+            \item \src{e[l:h]}
+        \end{itemize}
+\end{enumerate}
+
+
 \section{Statements}
 
 Statements are used to describe process behaviour and are used in 
@@ -763,16 +805,16 @@ process and method bodies and always-blocks (Section~\ref{}).
 \begin{bnflisting}{}
 <statement> := <varDecl>  // local var declaration
              | <sseq>     // sequential block
-             | <spar>     // fork block
+             | <spar>     // parallel blocks
              | <sforever> // forever loop
              | <sdo>      // do loop
              | <swhile>   // while loop
              | <sfor>     // for loop
+             | <sbreak>   // break out of a loop
              | <schoice>  // nondeterministic choice
              | <spause>   // pause
              | <swait>    // wait on a condition
              | <sstop>    // stop
-             | <sbreak>   // break
              | <sassert>  // assertion
              | <sassume>  // assumption
              | <site>     // if-then-else statement
@@ -783,17 +825,21 @@ process and method bodies and always-blocks (Section~\ref{}).
              | <smagic>   // magic block
 \end{bnflisting}
 
-\paragraph{Variable declarations}  Variable declaration statements 
-are used to declare local variables visible within the syntactic 
-scope of the process, method or always-block.  A variable 
-declaration consists of an optional \src{mem} qualifier, variable 
-type and name and optional initial assignment:
+\subsection{Variable declarations} 
+
+Variable declaration statements are used to declare local 
+variables visible within the syntactic scope of a process, method 
+or always-block.  A local variable is visible everywhere within 
+the process, task, or always-block regardless of the exact 
+location where it has been declared.  A variable declaration 
+consists of an optional \src{mem} qualifier, variable type and 
+name and optional initial assignment:
 \begin{bnflisting}{}
 <varDecl> := ["mem"] <typeSpec> <ident> ["=" <expr>]
 \end{bnflisting}
 The \src{mem} qualifier labels the variable as in-memory variable,
 which allows the address-of operator to be applied to this 
-variable or any of its fields.  In addition, in doing pointer 
+variable or any of its fields.  In addition, in performing pointer 
 analysis of a \tsl specification, one can assume that a pointer 
 can only point to an in-memory variable of a matching type.
 
@@ -801,7 +847,223 @@ In case variable declaration does not specify an initial value for
 the variable, the value for the variable is chosen 
 non-deterministically.
 
-\paragraph{Sequential blocks}
+\subsection{Sequential blocks} 
+
+C-style sequential blocks; nothing fancy here:
+\begin{bnflisting}{}
+<sseq> = "{" (<statement> ";")* "}"
+\end{bnflisting}
+
+\subsection{Parallel blocks}\label{s:r:fork}
+
+The \src{fork} construct is used to spawn several child processes.  
+\begin{bnflisting}{}
+<spar> := "fork" "{" 
+               (<ident> ":" <statement> ";")*
+          "}"
+\end{bnflisting}
+Each child process is assigned a unique label, which helps 
+identify processes during debugging.  The spawning process blocks 
+waiting for all forked processes to terminate.  Forked processes 
+terminate when all of them have reached a \emph{final} state 
+(i.e., a process cannot terminate without waiting for its siblings 
+to be in final states as well).  A process is in a final state 
+when it reaches either the end of its execution (i.e., executes 
+its last instruction) or a \src{stop} statement (Section~\ref{}).  
+
+In the following example two dynamically spawned processes send 
+and receive data in an infinite loop.
+\begin{tsllisting}{}
+process psndrcv {
+  fork {
+    psend:    forever {
+                  stop;   // final state
+                  send();
+              };
+    preceive: forever {
+                  stop;   // final state
+                  receive();
+              };
+  };
+  shutdown();
+};
+\end{tsllisting}
+At each iteration of the loop, they go through final states by 
+\src{stop}.  When both processes are in their respective final 
+states, the entire \src{fork} block \emph{may} terminate, with the 
+parent process moving on to the next statement; however, it is not 
+required to terminate and can continue executing \src{forever} 
+loops.  The choice between terminating and continuing execution is 
+performed nondeterministically by the environment.  In contrast, 
+in the following example, once both processes reach their final 
+control locations, the fork block terminates instantaneously, as 
+neither process can execute any more transitions:
+\begin{tsllisting}{}
+process psndrcv {
+  fork {
+    psend:    send();
+    preceive: receive();
+  };
+  shutdown();
+};
+\end{tsllisting}
+
+\subsection{Loops}  
+
+In addition to conventional do, while, and for loops, \tsl 
+supports forever loops, which are equivalent to \src{while(true)}.
+\begin{bnflisting}{}
+<sdo>      := "do" <statement> "while" "(" <expr> ")"
+<swhile>   := "while" "(" <expr> ")" <statement>
+<sfor>     := "for" "(" [<statement>] ";" 
+                        <expr> ";" 
+                        <statement> ")" 
+                  <statement>
+<sforever> := "forever" <statement>
+\end{bnflisting}
+
+At the moment \tsl does not allow \emph{instantaneous loops}, 
+i.e., every possible path through the loop body must contain an 
+explicit or implicit pause location (Section~\ref{s:o:execmodel}).  
+This restriction is enforced by the compiler via a simple static 
+check.  Note that there is no implicit pause before the body of the 
+loop, i.e., execution enters the loop instantaneously and 
+continues until reaching a pause location inside the loop.  For 
+example, in the following example, process \src{foo} executes two 
+transitions: (1) \src{x=16'd0; (x<1) == true; x=x+16'd1}, and 
+(2) \src{(x<1) == false; y=16'd0}.
+\begin{tsllisting}{}
+process foo {
+    x = 16'd0;
+    while (x < 1) {
+        x = x + 16'd1;
+        pause;
+    };
+    y = 16'd0;
+};
+\end{tsllisting}
+
+The \src{break} statement can be used anywhere inside a loop to 
+transfer control to the first instruction following the body of 
+the innermost.
+
+\subsection{Non-deterministic choice}  The \src{choice} construct 
+allows the environment to non-deterministically choose between
+two or more actions:
+\begin{bnflisting}{}
+<schoice> := "choice" "{"
+               (<statement> ";")*
+             "}"
+\end{bnflisting}
+
+\subsection{Pause statements}
+
+\tsl offers three ways to insert an explicit pause location 
+(Section~\ref{s:o:execmodel}) in the control flow of a process or 
+method: \src{wait}, \src{pause}, and \src{stop}
+statements.
+\begin{bnflisting}{}
+<swait>  := "wait" "(" <expr> ")"
+<spause> := "pause"
+<sstop>  := "stop"
+\end{bnflisting}
+
+The \src{wait} statement inserts a pause location and disables the 
+current process until the wait condition becomes true.  If the 
+wait condition stays true for sufficiently long time, the process 
+is guaranteed to eventually leave the pause location.  Note that 
+if the wait condition is already true when the process enters the 
+pause location, the current transition terminates anyway.
+
+The \src{pause} statement is a shortcut for \src{wait(true)}.  
+\src{stop} behaves like \src{pause}, but additionally marks the 
+current process state as final (Section~\ref{s:r:fork}).
+
+\section{Assertions} 
+
+An assertion behaves as a no-op if its argument evaluates to true, 
+and causes a transition to an error
+state otherwise.
+\begin{bnflisting}{}
+<sassert> := "assert" "(" <expr> ")"
+\end{bnflisting}
+The argument of an \src{assert} statement must be a 
+side-effect-free expression.
+
+\subsection{Assumptions}  
+
+\begin{bnflisting}{}
+<sassume> := "assume" "(" <expr> ")"
+\end{bnflisting}
+
+Assumptions are used to constrain possible system behaviours.  
+Similar to assertions, they specify constraint that must hold for 
+any valid execution of the system.  However, while an assertion 
+causes transition to an error state if its condition is violated, 
+the \src{assume} statement prunes all transitions that violate the 
+assumption.
+
+Assumptions are particularly useful in imposing restrictions on 
+randomly generated values, as illustrated by the following 
+example.
+\begin{tsllisting}{}
+// assign random values for stopbits and data vars
+stopbits  = *;
+data      = *;
+// only certain combinations of stopbits and data values 
+// are valid
+assume(((stopbits==UART_STOP_BITS_15) && (data==4'd5)) || 
+        ((stopbits==UART_STOP_BITS_2) && (data!=4'd5)));
+case (data) {
+    4'd5:       data_bits = CUART_DATA5;
+    4'd6:       data_bits = CUART_DATA6;
+    4'd7:       data_bits = CUART_DATA7;
+    4'd8:       data_bits = CUART_DATA8;
+    default: assume(false); // other values are not allowed
+};
+\end{tsllisting}
+
+\subsection{Conditional statements}
+
+\tsl supports C-style \src{if-else} statements and \src{case} 
+statements:
+\begin{bnflisting}{}
+<site>  := "if" "(" <expr> ")" <statement>
+             ["else" <statement>]
+<scase> := "case" "(" <expr> ")" "{"
+             (<expr> ":" <statement> ";")*
+             ["default" ":" <statement> ";"
+           "}"
+\end{bnflisting}
+
+Labels of the \src{case} statement can be arbitrary 
+side-effect-free deterministic expressions of a matching type.  At 
+runtime, the first matching label is selected.  At most one branch 
+of a case statement is executed; execution does not fall through 
+to the next label automatically.  Unlike in C, the \src{break} 
+statement cannot be used to break out of a case clause.  While 
+\src{break} is allowed inside the body of a \src{case}, it has the 
+effect of breaking out of the innermost loop.
+
+\subsection{Method invocation}
+
+Method invocations can occur as atoms in expressions as well as 
+standalone statements.  Method name is a hierarchical identifier 
+that refers either to a method declared in the local template or 
+exported from another template.
+\begin{bnflisting}{}
+<sinvoke> := <dynIdent> "(" [<expr> [("," <expr>)*]] ")"
+\end{bnflisting}
+Method arguments must match the number and types of formal 
+arguments in the method declaration.  Output arguments~\ref{} must 
+be L-expressions~\ref{s:r:lexpr}.
+
+\subsection{Assignment statements}
+
+\begin{bnflisting}{}
+<sassign> := <expr> "=" <expr>
+\end{bnflisting}
+
 
 \section{\tsl file structure}
 
