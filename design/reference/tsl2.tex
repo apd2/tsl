@@ -784,7 +784,9 @@ used as the left-hand side of assignments statement and as output
 arguments of methods.  L-expressions are defined by the following 
 rules:
 \begin{enumerate}
-    \item A variable name is an L-expression
+    \item Names of variables visible in the current scope, 
+        including global variables, local variables, and function 
+        arguments are L-expressions
     \item All valid expressions of the form \src{*e} and 
         \src{e->f} are L-expressions.
     \item If \src{e} is an L-expression then the following are 
@@ -796,6 +798,16 @@ rules:
         \end{itemize}
 \end{enumerate}
 
+\subsection{Expression evaluation}
+
+Expression evaluation order matters in cases when expression 
+operands contain method calls, which may have side effects.  
+\comment{The following description reflects how the compiler works 
+at the moment; however this behaviour is counter-intuitive and 
+should be fixed to be more C-like}.  All expression operands are 
+evaluated before the expression itself is evaluated.  In 
+particular, if the expression contains method calls, then all of 
+these calls are performed before the expression is evaluated.
 
 \section{Statements}
 
@@ -979,7 +991,7 @@ The \src{pause} statement is a shortcut for \src{wait(true)}.
 \src{stop} behaves like \src{pause}, but additionally marks the 
 current process state as final (Section~\ref{s:r:fork}).
 
-\section{Assertions} 
+\subsection{Assertions} 
 
 An assertion behaves as a no-op if its argument evaluates to true, 
 and causes a transition to an error
@@ -1064,6 +1076,37 @@ be L-expressions~\ref{s:r:lexpr}.
 <sassign> := <expr> "=" <expr>
 \end{bnflisting}
 
+The left-hand side of an assignment statement must be an 
+L-expression (Section~\ref{s:r:lexpr}).  
+
+\subsection{Return statements}
+
+\begin{bnflisting}{}
+<sreturn> := "return" [<expr>]
+\end{bnflisting}
+
+Return statements are only allowed in method bodies.  If the 
+method is a \src{void} method, return must not have an argument; 
+otherwise it must have an argument whose type matches the return 
+type of the method.  Every path through a non-void method must end 
+with a \src{return} statement.  Statements following a 
+\src{return} statement are ignored and control transfer to the 
+location immediately following the call site.  
+
+If the method is a controllable or uncontrollable task then an 
+implicit pause location (Section~\ref{s:o:execmodel}) is 
+introduced at the return location.  In this case, if the value 
+returned by the task is used as the right-hand side of an 
+assignment, the value of the left-hand side is modified at the 
+beginning of the next transition performed by the process.
+
+\subsection{Magic blocks}
+
+\begin{bnflisting}{}
+<smagic> := "{" "..." "}" ("using" <ident> | "post" <detexpr>)
+\end{bnflisting}
+
+See section~\ref{s:o:magic}.
 
 \section{\tsl file structure}
 
