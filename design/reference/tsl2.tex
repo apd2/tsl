@@ -1,5 +1,6 @@
 \documentclass{report}
 
+\usepackage{hyperref}
 \usepackage{color}
 \usepackage[usenames]{xcolor}
 \usepackage{tikz}
@@ -266,6 +267,11 @@ template l4_ide_os(l4_ide_drv drv)
   }
 \end{tsllisting}
 
+A template that has part of its functionality, namely method body 
+or wire assignment, underspecified is called \emph{pure template}.  
+Pure templates can be used in derive statements and in port 
+declarations, however they cannot be instantiated.
+
 
 \section{Execution model}\label{s:o:execmodel}
 
@@ -318,7 +324,7 @@ compiler in the following cases:
     \item Before \src{fork} statements~\ref{}
     \item Before magic blocks~\ref{}
     \item On entries to and exits from controllable and 
-        uncontrollable tasks~\ref{}
+        uncontrollable tasks (see below)
 \end{itemize}
 
 Process behaviour can be factored into \emph{methods}.  A process 
@@ -339,8 +345,11 @@ Tasks can take time to execute.  A task can have an optional
 Controllable tasks are the only kind of task that can be invoked 
 from synthesised code; although they can also be called from 
 manually written code.  They are used to model the device register 
-interface and OS callbacks.  Controllable tasks are subject to 
-additional implementation constraint.
+interface and OS callbacks.  In the current implementation of the 
+\tsl compiler, controllable tasks are subject to additional 
+constraint: they are not allowed to contain internal pause 
+locations, i.e., a controllable task must always complete in a 
+single transition. 
 
 Uncontrollable tasks represent driver methods invoked by the OS or 
 the device.  Uncontrollable tasks are the only kind of task that 
@@ -708,11 +717,11 @@ In addition, \tsl supports three kinds of conditional expressions:
 \src{case}-expressions, and \src{cond}-expressions.  
 
 \begin{bnflisting}{}
-<ternExp>  := "if" <expr> <expr> "else" <expr>
-<caseExp>  := "case" "(" <expr> ")" "{" 
-                  (<expr> ":" <expr> ";")* 
-                  ["default" ":" <expr> ";"]
-              "}"
+<ternExp> := "if" <expr> <expr> "else" <expr>
+<caseExp> := "case" "(" <expr> ")" "{" (<expr> ":" <expr> ";")* 
+                 (<expr> ":" <expr> ";")* 
+                 ["default" ":" <expr> ";"]
+            "}"
 <condExp> := "cond" "{"
                   (<expr>    ":" <expr> ";")*
                   ["default" ":" <expr> ";"]
@@ -837,7 +846,7 @@ process and method bodies and always-blocks (Section~\ref{}).
              | <smagic>   // magic block
 \end{bnflisting}
 
-\subsection{Variable declarations} 
+\subsection{Variable declarations}\label{s:r:localvar}
 
 Variable declaration statements are used to declare local 
 variables visible within the syntactic scope of a process, method 
@@ -1079,7 +1088,7 @@ be L-expressions~\ref{s:r:lexpr}.
 The left-hand side of an assignment statement must be an 
 L-expression (Section~\ref{s:r:lexpr}).  
 
-\subsection{Return statements}
+\subsection{Return statements}\label{s:r:return}
 
 \begin{bnflisting}{}
 <sreturn> := "return" [<expr>]
@@ -1200,18 +1209,184 @@ declarations were considered in Sections~\ref{s:r:typedecl} and
 \ref{s:r:constant}.  We describe the remaining types of template 
 items below.
 
-\section{Global variable declarations}
+\subsection{Global variable declarations}
 
-\section{Init blocks}
+Global variables (Section~\ref{s:o:variables}) are declared in the 
+template scope.  The declaration syntax is the same as for local 
+variables (Section~\ref{s:r:localvar}) with the optional 
+\src{export} qualifier that indicates that the variable can be 
+accessed from outside the template:
 
-\section{Always blocks}
+\begin{bnflisting}{}
+<gvarDecl> := ["export"] <varDecl>
+\end{bnflisting}
 
-\section{Process}
+Similar to local variable declarations, if the declaration does 
+not specify an initial value for the variable, the value for the 
+variable is chosen non-deterministically.  The initial value can 
+be further constrained by \src{init} blocks, as described below.
 
-\section{Method}
+\subsection{Init blocks}
 
-\section{Goal}
+An \src{init} block defines a constraint over initial assignment 
+of global veriables.
+\begin{bnflisting}{}
+<initBlock> := "init" <expr>
+\end{bnflisting}
+The body of an \src{init} block is a boolean expression over 
+global variables visible from the current template, including 
+variables exported from other templates.  
 
-\section{Wire declaration}
+The following example constrains initial values of 
+\src{config\_in\_progress} and \src{sendq\_head} variables:
+\begin{tsllisting}{}
+template linux_uart_drv(uart_dev dev)
+    bool config_in_progress;
+    uint<16> sendq_head;
+    init (config_in_progress == true) &&
+         (sendq_head == 16'd0);
+endtemplate
+\end{tsllisting}
+Note that the same result can be achieved using initial variable 
+assignments:
+\begin{tsllisting}{}
+template linux_uart_drv(uart_dev dev)
+    bool config_in_progress = true;
+    uint<16> sendq_head = 16'd0;
+endtemplate
+\end{tsllisting}
+In general, however, \src{init} blocks are a more general 
+mechanism for constraining initial state, for example the 
+following condition cannot be captures using initial variable 
+assignments:
+\begin{tsllisting}{}
+template linux_uart_drv(uart_dev dev)
+    init (config_in_progress == true) ||
+         (sendq_head == 16'd0);
+endtemplate
+\end{tsllisting}
+
+A template can contain multiple \src{init} blocks.  In using 
+\src{init} blocks, one must make sure that different \src{init} 
+blocks do not contradict each other and initial variable 
+assignments, leading to an empty initial set, as in the following 
+example:
+\begin{tsllisting}{}
+template linux_uart_drv(uart_dev dev)
+    bool config_in_progress = true;
+    init config_in_progress == false;
+endtemplate
+\end{tsllisting}
+
+\subsection{Always blocks}
+
+\subsection{Processes}
+
+See Section~\ref{s:o:execmodel}.
+
+\begin{bnflisting}{}
+<processDecl> := "process" <ident> <statement>
+\end{bnflisting}
+
+\subsection{Methods}
+
+A method declaration consists of
+\begin{itemize}
+    \item optional \src{export} qualifier that indicates whether 
+        the method can be invoked from outside its template
+    \item method category specifier that labels the method as 
+        function, procedure, or task, and in the last case 
+        optionally as a controllable or uncontrollable task 
+        (Section~\ref{s:o:execmodel})
+    \item return type or \src{void} if the method does not return 
+        a value
+    \item argument list
+    \item method body
+\end{itemize}
+
+\begin{bnflisting}{}
+<methodDecl> := ["export"]               // Exported method?
+                <methCateg>              // Method category
+                ("void" | <typeSpec>)       // Return type
+                <ident> "("                 // Method name
+                    [<arg> ("," <arg>)*]    // Arguments
+                ")"
+                    (                       // Partial body:
+                     ["before" <statement>] // preamble
+                     ["after" <statement>]  // epilogue
+                    ) |
+                    <statement>             // complete form
+
+<methCateg> := "function"
+             | "procedure"
+             | "task" [ "controllable" 
+                      | "uncontrollable"]
+
+<arg> := ["out"] <typeSpec> <ident>
+\end{bnflisting}
+
+Method arguments are used to pass data both to and from the 
+method.  Each individual argument can be declared as an input or 
+an output argument, but not both.  Syntactically, input and output 
+arguments are distinguished using the \src{out} qualifier.
+
+Both input and output arguments can be read and modified in the 
+body of the method; however the initial value of an output 
+argument is non-derministic.  The final value of an input argument 
+is dropped, while the final value of an output argument is 
+propagated to the L-expression (Section~\ref{s:r:lexpr}) passed as 
+the actual argument to the method.  Note that for controllable and 
+uncontrollable tasks the output value is propagated to the 
+argument at the beginning of the next transition performed by the 
+process after the implicit pause location following the return 
+statement (Section~\ref{s:r:return}).
+
+\subsubsection{Method body}
+
+Method body declaration can be written in the complete or partial 
+form.  A complete declaration is simply a \tsl statement.  A 
+partial declaration consists of an optional preamble and an 
+optional epilogue that are executed respectively before and after 
+the main body of the method declared in the child template.  If 
+neither the preamble not the epilogue are specified, than the body 
+of the method remains empty.  
+
+The full method body is constructed based on the method 
+declaration in the current and parent templates according to the 
+following rules.
+
+If the method is not an overloaded method (i.e., there is not 
+method with the same name defined in one of the parent templates), 
+then the full method body is the body provided in the local 
+declaration.
+
+%methFullBody t m = 
+%    case methParent t m of
+%         Nothing      -> methBody m
+%         Just (t',m') -> case (methFullBody t' m', methBody m) of
+%                              (Left (mb',ma'), Left (mb,ma)) -> 
+%                                  let bef = case (mb',mb) of
+%                                                 (Nothing, Nothing) -> Nothing
+%                                                 (Just b', Just b)  -> Just $ sSeq nopos [b',b]
+%                                                 (Just b', Nothing) -> Just b'
+%                                                 (Nothing, Just b)  -> Just b
+%                                      aft = case (ma',ma) of
+%                                                 (Nothing, Nothing) -> Nothing
+%                                                 (Just a', Just a)  -> Just $ sSeq nopos [a,a']
+%                                                 (Just a', Nothing) -> Just a'
+%                                                 (Nothing, Just a)  -> Just a
+%                                  in Left (bef, aft)
+%                              (Left (mb',ma'), Right b)      -> Right $ sSeq nopos $ (maybeToList mb')++[b]++(maybeToList ma')
+%                              (Right b', Right b)            -> Right b
+%                              _                              -> Left (Nothing, Nothing)
+
+
+\subsection{Goals}
+
+\subsection{Wire declarations}
+
+\subsection{Rules of template inheritance}
+
+\subsection{Pure and concrete templates}
 
 \end{document}
