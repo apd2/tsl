@@ -5,6 +5,18 @@
 \usepackage[usenames]{xcolor}
 \usepackage{tikz}
 
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% New definitions
+\algnewcommand\algorithmicswitch{\textbf{case}}
+\algnewcommand\algorithmiccase{\textbf{}}
+% New "environments"
+\algdef{SE}[SWITCH]{Switch}{EndSwitch}[1]{\algorithmicswitch\ #1\ {\bf of}}{\algorithmicend\ \algorithmicswitch}%
+\algdef{SE}[CASE]{Case}{EndCase}[1]{\algorithmiccase\ #1 :}{\algorithmicend\ \algorithmiccase}%
+\algtext*{EndSwitch}%
+\algtext*{EndCase}%
+
 %\usepackage[T1]{fontenc}
 
 \definecolor{lgray}{gray}{0.9}
@@ -1343,45 +1355,67 @@ statement (Section~\ref{s:r:return}).
 
 \subsubsection{Method body}
 
-Method body declaration can be written in the complete or partial 
-form.  A complete declaration is simply a \tsl statement.  A 
-partial declaration consists of an optional preamble and an 
-optional epilogue that are executed respectively before and after 
-the main body of the method declared in the child template.  If 
-neither the preamble not the epilogue are specified, than the body 
-of the method remains empty.  
+Method body declaration can be written in the \emph{complete} or 
+\emph{partial} form.  A complete declaration is simply a \tsl 
+statement.  A partial declaration consists of an optional preamble 
+and an optional epilogue that are intended to execute respectively 
+before and after the main body of the method declared in the child 
+template.  If neither the preamble not the epilogue are specified, 
+then the body of the method remains empty.  
 
 The full method body is constructed based on the method 
-declaration in the current and parent templates according to the 
-following rules.
+declaration in the current and parent templates using 
+Algorithm~\ref{a:method}.
 
-If the method is not an overloaded method (i.e., there is not 
-method with the same name defined in one of the parent templates), 
-then the full method body is the body provided in the local 
-declaration.
-
-%methFullBody t m = 
-%    case methParent t m of
-%         Nothing      -> methBody m
-%         Just (t',m') -> case (methFullBody t' m', methBody m) of
-%                              (Left (mb',ma'), Left (mb,ma)) -> 
-%                                  let bef = case (mb',mb) of
-%                                                 (Nothing, Nothing) -> Nothing
-%                                                 (Just b', Just b)  -> Just $ sSeq nopos [b',b]
-%                                                 (Just b', Nothing) -> Just b'
-%                                                 (Nothing, Just b)  -> Just b
-%                                      aft = case (ma',ma) of
-%                                                 (Nothing, Nothing) -> Nothing
-%                                                 (Just a', Just a)  -> Just $ sSeq nopos [a,a']
-%                                                 (Just a', Nothing) -> Just a'
-%                                                 (Nothing, Just a)  -> Just a
-%                                  in Left (bef, aft)
-%                              (Left (mb',ma'), Right b)      -> Right $ sSeq nopos $ (maybeToList mb')++[b]++(maybeToList ma')
-%                              (Right b', Right b)            -> Right b
-%                              _                              -> Left (Nothing, Nothing)
+\begin{algorithm}
+    \begin{algorithmic}[1]
+        \Statex {\bf Input:} Child method body $M$ and parent method 
+        body $M'$, where $M$ is either a complete body $(b)$ or partial
+        body $(p,e)$.  Likewise, $M'$ is either $(b')$ or $(p',e')$ or
+        $nil$, if $M$ is not an overloaded method.
+        \Statex {\bf Output:} Full child method body
+        \Function{fullBody}{$M, M'$}
+          \Comment{Recursively invoke the algorithm on $M'$}
+          \Switch{(M, \Call{fullBody}{$M'$})}
+            \Case{$(nil, M')$}
+              \State {\bf return} $nil$
+            \EndCase
+            \Case{$(M, nil)$}
+              \Comment{The method is not an overloaded method}
+              \State {\bf return} $M$
+            \EndCase
+            \Case{$(M, (b'))$} 
+              \Comment{Parent method has a complete body: override it}
+              \State {\bf return} $M$
+            \EndCase
+            \Case{$((p,e), (p',e'))$} 
+              \Comment{Both parent and child have partial bodies: merge 
+                       preambles and epilogues using sequential composition}
+              \State {\bf return} $((p';p), (e;e'))$
+            \EndCase
+            \Case{$((b), (p',e'))$} 
+              \Comment{Child has a complete body, parent has partial body: 
+                       prepend and append parent's preamble and epilogue to 
+                       the child}
+              \State {\bf return} $(p';b;e')$
+            \EndCase
+            \Case{\bf otherwise}
+              \State {\bf error}
+            \EndCase
+          \EndSwitch 
+        \EndFunction
+    \end{algorithmic}
+    \caption{}\label{a:method}
+\end{algorithm}
 
 
 \subsection{Goals}
+
+\begin{bnflisting}{}
+<goalDecl> := "goal" <ident> "=" <expr>
+\end{bnflisting}
+
+See Section~\ref{s:o:correctness}.
 
 \subsection{Wire declarations}
 
