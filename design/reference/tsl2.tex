@@ -284,6 +284,29 @@ or wire assignment, underspecified is called \emph{pure template}.
 Pure templates can be used in derive statements and in port 
 declarations, however they cannot be instantiated.
 
+Template inheritance is subject to the following rules:
+\begin{itemize}
+    \item Derived template must re-declare all ports of all its 
+        parent templates with the same names and types.  It can 
+        also declare additional ports not found in any of its 
+        parents.
+
+    \item If a template has multiple parent templates, then the 
+        namespaces of parent templates (consisting of variable, 
+        wire, method, goal, and process names) must not overlap.
+
+    \item If the derived template re-declares a wire or method 
+        declared in one of its parents, the new declaration must 
+        have the same signature as the parent declaration.
+
+    \item The child template can override wire and method 
+        declarations of its parent templates.  Other parts of the 
+        parent template, including variable, goal, and process 
+        declarations, are inherited by the child template and 
+        cannot be overriden.
+\end{itemize}
+
+
 
 \section{Execution model}\label{s:o:execmodel}
 
@@ -333,8 +356,8 @@ Implicit pause locations are introduced automatically by the
 compiler in the following cases:
 
 \begin{itemize}
-    \item Before \src{fork} statements~\ref{}
-    \item Before magic blocks~\ref{}
+    \item Before \src{fork} statements
+    \item Before magic blocks~\ref{s:o:magic}
     \item On entries to and exits from controllable and 
         uncontrollable tasks (see below)
 \end{itemize}
@@ -432,15 +455,15 @@ endtemplate
 \tsl provides several mechanisms for specifying correctness 
 conditions over system behaviour:
 \begin{itemize}
-    \item \emph{Goals.} A goal is a boolean expression over global 
-        variables that must hold infinitely often in any infinite 
-        run of the system.  A template can declare any number of 
-        goals.  In addition, \tsl defines two implicit goals.  The 
-        first one requires the system to be outside of a magic 
-        block infinitely often; in other words, the system cannot 
-        stay inside a magic block forever.  The second implicit 
-        goal requires that the system never enters an \emph{error 
-        state} (see below).
+    \item \emph{Goals.} A goal is a side-effect-free boolean 
+        expression over global variables that must hold infinitely 
+        often in any infinite run of the system.  A template can 
+        declare any number of goals.  In addition, \tsl defines 
+        two implicit goals.  The first one requires the system to 
+        be outside of a magic block infinitely often; in other 
+        words, the system cannot stay inside a magic block 
+        forever.  The second implicit goal requires that the 
+        system never enters an \emph{error state} (see below).
     \item \emph{Assertions.}  An \src{assert} statement can be 
         placed anywhere inside processes, tasks, and procedures.  
         It defines a condition whose violation immediately 
@@ -673,9 +696,9 @@ typedef struct {bool f1; uint<16>[10] f2;} * structptr;
 
 \tsl expressions are constructed from identifiers 
 (Section~\ref{s:r:identifiers}), literals
-(Section~\ref{s:r:literals}), and method applications~\ref{} using 
-operators summarised in table~\ref{t:ops} in the order of 
-decreasing precedence.
+(Section~\ref{s:r:literals}), and method 
+invocations~\ref{s:r:invocation} using operators summarised in 
+Table~\ref{t:ops} in the order of decreasing precedence.
 
 \begin{table}
 \begin{small}
@@ -744,7 +767,7 @@ A \src{case}-expression chooses a value based on the value of its
 key expression, whereas a \src{cond}-expression chooses a value to 
 return by evaluating a series of conditions in order.  Note that 
 \src{if-else} expressions are different from \src{if} statements 
-described in Section~\ref{}.
+described in Section~\ref{s:r:coniditional}.
 
 Finally, \tsl supports struct expressions with explicit or implicit 
 field names:
@@ -779,7 +802,7 @@ following type and memory safety rules:
         upper bound, and both bound must be smaller than the width
         of the argument.
     \item The address-of operator (\src{\&}) can only be applied 
-        to memory variables (see Section~\ref{}).
+        to memory variables (see Section~\ref{s:r:localvar}).
 \end{itemize}
 
 \subsection{Non-deterministic expression}
@@ -833,7 +856,8 @@ these calls are performed before the expression is evaluated.
 \section{Statements}
 
 Statements are used to describe process behaviour and are used in 
-process and method bodies and always-blocks (Section~\ref{}).
+process and method bodies and always-blocks 
+(Section~\ref{s:r:always}).
 
 \begin{bnflisting}{}
 <statement> := <varDecl>  // local var declaration
@@ -902,7 +926,8 @@ terminate when all of them have reached a \emph{final} state
 (i.e., a process cannot terminate without waiting for its siblings 
 to be in final states as well).  A process is in a final state 
 when it reaches either the end of its execution (i.e., executes 
-its last instruction) or a \src{stop} statement (Section~\ref{}).  
+its last instruction) or a \src{stop} statement 
+(Section~\ref{s:r:pause}).  
 
 In the following example two dynamically spawned processes send 
 and receive data in an infinite loop.
@@ -989,7 +1014,7 @@ two or more actions:
              "}"
 \end{bnflisting}
 
-\subsection{Pause statements}
+\subsection{Pause statements}\label{s:r:pause}
 
 \tsl offers three ways to insert an explicit pause location 
 (Section~\ref{s:o:execmodel}) in the control flow of a process or 
@@ -1056,7 +1081,7 @@ case (data) {
 };
 \end{tsllisting}
 
-\subsection{Conditional statements}
+\subsection{Conditional statements}\label{s:r:coniditional}
 
 \tsl supports C-style \src{if-else} statements and \src{case} 
 statements:
@@ -1078,7 +1103,7 @@ statement cannot be used to break out of a case clause.  While
 \src{break} is allowed inside the body of a \src{case}, it has the 
 effect of breaking out of the innermost loop.
 
-\subsection{Method invocation}
+\subsection{Method invocation}\label{s:r:invocation}
 
 Method invocations can occur as atoms in expressions as well as 
 standalone statements.  Method name is a hierarchical identifier 
@@ -1088,8 +1113,8 @@ exported from another template.
 <sinvoke> := <dynIdent> "(" [<expr> [("," <expr>)*]] ")"
 \end{bnflisting}
 Method arguments must match the number and types of formal 
-arguments in the method declaration.  Output arguments~\ref{} must 
-be L-expressions~\ref{s:r:lexpr}.
+arguments in the method declaration.  Output 
+arguments~\ref{s:r:method} must be L-expressions~\ref{s:r:lexpr}.
 
 \subsection{Assignment statements}
 
@@ -1198,8 +1223,8 @@ declaration has the following syntax:
                   (<templateItem> ";")*
               "endtemplate"
 \end{bnflisting}
-Here, \src{<portDeclarations>} are a comma-separated list of 
-port declarations, described in Section~\ref{s:o:templates}.  A 
+Here, \src{<portDeclarations>} is a comma-separated list of port 
+declarations, described in Section~\ref{s:o:templates}.  A 
 template item is one of:
 \begin{itemize}
     \item Derive statement
@@ -1290,7 +1315,17 @@ template linux_uart_drv(uart_dev dev)
 endtemplate
 \end{tsllisting}
 
-\subsection{Always blocks}
+\subsection{Always blocks}\label{s:r:always}
+
+An always block is an arbitrary statement that is automatically 
+prepended to all transitions of the system.  It is intended as a 
+low-level mechanism that allows implementing certain behaviours 
+that are tricky to achieve without it.  It should be used with 
+care and should probably be hidden behind syntactic sugar.
+
+\begin{bnflisting}{}
+<always> := "always" <statement>
+\end{bnflisting}
 
 \subsection{Processes}
 
@@ -1300,7 +1335,7 @@ See Section~\ref{s:o:execmodel}.
 <processDecl> := "process" <ident> <statement>
 \end{bnflisting}
 
-\subsection{Methods}
+\subsection{Methods}\label{s:r:method}
 
 A method declaration consists of
 \begin{itemize}
@@ -1355,6 +1390,11 @@ statement (Section~\ref{s:r:return}).
 
 \subsubsection{Method body}
 
+\comment{The method overriding mechanism described in this section 
+is probably too complex and not very useful in practice.  We will 
+most likely simplify it by getting rid of \src{before} and \src{after}
+constructs.}
+
 Method body declaration can be written in the \emph{complete} or 
 \emph{partial} form.  A complete declaration is simply a \tsl 
 statement.  A partial declaration consists of an optional preamble 
@@ -1363,50 +1403,102 @@ before and after the main body of the method declared in the child
 template.  If neither the preamble not the epilogue are specified, 
 then the body of the method remains empty.  
 
-The full method body is constructed based on the method 
-declaration in the current and parent templates using 
-Algorithm~\ref{a:method}.
+The full method body is constructed by recursively merging the method 
+body provided in the method declaration with the overloaded method 
+declaration in the parent template (if one exists) using 
+Algorithm~\ref{a:method}.  The following examples illustrate the algorithm.
+
 
 \begin{algorithm}
     \begin{algorithmic}[1]
-        \Statex {\bf Input:} Child method body $M$ and parent method 
-        body $M'$, where $M$ is either a complete body $(b)$ or partial
-        body $(p,e)$.  Likewise, $M'$ is either $(b')$ or $(p',e')$ or
-        $nil$, if $M$ is not an overloaded method.
-        \Statex {\bf Output:} Full child method body
-        \Function{fullBody}{$M, M'$}
-          \Comment{Recursively invoke the algorithm on $M'$}
+        \Statex {\bf Input:} Method body $M$, where $M$ is 
+        either a complete body $(b)$ or partial body $(p,e)$.
+        \Statex {\bf Output:} Method body merged with the parent body (if one exists)
+        \Function{fullBody}{$M$}
+          \State{\it // Find previous method declaration in one of parent templates}
+          \State $M' \gets$ \Call{parentMethod}{$M$}
+          \If{$M'=nil$}
+            \State {\it // $M$ is not an overloaded method}
+            \State {\bf return} $M$
+          \EndIf
           \Switch{(M, \Call{fullBody}{$M'$})}
-            \Case{$(nil, M')$}
-              \State {\bf return} $nil$
+            \State{\it //Parent method has a complete body: override it}
+            \Case{$(M, (b'))$}
+              \Return{$M$}
             \EndCase
-            \Case{$(M, nil)$}
-              \Comment{The method is not an overloaded method}
-              \State {\bf return} $M$
-            \EndCase
-            \Case{$(M, (b'))$} 
-              \Comment{Parent method has a complete body: override it}
-              \State {\bf return} $M$
-            \EndCase
+            \State{\it // Both parent and child have partial bodies: merge}
+            \State{\it // preambles and epilogues using sequential composition}
             \Case{$((p,e), (p',e'))$} 
-              \Comment{Both parent and child have partial bodies: merge 
-                       preambles and epilogues using sequential composition}
-              \State {\bf return} $((p';p), (e;e'))$
+              \Return{$((p';p), (e;e'))$}
             \EndCase
+            \State{\it // Child has a complete body, parent has partial body: prepend}
+            \State{\it // and append parent's preamble and epilogue to the child}
             \Case{$((b), (p',e'))$} 
-              \Comment{Child has a complete body, parent has partial body: 
-                       prepend and append parent's preamble and epilogue to 
-                       the child}
-              \State {\bf return} $(p';b;e')$
+              \Return{$(p';b;e')$}
             \EndCase
             \Case{\bf otherwise}
-              \State {\bf error}
+              \Return {\bf error}
             \EndCase
           \EndSwitch 
         \EndFunction
     \end{algorithmic}
     \caption{}\label{a:method}
 \end{algorithm}
+
+\begin{tsllisting}{}
+// global variable
+bool x;
+
+// parent declaration
+procedure void p(uint<16> arg)
+before{ 
+    assume(arg != 0);
+};
+after{
+    assert(x);
+};
+
+// child declaration
+procedure void p(uint<16> arg)
+{
+    x = (arg > 5);
+};
+
+// full child method body generated by the compiler
+procedure void p(uint<16> arg)
+{
+    assume(arg != 0);
+    x = (arg > 5);
+    assert(x);
+};
+\end{tsllisting}
+
+\begin{tsllisting}{}
+// parent declaration
+procedure void p(uint<16> arg)
+before{ 
+    assume(arg != 0);
+};
+after{
+    assert(x);
+};
+
+// child declaration
+procedure void p(uint<16> arg)
+before{
+    x = (arg > 5);
+};
+
+// full child method body generated by the compiler
+procedure void p(uint<16> arg)
+before{
+    assume(arg != 0);
+    x = (arg > 5);
+};
+after{
+    assert(x);
+};
+\end{tsllisting}
 
 
 \subsection{Goals}
@@ -1419,8 +1511,20 @@ See Section~\ref{s:o:correctness}.
 
 \subsection{Wire declarations}
 
-\subsection{Rules of template inheritance}
+Wire declaration (Section~\ref{s:o:variables}) consists of wire 
+type, wire name, and optional wire expression.  
 
-\subsection{Pure and concrete templates}
+\begin{bnflisting}{}
+<wire> := ["export"] "wire" <typeSpec> <ident> ["=" <expr>]
+\end{bnflisting}
+
+The wire expression is defined over global variables and wires of 
+the current template and other templates accessible via 
+hierarchical identifiers.  However, circular dependencies among 
+wire expressions are forbidden.  If the wire expression is 
+omitted, the wire is a \emph{pure wire} that must be re-defined in 
+child templates.  In merging template with its parents, the \tsl 
+compiler picks the last wire declaration in the inheritance 
+hierarchy.
 
 \end{document}
