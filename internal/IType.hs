@@ -69,7 +69,8 @@ isTypeInt x = case typ x of
 isTypeScalar :: (Typed a) => a -> Bool
 isTypeScalar x = case typ x of
                       Bool   -> True
-                      SInt   -> True
+                      SInt _ -> True
+                      UInt _ -> True
                       Enum _ -> True
                       Ptr _  -> True
                       _      -> False

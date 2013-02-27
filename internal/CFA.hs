@@ -1,6 +1,8 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 
 module CFA(Statement(..),
+           Frame(..),
+           Stack,
            (=:),
            Loc,
            LocAction(..),
@@ -12,9 +14,11 @@ module CFA(Statement(..),
            cfaErrLoc,
            cfaErrVarName,
            cfaInitLoc,
+           cfaDelayLocs,
            cfaInsLoc,
            cfaLocLabel,
            cfaLocSetAct,
+           cfaLocSetStack,
            cfaInsTrans,
            cfaInsTransMany,
            cfaInsTrans',
@@ -55,6 +59,7 @@ import qualified Expr      as F
 -- Atomic statement
 data Statement = SAssume Expr
                | SAssign Expr Expr
+               deriving (Eq)
 
 instance PP Statement where
     pp (SAssume e)   = text "assume" <+> (parens $ pp e)
@@ -80,7 +85,7 @@ data LocAction = ActStat F.Statement
 -- Stack frame
 data Frame = Frame {
     fScope :: Scope,
-    fLoc   :: I.Loc
+    fLoc   :: Loc
 }
 
 type Stack = [Frame]
@@ -101,6 +106,7 @@ data TranLabel = TranCall Scope
                | TranReturn
                | TranNop
                | TranStat Statement
+               deriving (Eq)
 
 instance PP TranLabel where
     pp (TranCall s)  = text "call" <+> text (show s)
@@ -174,6 +180,7 @@ isDelayLabel (LPause _ _ _) = True
 isDelayLabel (LFinal _ _)   = True
 isDelayLabel (LInst _)      = False
 
+
 newCFA :: Scope -> F.Statement -> Expr -> CFA 
 newCFA scope stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame scope cfaInitLoc] initcond) 
                            $ G.insNode (cfaErrLoc,LPause ActNone [Frame scope cfaErrLoc] false) G.empty
@@ -187,6 +194,9 @@ cfaErrVarName = "$err"
 cfaInitLoc :: Loc
 cfaInitLoc = 1
 
+cfaDelayLocs :: CFA -> [Loc]
+cfaDelayLocs = map fst . filter (isDelayLabel . snd) . G.labNodes
+
 cfaInsLoc :: LocLabel -> CFA -> (CFA, Loc)
 cfaInsLoc lab cfa = (G.insNode (loc,lab) cfa, loc)
    where loc = (snd $ G.nodeRange cfa) + 1
@@ -197,6 +207,11 @@ cfaLocLabel loc cfa = fromJustMsg "cfaLocLabel" $ G.lab cfa loc
 cfaLocSetAct :: Loc -> LocAction -> CFA -> CFA
 cfaLocSetAct loc act cfa = G.gmap (\(to, id, n, from) -> 
                                     (to, id, if id == loc then n {locAct = act} else n, from)) cfa
+
+
+cfaLocSetStack :: Loc -> Stack -> CFA -> CFA
+cfaLocSetStack loc stack cfa = G.gmap (\(to, id, n, from) -> 
+                                      (to, id, if id == loc then n {locStack = stack} else n, from)) cfa
 
 
 cfaInsTrans :: Loc -> Loc -> TranLabel -> CFA -> CFA
@@ -234,11 +249,11 @@ cfaAddNullPtrTrans :: CFA -> Expr -> CFA
 cfaAddNullPtrTrans cfa nul = foldl' (addNullPtrTrans1 nul) cfa (G.labEdges cfa)
 
 addNullPtrTrans1 :: Expr -> CFA -> (Loc,Loc,TranLabel) -> CFA
-addNullPtrTrans1 nul cfa (from , to, l@TranStat (SAssign e1 e2)) = 
+addNullPtrTrans1 nul cfa (from , to, l@(TranStat (SAssign e1 e2))) = 
     case cond of
          EConst (BoolVal False) -> cfa
-         _ -> let (cfa1, from') = I.cfaInsLoc (I.LInst I.ActNone) cfa
-                  cfa2 = cfaInsTrans from' to l $ G.delEdge (from, to, l) cfa1
+         _ -> let (cfa1, from') = cfaInsLoc (LInst ActNone) cfa
+                  cfa2 = cfaInsTrans from' to l $ G.delLEdge (from, to, l) cfa1
                   cfa3 = cfaInsTrans from from' (TranStat $ SAssume $ neg cond) cfa2
               in cfaErrTrans from (TranStat $ SAssume cond) cfa3
     where cond = disj $ map (=== nul) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)

@@ -132,7 +132,7 @@ statToCFA' before after (SPar _ ps) = do
     let pids  = map (childPID pid . fst) ps
     -- enable child processes
     aften <- ctxInsTransMany' before $ map (\pid -> I.TranStat $ mkEnVar pid Nothing I.=: I.true) pids
-    let mkFinalCheck (n,_) = I.disj $ map (\loc -> mkPCVar pid I.=== mkPC pid loc) $ I.cfaFinal $ fst $ C.procCFA p
+    let mkFinalCheck (n,_) = I.disj $ map (\loc -> mkPCVar pid I.=== mkPC pid loc) $ I.cfaFinal $ C.procCFA p
                              where pid = childPID pid n
                                    p = fromJustMsg ("mkFinalCheck: process " ++ pidToName pid ++ " unknown") 
                                        $ find ((== sname n) . C.procName) ?procs

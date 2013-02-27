@@ -1,6 +1,9 @@
 {-# LANGUAGE TupleSections, FlexibleContexts, ScopedTypeVariables #-}
 
-module Parse where
+module Parse(SpecItem(..),
+             Import(..),
+             litParser, 
+             grammar) where
 
 import qualified Data.Map as M
 import Control.Monad

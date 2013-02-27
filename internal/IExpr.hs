@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE ImplicitParams, TypeSynonymInstances, FlexibleInstances, FlexibleContexts #-}
 
 module IExpr(LVal(..),
              Val(..),
@@ -24,7 +24,10 @@ import Data.Maybe
 import Data.List
 import Data.Bits
 import Text.PrettyPrint
+import Control.Monad.Error
+import qualified Text.Parsec as P
 
+import Parse
 import PP
 import Util hiding (name)
 import TSLUtil
@@ -34,9 +37,10 @@ import IVar
 import {-# SOURCE #-} ISpec
 
 -- variable address
-type LVal = LVar String
+data LVal = LVar String
           | LField LVal String
-          | LIndex LVal Int
+          | LIndex LVal Integer
+          deriving (Eq)
 
 lvalToExpr :: LVal -> Expr 
 lvalToExpr (LVar n)     = EVar n
@@ -46,7 +50,7 @@ lvalToExpr (LIndex a i) = EIndex (lvalToExpr a) (EConst $ UIntVal 32 i)
 instance (?spec::Spec) => Typed LVal where
     typ (LVar n)     = typ $ getVar n
     typ (LField s n) = let Struct fs = typ s
-                       in typ $ fromJust $ find (\(Field n _) -> n == f) fs 
+                       in typ $ fromJust $ find (\(Field f _) -> n == f) fs 
     typ (LIndex a i) = t where Array t _ = typ a
 
 instance PP LVal where
@@ -60,6 +64,7 @@ data Val = BoolVal   Bool
          | UIntVal   {ivalWidth::Int, ivalVal::Integer}
          | EnumVal   String
          | PtrVal    LVal
+         deriving (Eq)
 
 instance (?spec::Spec) => Typed Val where
     typ (BoolVal _)   = Bool
@@ -74,7 +79,7 @@ instance PP Val where
     pp (SIntVal _ v)   = text $ show v
     pp (UIntVal _ v)   = text $ show v
     pp (EnumVal n)     = text n
-    pp (PtrVal a)      = char '&' ++ pp a
+    pp (PtrVal a)      = char '&' <> pp a
 
 type Slice = (Int, Int)
 
@@ -83,11 +88,15 @@ instance PP Slice where
 
 parseVal :: (MonadError String me) => Type -> String -> me Val
 parseVal (SInt w) str = do
-    (w',_,r,v) <- (parse parseRadVal "" str) `catch` (\e -> throwError $ show e)
+    (w',_,r,v) <- case P.parse litParser "" str of
+                       Left e  -> throwError $ show e
+                       Right x -> return x
     when  (w' > w) $ throwError $ "Width mismatch"
     return $ SIntVal w v 
 parseVal (UInt w) str = do
-    (w',s,r,v) <- (parse parseRadVal "" str) `catch` (\e -> throwError $ show e)
+    (w',s,r,v) <- case P.parse litParser "" str of
+                       Left e  -> throwError $ show e
+                       Right x -> return x
     when (w' > w) $ throwError $ "Width mismatch"
     when s $ throwError $ "Sign mismatch"
     return $ UIntVal w v 
@@ -99,6 +108,7 @@ data Expr = EVar    String
           | EUnOp   UOp Expr
           | EBinOp  BOp Expr Expr
           | ESlice  Expr Slice
+          deriving (Eq)
 
 instance PP Expr where
     pp (EVar n)          = pp n

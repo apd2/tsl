@@ -28,6 +28,7 @@ import TypeOps
 import ExprOps
 import Const
 import Val
+import Ops
 
 -- Extract template from flattened spec (that only has one template)
 tmMain :: (?spec::Spec) => Template
@@ -42,9 +43,7 @@ type PID = [String]
 
 data ProcTrans = ProcTrans { pPID    :: PID
                            , pBody   :: [I.Transition]
-                           , pVar    :: [I.Var]
                            , pFinal  :: [I.Loc]            -- final locations
-                           , pPCEnum :: I.Enumeration
                            , pPauses :: [(I.Loc, I.Expr)]  -- process locations and corresponding wait conditions
                            }
 
@@ -53,11 +52,7 @@ instance PP ProcTrans where
            (braces' $
            (vcat $ map (($+$ text "") . pp) (pBody p))
            $+$
-           (vcat $ map (($+$ text "") . pp) (pVar p))
-           $+$
            (text "final locations:" <+> (hsep $ punctuate comma $ map pp (pFinal p)))
-           $+$
-           (text "PC:" <+> (pp $ pPCEnum p))
            $+$
            (text "Pause conditions:" <+> (hsep $ punctuate comma $ map (\(l,c) -> parens $ pp l <> comma <> pp c) (pPauses p))))
 
@@ -108,13 +103,13 @@ mkVarDecl mem mpid mmeth x = I.Var mem I.VarState (mkVarName mpid mmeth x) (mkTy
 
 parseVarName :: String -> (Maybe PID, Maybe String, String)
 parseVarName name = (pid, meth, vname)
-    toks = splitOn "/" name
-    vname = last toks
-    (pid, meth) = case init toks of
-                       [] -> (Nothing, Nothing)
-                       toks' -> if (take 2 $ reverse $ last toks') == ")("
-                                   then (Just $ init toks', Just $ init $ init $ last toks')
-                                   else (Just toks', Nothing)
+    where toks = splitOn "/" name
+          vname = last toks
+          (pid, meth) = case init toks of
+                             [] -> (Nothing, Nothing)
+                             toks' -> if (take 2 $ reverse $ last toks') == ")("
+                                         then (Just $ init toks', Just $ init $ init $ last toks')
+                                         else (Just toks', Nothing)
 
 -- Variable that stores return value of a task
 mkRetVar :: Maybe PID -> Method -> Maybe I.Expr
@@ -144,15 +139,15 @@ mkWaitForTask pid meth = envar I.=== I.false
     where envar = mkEnVar pid (Just meth)
 
 isWaitForTask :: I.Expr -> Maybe String
-isWaitForTask (EBinOp Eq (I.EVar name) e2) | e2 == I.false = 
+isWaitForTask (I.EBinOp Eq (I.EVar name) e2) | e2 == I.false = 
     case parseVarName name of
          (_, ms, "$en") -> ms
          _              -> Nothing
 isWaitForTask _ = Nothing
 
 isWaitForMagic :: I.Expr -> Bool
-isWaitForMagic (EBinOp Eq (I.EVar name) e2) | (e2 == I.false) && (name == mkMagicVarName) = True
-                                            | otherwise = False
+isWaitForMagic (I.EBinOp Eq (I.EVar name) e2) | (e2 == I.false) && (name == mkMagicVarName) = True
+                                              | otherwise = False
 isWaitForMagic _ = False
 
 mkPCVarName :: PID -> String
@@ -171,7 +166,7 @@ mkPC :: PID -> I.Loc -> I.Expr
 mkPC pid loc = I.EConst $ I.EnumVal $ mkPCEnum pid loc 
 
 pcEnumToLoc :: String -> I.Loc
-
+pcEnumToLoc str = read $ drop (length "$pc") str
 
 -- PID of the last process to make a transition
 mkPIDVarName :: String
@@ -370,6 +365,10 @@ ctxInsLocLab lab = do
 ctxLocSetAct :: I.Loc -> I.LocAction -> State CFACtx ()
 ctxLocSetAct loc act = modify (\ctx -> ctx {ctxCFA = I.cfaLocSetAct loc act $ ctxCFA ctx})
 
+ctxLocSetStack :: I.Loc -> I.Stack -> State CFACtx ()
+ctxLocSetStack loc stack = modify (\ctx -> ctx {ctxCFA = I.cfaLocSetStack loc stack $ ctxCFA ctx})
+
+
 ctxInsTrans :: I.Loc -> I.Loc -> I.TranLabel -> State CFACtx ()
 ctxInsTrans from to t = modify (\ctx -> ctx {ctxCFA = I.cfaInsTrans from to t $ ctxCFA ctx})
 
@@ -402,28 +401,30 @@ ctxInsTmpVar t = do
                           , ctxVar     = v:(ctxVar ctx)})
     return v
 
-ctxFrames :: State CFACtx Stack
-ctxFrames = do
+ctxFrames :: I.Loc -> State CFACtx I.Stack
+ctxFrames loc = do
     cfastack <- gets ctxStack
     -- CFACtx stack stores return locations in stack frames,  but the Stack 
     -- type stores current locations in frames.  Shift ret locations by one 
     -- and append current location in the end. 
-    let scopes = map fst4 stack
-        locs   = (tail $ map snd4 stack) ++ [loc]
-    return $ map (uncurry Frame) $ zip scopes locs
+    let scopes = map fst4 cfastack
+        locs   = (tail $ map snd4 cfastack) ++ [loc]
+    return $ map (uncurry I.Frame) $ zip scopes locs
 
 
 ctxPause :: I.Loc -> I.Expr -> State CFACtx I.Loc
-ctxPause loc cond = do stack <- ctxFrames
-                       after <- ctxInsLocLab (I.LPause I.ActNone stack cond)
+ctxPause loc cond = do after <- ctxInsLocLab (I.LPause I.ActNone [] cond)
+                       stack <- ctxFrames after
+                       ctxLocSetStack after stack
                        ctxInsTrans loc after I.TranNop
                        case cond of
                             (I.EConst (I.BoolVal True)) -> return after
                             _                           -> ctxInsTrans' after (I.TranStat $ I.SAssume cond)
 
 ctxFinal :: I.Loc -> State CFACtx I.Loc
-ctxFinal loc = do stack <- ctxFrames
-                  after <- ctxInsLocLab (I.LFinal I.ActNone stack)
+ctxFinal loc = do after <- ctxInsLocLab (I.LFinal I.ActNone [])
+                  stack <- ctxFrames after
+                  ctxLocSetStack after stack
                   ctxInsTrans loc after I.TranNop
                   return after
 

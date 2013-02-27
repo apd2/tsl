@@ -9,6 +9,7 @@ module InstTree (IID,
 
 import qualified Data.Tree as T
 import Data.List
+import Data.String.Utils
 
 import Util hiding (name)
 import Name
@@ -45,6 +46,10 @@ itreeFlattenName :: IID -> Ident -> Ident
 itreeFlattenName iid i = Ident (pos i) $ intercalate ":" $ map sname (iid ++ [i])
 
 itreeParseName :: Ident -> (IID, Ident)
+itreeParseName i = (map atNopos $ init ids, atNopos $ last ids)
+    where ids = split ":" (sname i)
+          atNopos x = Ident nopos x
+          
 
 -- Translate relative path in the instance tree to absolute path
 -- iid  - path to a template in the tree

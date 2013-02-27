@@ -43,51 +43,61 @@ spec2Internal :: Spec -> I.Spec
 spec2Internal s = 
     let ?spec = specSimplify s -- preprocessing
     in let cspec = spec2CFA
-           senum = mapMaybe (\d -> case tspec d of
-                                        EnumSpec _ es -> Just $ I.Enumeration (sname d) (map sname es)
-                                        _             -> Nothing) (specType ?spec)
-           (vars, tagenum, auxinit) = mkVars
            -- Controllable transitions
            (ctran, cvars) = unzip $ map mkCTran $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain
            -- Uncontrollable processes
-           uproc = concatMap (cprocToTrans []) $ C.specProc cspec
-           cproc = map (ctaskToTrans []) $ C.specCTask cspec 
-           -- PC variables, associated enums and initial assignments.
-           -- Only create PC variables for processes with >1 states.
-           (pcvars, pcenums, pcinit) = unzip3 
-                                       $ mapMaybe (\p -> let pid = pPID p
-                                                             enum = pPCEnum p
-                                                             var  = I.Var False I.VarState (mkPCVarName pid) (I.Enum $ I.enumName enum)
-                                                             init = mkPCVar pid I.=== mkPC pid I.cfaInitLoc
-                                                         in if null $ I.enumEnums enum then Nothing else Just (var, enum, init))
-                                                  $ uproc ++ cproc
-           (pidvar, pidenum) = mkPIDVarDecl $ map pPID $ cproc ++ uproc
+           procs = map (\(pid, cfa) -> cfaToIProcess pid cfa) $ C.specAllProcs cspec
            -- Uncontrollable transitions
-           utran = concatMap pBody (uproc ++ cproc)
-           -- built-in enums used in translating choice{} statements
-           choiceenum = map mkChoiceEnumDecl [0..9]
-       in I.Spec { I.specEnum   = choiceenum ++ (pidenum : tagenum : (senum ++ pcenums))
-                 , I.specVar    = pidvar : (pcvars ++ vars) ++ 
-                                  concat cvars ++ 
-                                  concatMap pVar cproc ++ 
-                                  concatMap pVar uproc
+           utran = concatMap pBody procs
+
+           -- initialise PC variables.
+           pcinit = map (\p -> (mkPCVar $ pPID p) I.=== mkPC (pPID p) I.cfaInitLoc) procs
+           -- initialise $en vars to false
+           teninit = concatMap (mapPTreeTask (\pid m -> mkEnVar pid (Just m) I.=== I.false)) $ tmProcess tmMain
+           peninit = concatMap (mapPTreeFProc (\pid _ -> mkEnVar pid Nothing  I.=== I.false)) $ tmProcess tmMain
+           -- Initialise $tag, $magic, $cont
+           taginit  = mkTagVar   I.=== tagIdle
+           maginit  = mkMagicVar I.=== I.false
+           continit = mkContVar  I.=== I.false
+           pidinit  = mkPIDVar   I.=== mkPIDEnum pidIdle
+           errinit  = mkErrVar   I.=== I.false
+       in I.Spec { I.specEnum   = C.specEnum cspec
+                 , I.specVar    = (concat cvars) ++ (C.specVar  cspec)
                  , I.specCTran  = mkMagicReturn : ctran
                  , I.specUTran  = mkIdleTran : utran
                  , I.specWire   = cfaToITransition (C.specWire cspec) "wires"
                  , I.specAlways = cfaToITransition (C.specAlways cspec) "always"
-                 , I.specInit   = (mkInit, I.conj $ (auxinit : pcinit))
+                 , I.specInit   = (mkInit, I.conj $ (pcinit ++ teninit ++ peninit ++ [errinit, taginit, maginit, continit, pidinit]))
                  , I.specGoal   = mkMagicGoal : (map mkGoal $ tmGoal tmMain)
-                 , I.specFair   = mkFair $ cproc ++ uproc
+                 , I.specFair   = mkFair procs
                  }
 
 spec2CFA :: (?spec::Spec) => C.Spec
-spec2CFA = C.Spec{..}
-    where specWire   = mkWires
-          specAlways = mkAlways
-          specProc   = map procToCProc $ tmProcess tmMain
-          specCTask  = map (\m -> C.Task (sname m) (let ?procs = [] in taskToCFA [] m True))
-                       $ filter ((== Task Controllable) . methCat)
-                       $ tmMethod tmMain
+spec2CFA = spec
+    where procs = C.specAllProcs spec
+          -- PC variables and associated enums
+          (pcvars, pcenums) = unzip 
+                              $ map (\(pid,cfa) -> let enum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) $ I.cfaDelayLocs cfa
+                                                       var  = I.Var False I.VarState (mkPCVarName pid) (I.Enum $ I.enumName enum)
+                                                   in (var, enum)) procs
+          -- built-in enums used in translating choice{} statements
+          choiceenum = map mkChoiceEnumDecl [0..9]
+          senum = mapMaybe (\d -> case tspec d of
+                                       EnumSpec _ es -> Just $ I.Enumeration (sname d) (map sname es)
+                                       _             -> Nothing) (specType ?spec)                                                     
+          (pidvar, pidenum)  = mkPIDVarDecl $ map fst procs
+          (vars, tagenum)    = mkVars
+          specWire           = mkWires
+          specAlways         = mkAlways 
+          (specProc, tmppvs) = unzip $ map procToCProc $ tmProcess tmMain
+          (specCTask,tmpcvs) = unzip
+                               $ map (\m -> let (cfa, vs) = let ?procs = [] in taskToCFA [] m True
+                                            in (C.Task (sname m) cfa, vs))
+                               $ filter ((== Task Controllable) . methCat)
+                               $ tmMethod tmMain
+          specEnum           = choiceenum ++ (pidenum : tagenum : (senum ++ pcenums))
+          specVar            = pidvar : (pcvars ++ vars) ++ concat (tmppvs ++ tmpcvs)
+          spec               = C.Spec {..}
 
 
 ------------------------------------------------------------------------------
@@ -295,10 +305,9 @@ mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
 -- Variables
 ----------------------------------------------------------------------
 
-mkVars :: (?spec::Spec) => ([I.Var], I.Enumeration, I.Expr)
+mkVars :: (?spec::Spec) => ([I.Var], I.Enumeration)
 mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ ivars ++ fpvars ++ pvars), 
-          tenum, 
-          I.conj $ teninit ++ peninit ++ [errinit, taginit, maginit, continit, pidinit])
+          tenum)
     where
     -- tag: one enumerator per controllable task
     (tvar, tenum) = mkTagVarDecl
@@ -348,17 +357,6 @@ mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar :
     -- * enabling variable
     fpvars = concatMap (mapPTreeFProc (\pid _ -> mkEnVarDecl pid Nothing))
                        $ tmProcess tmMain
-
-    -- Initialise $en vars to false
-    teninit = concatMap (mapPTreeTask (\pid m -> mkEnVar pid (Just m) I.=== I.false)) $ tmProcess tmMain
-    peninit = concatMap (mapPTreeFProc (\pid _ -> mkEnVar pid Nothing  I.=== I.false)) $ tmProcess tmMain
-
-    -- Initialise $tag, $magic, $cont
-    taginit  = mkTagVar   I.=== tagIdle
-    maginit  = mkMagicVar I.=== I.false
-    continit = mkContVar  I.=== I.false
-    pidinit  = mkPIDVar   I.=== mkPIDEnum pidIdle
-    errinit  = mkErrVar   I.=== I.false
 
     taskVars :: Maybe PID -> Bool -> Method -> [I.Var]
     taskVars mpid ret m = 
@@ -423,38 +421,28 @@ taskToCFA pid meth ctl = I.cfaTraceFile (ctxCFA ctx') (pidToName pid ++ "_" ++ s
                                ctxPruneUnreachable) ctx
 
 -- Recursively construct CFA's for the process and its children
-procToCProc :: (?spec::Spec) => Process -> C.Process
+procToCProc :: (?spec::Spec) => Process -> (C.Process, [I.Var])
 procToCProc p = fprocToCProc [] ((ScopeProcess tmMain p), (name p, (procStatement p)))
 
-fprocToCProc :: (?spec::Spec) => PID -> (Scope, (Ident, Statement)) -> C.Process 
-fprocToCProc parpid (scope, (n,stat)) = C.Process{..}
-    where lmap         = case scope of
-                              ScopeProcess _ p -> procLMap p
-                              ScopeMethod  _ m -> methodLMap parpid m
-          pid          = parpid ++ [sname n]
-          procName     = sname n
-          procChildren = map (fprocToCProc pid) $ forkedProcsRec scope stat
-          procCFA      = let ?procs = procChildren in procToCFA pid lmap scope stat
-          procTask     = map (let ?procs = procChildren in taskToCTask pid)
-                             $ filter (((flip elem) [Task Controllable, Task Uncontrollable]) . methCat)
-                             $ procCallees scope stat
+fprocToCProc :: (?spec::Spec) => PID -> (Scope, (Ident, Statement)) -> (C.Process, [I.Var])
+fprocToCProc parpid (scope, (n,stat)) = (C.Process{..}, pvs ++ concat tvs ++ concat cvs)
+    where lmap                = case scope of
+                                     ScopeProcess _ p -> procLMap p
+                                     ScopeMethod  _ m -> methodLMap parpid m
+          pid                 = parpid ++ [sname n]
+          procName            = sname n
+          (procChildren, cvs) = unzip $ map (fprocToCProc pid) $ forkedProcsRec scope stat
+          (procCFA,pvs)       = let ?procs = procChildren in procToCFA pid lmap scope stat
+          (procTask,tvs)      = unzip
+                                $ map (let ?procs = procChildren in taskToCTask pid)
+                                $ filter (((flip elem) [Task Controllable, Task Uncontrollable]) . methCat)
+                                $ procCallees scope stat
 
-taskToCTask :: (?spec::Spec, ?procs::[C.Process]) => PID -> Method -> C.Task
-taskToCTask parpid meth = C.Task{..}
-    where taskName = sname meth
-          taskCFA  = taskToCFA parpid meth False
+taskToCTask :: (?spec::Spec, ?procs::[C.Process]) => PID -> Method -> (C.Task, [I.Var])
+taskToCTask parpid meth = (C.Task{..}, vs)
+    where taskName      = sname meth
+          (taskCFA, vs) = taskToCFA parpid meth False
 
-
-cprocToTrans :: (?spec::Spec) => PID -> C.Process -> [ProcTrans]
-cprocToTrans parpid p =  cfaToIProcess pid (C.procCFA p) 
-                      :  concatMap (cprocToTrans pid) (C.procChildren p) 
-                      ++ map (ctaskToTrans pid) (C.procTask p)
-    where pid = parpid ++ [C.procName p]
-
-ctaskToTrans :: PID -> C.Task -> ProcTrans
-ctaskToTrans parpid t = cfaToIProcess pid (C.taskCFA t)
-   where pid = parpid ++ [C.taskName t]
-    
 -- Map a function over all inlined tasks called by the process
 mapPTreeInlinedTask :: (?spec::Spec) => (PID -> Method -> a) -> Process -> [a]
 mapPTreeInlinedTask f p = mapPTreeInlinedTask' f [sname p] (ScopeProcess tmMain p) (procStatement p)
@@ -551,18 +539,18 @@ cfaToITransition cfa name = case trans of
 
 -- Convert CFA to a lits of transitions.
 -- Assume that unreachable states have already been pruned.
-cfaToIProcess :: PID -> (I.CFA,[I.Var]) -> ProcTrans
-cfaToIProcess pid (cfa,vs) = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreachable: " ++ (intercalate ", " $ map show r)) $
+cfaToIProcess :: PID -> I.CFA -> ProcTrans
+cfaToIProcess pid cfa = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreachable: " ++ (intercalate ", " $ map show r)) $
                              I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ pidToName pid) $
-                             ProcTrans pid trans' vs final pcenum wait
+                             ProcTrans pid trans' final wait
     where
     -- compute a set of transitions for each location labelled with pause or final
-    states = map fst $ filter (I.isDelayLabel . snd) $ G.labNodes cfa
+    states = I.cfaDelayLocs cfa
     trans = concatMap (locTrans cfa) states
     -- filter out unreachable transitions
     trans' = map (utranSuffix pid True False) trans
     final = I.cfaFinal cfa
-    pcenum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) states
+    --pcenum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) states
     wait   = map (\loc -> case I.cfaLocLabel loc cfa of
                                I.LFinal _ _      -> (loc, I.true)
                                I.LPause _ _ cond -> (loc, cond)) states
