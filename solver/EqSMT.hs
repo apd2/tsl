@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams #-}
 
-module EqSMT(eqSolver) where
+module EqSMT(eqTheorySolver) where
 
 import Data.List
 import Debug.Trace
@@ -15,57 +15,83 @@ import qualified SyntaxTree2       as DP
 import qualified SymTab            as DP
 
 --import LogicClasses
+import Util
 import qualified CuddExplicitDeref as C
 import ISpec
 import IVar
 import IType
 import EUF
 import Predicate
-import PredicateDB
 import FCompile
 import BFormula
-import Solver
+import RefineCommon
 
-eqSolver :: Spec -> Solver Predicate (PDBPriv s u) s u
-eqSolver spec = Solver { checkSat  = eqCheckSat  spec
-                       , unsatCore = eqUnsatCore spec
-                       , equant    = eqEquant    spec
-                       , predVars  = eqPredVars  spec}
+--eqSolver :: Spec -> Solver Predicate s u
+--eqSolver spec = TheorySolver { checkSat  = eqCheckSat  spec
+--                             , unsatCore = eqUnsatCore spec
+--                             --, equant    = eqEquant    spec
+--                             }
 
-eqPredVars :: Spec -> Predicate -> [(String, VarCategory)]
-eqPredVars spec (PAtom _ t1 t2) = let ?spec = spec
+eqTheorySolver :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar
+eqTheorySolver spec m = TheorySolver { unsatCoreState      = eqUnsatCore           spec
+                                     , unsatCoreStateLabel = eqUnsatCoreStateLabel spec
+                                     , eQuant              = eqEquantTmp           spec m
+                                     }
+
+
+predVars :: Spec -> Predicate -> [(String, VarCategory)]
+predVars spec (PAtom _ t1 t2) = let ?spec = spec
                                   in S.toList $ S.fromList $ map (\v -> (varName v, varCat v)) $ termVar t1 ++ termVar t2
 
-eqCheckSat :: Spec -> [(Predicate,Bool)] -> SatResult
+eqCheckSat :: Spec -> [(AbsVar,[Bool])] -> Maybe Bool
 eqCheckSat spec ps = 
     let ?spec = spec
-    in if DP.dpSAT (DP.dpContext::EUF) (DP.DNF [map mkPLit ps])
-          then SatYes
-          else SatNo
+    in if DP.dpSAT (DP.dpContext::EUF) (DP.DNF [map mkALit ps])
+          then Just True
+          else Just False
 
-eqUnsatCore :: Spec -> [(Predicate,Bool)] -> (SatResult, [(Predicate,Bool)])
+eqUnsatCore :: Spec -> [(AbsVar,[Bool])] -> Maybe [(AbsVar,[Bool])]
 eqUnsatCore spec ps = 
     let res = eqCheckSat spec ps
-        core = foldl' (\pset p -> if eqCheckSat spec (S.toList $ S.delete p pset) == SatNo
-                                            then S.delete p pset
-                                            else pset)
+        core = foldl' (\pset p -> if eqCheckSat spec (S.toList $ S.delete p pset) == Just False
+                                     then S.delete p pset
+                                     else pset)
                       (S.fromList ps) ps
-    in if res == SatNo
-          then (res, S.toList core)
-          else (res, [])
+    in if res == Just False
+          then Just (S.toList core)
+          else Nothing
 
-eqEquant :: Spec -> [(Predicate,Bool)] -> [String] -> PDB s u (C.DDNode s u)
-eqEquant spec ps vs = do
+eqEquant :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> [(AbsVar,[Bool])] -> [String] -> PDB pdb s u (C.DDNode s u)
+eqEquant spec m ops avs vs = do
     let ?spec = spec
-    let dnf0 = DP.DNF [map mkPLit ps]
+        ?m    = m
+        ?ops  = ops
+    let dnf0 = DP.DNF [map mkALit avs]
         vs'  = S.toList $ S.fromList vs
         qvs  = map mkVar vs'
         dnf  = {-trace ("eqEquant " ++ show dnf0 ++ " qvars: " ++ show qvs) $-} DP.dpEQuantVars (DP.dpContext::EUF) dnf0 qvs
     --trace ("dnf = " ++ show dnf) $ return ()
     compileFormula $ dnfToForm dnf
 
-mkPLit :: (?spec::Spec) => (Predicate,Bool) -> DP.PLit
-mkPLit (PAtom op t1 t2, pol) = DP.PLit (mkOp op pol) (mkTerm t1) (mkTerm t2)
+eqEquantTmp :: Spec -> C.STDdManager s u -> [(AbsVar,[Bool])] -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+eqEquantTmp spec m avs ops = 
+    let ?spec = spec
+    in eqEquant spec m ops avs
+       $ S.toList $ S.fromList 
+       $ map varName
+       $ filter ((== VarTmp) . varCat) 
+       $ concatMap (avarVar . fst) avs
+    
+eqUnsatCoreStateLabel :: Spec -> [(AbsVar, [Bool])] -> [(AbsVar, [Bool])] -> Maybe ([(AbsVar, [Bool])], [(AbsVar, [Bool])])
+eqUnsatCoreStateLabel spec sps lps = 
+    let ?spec = spec
+    in case eqUnsatCore spec (lps++sps) of
+            Just core -> Just $ partition ((==VarState) . avarCategory . fst) core
+            _         -> Nothing
+
+mkALit :: (?spec::Spec) => (AbsVar,[Bool]) -> DP.PLit
+mkALit (AVarPred (PAtom op t1 t2), [val]) = DP.PLit (mkOp op val) (mkTerm t1) (mkTerm t2)
+mkALit (AVarTerm t               , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
 
 mkOp :: RelOp -> Bool -> DP.BinOpTyp
 mkOp REq  True  = DP.Eq

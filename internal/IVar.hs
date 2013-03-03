@@ -5,7 +5,10 @@ import Text.PrettyPrint
 
 import PP
 import IType
-import PredicateDB
+
+data VarCategory = VarState
+                 | VarTmp
+                 deriving (Eq, Ord, Show)
 
 data Var = Var { varMem  :: Bool
                , varCat  :: VarCategory

@@ -1,12 +1,21 @@
 {-# LANGUAGE ImplicitParams #-}
 
-module Predicate(ArithUOp(..),
+module Predicate(PVarOps,
+                 PDB,
+                 bavarAVar,
+                 AbsVar(..),
+                 avarWidth,
+                 avarIsPred,
+                 avarCategory,
+                 avarVar,
+                 ArithUOp(..),
                  uopToArithOp,
                  arithOpToUOp,
                  ArithBOp(..),
                  bopToArithOp,
                  arithOpToBOp,
                  Term(..),
+                 termWidth,
                  termCategory,
                  termVar,
                  termSimplify,
@@ -18,18 +27,57 @@ module Predicate(ArithUOp(..),
                  relOpToBOp,
                  Predicate(..),
                  predCategory,
+                 predTerm,
+                 predVar,
                  predToExpr,
                  exprToTerm,
                  termToExpr) where
 
 import Text.PrettyPrint
 
+import TSLUtil
 import PP
 import Ops
 import ISpec
 import IExpr
 import IVar
 import IType
+import Interface hiding(getVar)
+import Control.Monad.State
+import Control.Monad.ST.Lazy
+
+type PVarOps pdb s u = VarOps pdb (BAVar AbsVar AbsVar) s u
+type PDB pdb s u     = StateT pdb (ST s)
+
+bavarAVar :: BAVar AbsVar AbsVar -> AbsVar
+bavarAVar (StateVar av _) = av
+bavarAVar (LabelVar av _) = av
+bavarAVar (OutVar   av _) = av
+
+data AbsVar = AVarPred Predicate      -- predicate variable
+            | AVarTerm Term           -- unabstracted Bool or Enum scalar variable
+--            | AVarEnum String [I.Val]   -- variable with several interesting values
+            deriving(Eq, Ord)
+
+avarWidth :: (?spec::Spec) => AbsVar -> Int
+avarWidth (AVarPred p) = 1
+avarWidth (AVarTerm t) = termWidth t
+
+avarCategory :: (?spec::Spec) => AbsVar -> VarCategory
+avarCategory (AVarPred p) = predCategory p
+avarCategory (AVarTerm t) = termCategory t
+
+avarIsPred :: AbsVar -> Bool
+avarIsPred (AVarPred _) = True
+avarIsPred _            = False
+
+avarVar :: (?spec::Spec) => AbsVar -> [Var]
+avarVar (AVarPred p) = predVar p
+avarVar (AVarTerm t) = termVar t
+
+instance Show AbsVar where
+    show (AVarPred p) = show p
+    show (AVarTerm t) = show t
 
 -- Objects with canonical form
 class Canonical a where
@@ -139,6 +187,13 @@ termCategory t = if any ((==VarTmp) . varCat) $ termVar t
                     then VarTmp
                     else VarState
 
+termWidth :: (?spec::Spec) => Term -> Int
+termWidth t = case typ t of
+                   Bool     -> 1
+                   Enum n   -> bitWidth $ (length $ enumEnums $ getEnumeration n) - 1
+                   (UInt w) -> w
+                   (SInt w) -> w
+
 -- Relational operations
 data RelOp = REq
            | RNeq 
@@ -181,6 +236,9 @@ instance Show Predicate where
 
 predTerm :: Predicate -> [Term]
 predTerm (PAtom _ t1 t2) = [t1,t2]
+
+predVar :: (?spec::Spec) => Predicate -> [Var]
+predVar = concatMap termVar . predTerm
 
 predCategory :: (?spec::Spec) => Predicate -> VarCategory
 predCategory p = if any ((==VarTmp) . termCategory) $ predTerm p

@@ -17,8 +17,6 @@ import PP
 import TSLUtil
 import Util
 import Ops
-import AbsGame
-import PredicateDB
 import qualified CuddExplicitDeref as C
 import qualified BDDHelpers        as C
 import ISpec
@@ -30,80 +28,103 @@ import Cascade
 import Predicate
 import BFormula
 import FCompile
+import qualified Interface       as Abs
+import qualified RefineReachFair as Abs
 
 -----------------------------------------------------------------------
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: Spec -> AbsGame Predicate (PDBPriv s u) s u
-tslAbsGame spec = AbsGame { gameGoals       = tslGameGoals       spec
-                          , gameFair        = tslGameFair        spec
-                          , gameInit        = tslGameInit        spec
-                          , gameConsistent  = tslGameConsistent  spec
-                          , gameVarUpdateU  = tslGameVarUpdateU  spec
-                          , gameVarUpdateC  = tslGameVarUpdateC  spec
-                          }
+tslAbsGame :: Spec -> C.STDdManager s u -> Abs.Abstractor s u AbsVar AbsVar
+tslAbsGame spec m = Abs.Abstractor { Abs.goalAbs   = tslGoalAbs   spec m
+                                   , Abs.fairAbs   = tslFairAbs   spec m
+                                   , Abs.initAbs   = tslInitAbs   spec m
+                                   --, gameConsistent  = tslGameConsistent  spec
+                                   , Abs.updateAbs = tslUpdateAbs spec m
+                                   }
 
-tslGameGoals :: Spec -> PDB s u [(String, C.DDNode s u)]
-tslGameGoals spec = do
+tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslGoalAbs spec m ops = do
+    -- remove the next line to enable multiple goals
+    liftM (snd . head)
+    $ mapM (\g -> do let ?spec = spec
+                         ?ops  = ops
+                         ?m    = m
+                     c <- tranPrecondition (goalCond g)
+                     return (goalName g, c))
+           $ specGoal spec
+
+tslFairAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslFairAbs spec m ops = do
     let ?spec = spec
-    mapM (\g -> do c <- tranPrecondition (goalCond g)
-                   return (goalName g, c))
-         $ specGoal spec
+        ?ops  = ops
+        ?m    = m
+    liftM head $ mapM bexprAbstract $ specFair spec
 
-tslGameFair :: Spec -> PDB s u [C.DDNode s u]
-tslGameFair spec = mapM (bexprAbstract spec) $ specFair spec
-
-tslGameInit :: Spec -> PDB s u (C.DDNode s u)
-tslGameInit spec = do 
+tslInitAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslInitAbs spec m ops = do 
     let ?spec = spec
-    m     <- pdbCtx
+        ?ops  = ops
+        ?m    = m
     pre   <- tranPrecondition (fst $ specInit spec)
-    extra <- bexprAbstract spec (snd $ specInit spec)
-    res <- lift $ C.band m pre extra
+    extra <- bexprAbstract (snd $ specInit spec)
+    res   <- lift $ C.band m pre extra
     lift $ C.deref m pre 
     lift $ C.deref m extra
     return res
 
-tslGameConsistent :: Spec -> PDB s u (C.DDNode s u)
-tslGameConsistent spec = do
-    m      <- pdbCtx
-    -- Enum vars can take values between 0 and n-1 (where n is the size of the enumeration)
-    evars  <- pdbGetEnumVars
-    constr <- mapM (\(av,sz) -> do v <- pdbGetVar av
-                                   constrs <- lift $ mapM (C.eqConst m v) [0..sz-1]
-                                   res <- lift $ C.disj m constrs
-                                   lift $ mapM (C.deref m) constrs
-                                   return res) 
-                   $ M.toList evars
-    res <- lift $ C.conj m constr
-    lift $ mapM (C.deref m) constr
-    return res
+-- TODO: where should this go?
+
+--tslGameConsistent :: Spec -> C.STDdManager s u -> PDB s u (C.DDNode s u)
+--tslGameConsistent spec m = do
+--    let ?m = m
+--    -- Enum vars can take values between 0 and n-1 (where n is the size of the enumeration)
+--    evars  <- pdbGetEnumVars
+--    constr <- mapM (\(av,sz) -> do v <- pdbGetVar av
+--                                   constrs <- lift $ mapM (C.eqConst m v) [0..sz-1]
+--                                   res <- lift $ C.disj m constrs
+--                                   lift $ mapM (C.deref m) constrs
+--                                   return res) 
+--                   $ M.toList evars
+--    res <- lift $ C.conj m constr
+--    lift $ mapM (C.deref m) constr
+--    return res
 
 
-tslGameVarUpdateC :: Spec -> [(TAbsVar,[C.DDNode s u])] -> PDB s u [C.DDNode s u]
-tslGameVarUpdateC spec vars = do
+tslUpdateAbs :: Spec -> C.STDdManager s u -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslUpdateAbs spec m avars ops = do
     --trace "!!!!!!tslGameVarUpdateC" $ return ()
     let ?spec = spec
-    m <- pdbCtx
-    updatefs <- mapM (varUpdateTrans vars) $ specCTran spec
-    res <- lift $ mapM (C.disj m) $ transpose updatefs
-    lift $ mapM (mapM (C.deref m)) updatefs
-    return res
+        ?ops  = ops
+        ?m    = m
 
-tslGameVarUpdateU :: Spec -> [(TAbsVar,[C.DDNode s u])] -> PDB s u [C.DDNode s u]
-tslGameVarUpdateU spec vars = do
-    --trace "!!!!!!tslGameVarUpdateU" $ return ()
-    let ?spec = spec
-    m <- pdbCtx
-    updatefs <- mapM (varUpdateTrans vars) $ specUTran spec
-    res <- lift $ mapM (C.disj m) $ transpose updatefs
+    -- controllable
+    updatefs <- mapM (varUpdateTrans avars) $ specCTran spec
+    pervarfs <- lift $ mapM (C.disj m) $ transpose updatefs
     lift $ mapM (mapM (C.deref m)) updatefs
-    return res
+    cont <- lift $ C.conj m pervarfs
+    lift $ mapM (C.deref m) pervarfs
+
+    -- uncontrollable
+    updatefs <- mapM (varUpdateTrans avars) $ specUTran spec
+    pervarfs <- lift $ mapM (C.disj m) $ transpose updatefs
+    lift $ mapM (mapM (C.deref m)) updatefs
+    ucont <- lift $ C.conj m pervarfs
+    lift $ mapM (C.deref m) pervarfs
+
+    return cont
+    --return (cont, ucont)
 
 ----------------------------------------------------------------------------
 -- PDB operations
 ----------------------------------------------------------------------------
+
+pdbPred :: (?ops::PVarOps pdb s u) => PDB pdb s u [Predicate]
+pdbPred = do
+    bavars <- Abs.allVars ?ops
+    return $ map (\(AVarPred p) -> p)
+           $ filter avarIsPred 
+           $ map bavarAVar bavars
 
 -- Find predicates of the form (e == AddrOf e')
 ptrPreds :: (?pred::[Predicate]) => Expr -> [(Predicate, Term)]
@@ -124,21 +145,20 @@ ptrPreds e =
 -- Computing abstraction
 ----------------------------------------------------------------------------
 
-bexprAbstract :: Spec -> Expr -> PDB s u (C.DDNode s u)
-bexprAbstract spec e = do
+bexprAbstract :: (?spec::Spec, ?ops::PVarOps pdb s u, ?m::C.STDdManager s u) => Expr -> PDB pdb s u (C.DDNode s u)
+bexprAbstract e = do
     pred <- pdbPred
-    let ?spec = spec
-        ?pred = pred
+    let ?pred = pred
     compileFormula $ bexprToFormula e
 
 -- Convert boolean expression (possibly with pointers) to a formula without
 -- introducing new pointer predicates.
-bexprToFormula :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Formula
+bexprToFormula :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Expr -> Formula
 bexprToFormula e = fcasToFormula $ fmap bexprToFormula' $ exprExpandPtr e
 
 -- Convert boolean expression (possibly with pointers) to a formula, 
 -- introducing new pointer predicates if needed.
-bexprToFormulaPlus :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Formula
+bexprToFormulaPlus :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Expr -> Formula
 bexprToFormulaPlus e@(EBinOp op e1 e2) | op == Eq || op == Neq = 
     let f1 = case e1 of
                   EUnOp Deref e1' -> fcasToFormula $ fcasPrune $ (addrPred op) <$> (exprExpandPtr e1') <*> (exprExpandPtr e2)
@@ -221,37 +241,35 @@ exprExpandPtr   (ESlice e s)      = fmap (\e -> ESlice e s) $ exprExpandPtr e
 
 -- Cache of variable update functions for intermediate locations inside a transition:
 -- [a] is the list of variable update functions, 
--- [TAbsVar] is the list of variables that these functions depend on (these variable must 
+-- [AbsVar] is the list of variables that these functions depend on (these variable must 
 -- be recomputed at the next iteration)
-type Cache s u = M.Map Loc ([C.DDNode s u],[TAbsVar])
+type Cache s u = M.Map Loc ([C.DDNode s u],[AbsVar])
 
-cacheDeref :: Cache s u -> PDB s u ()
+cacheDeref :: (?m::C.STDdManager s u) => Cache s u -> PDB pdb s u ()
 cacheDeref cache = do
-    m <- pdbCtx
-    lift $ mapM (C.deref m) $ concatMap fst $ M.elems cache
+    lift $ mapM (C.deref ?m) $ concatMap fst $ M.elems cache
     return ()
 
-cacheRefLoc :: Cache s u -> Loc -> PDB s u ()
+cacheRefLoc :: Cache s u -> Loc -> PDB pdb s u ()
 cacheRefLoc cache loc = do
     lift $ mapM C.ref $ fst $ cache M.! loc
     return ()
 
 -- Compute precondition of transition, i.e., variable
 -- update function for empty set of variables
-tranPrecondition :: (?spec::Spec) => Transition -> PDB s u (C.DDNode s u)
+tranPrecondition :: (?spec::Spec, ?ops::PVarOps pdb s u, ?m::C.STDdManager s u) => Transition -> PDB pdb s u (C.DDNode s u)
 tranPrecondition tran = do
-    m <- pdbCtx
-    cache <- varUpdateLoc [] (tranFrom tran) (tranCFA tran) (M.singleton (tranTo tran) ([C.bone m],[]))
+    cache <- varUpdateLoc [] (tranFrom tran) (tranCFA tran) (M.singleton (tranTo tran) ([C.bone ?m],[]))
     cacheRefLoc cache (tranTo tran)
     return $ head $ fst $ cache M.! (tranFrom tran)
 
 -- Compute update functions for a list of variables wrt to a transition
-varUpdateTrans :: (?spec::Spec) => [(TAbsVar,[C.DDNode s u])] -> Transition -> PDB s u [C.DDNode s u]
+varUpdateTrans :: (?spec::Spec, ?ops::PVarOps pdb s u, ?m::C.STDdManager s u) => [(AbsVar,[C.DDNode s u])] -> Transition -> PDB pdb s u [C.DDNode s u]
 varUpdateTrans vs t = do
     -- Main transition
     cache <- varUpdateLoc vs (tranFrom t) (tranCFA t) M.empty
 
-    return $ fst $ cache M.! tranFrom t
+    --return $ fst $ cache M.! tranFrom t
 
     -- Always-block
     let at = specAlways ?spec
@@ -278,72 +296,69 @@ varUpdateTrans vs t = do
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA.  Record the result in a cache that will be used to recursively
 -- compute update functions for predecessor locations.
-varUpdateLoc :: (?spec::Spec) => [(TAbsVar,[C.DDNode s u])] -> Loc -> CFA -> Cache s u -> PDB s u (Cache s u)
+varUpdateLoc :: (?spec::Spec, ?ops::PVarOps pdb s u, ?m::C.STDdManager s u) => [(AbsVar,[C.DDNode s u])] -> Loc -> CFA -> Cache s u -> PDB pdb s u (Cache s u)
 varUpdateLoc vs loc cfa cache | M.member loc cache    = return cache
 varUpdateLoc vs loc cfa cache | null (cfaSuc loc cfa) = do
     let avs = map fst vs
     rels <- mapM compileVar vs
     return $ M.insert loc (rels, avs) cache
 varUpdateLoc vs loc cfa cache                         = do
-    m <- pdbCtx
     -- Compute update functions in all successor locations
     cache' <- foldM (\cache (_,loc') -> varUpdateLoc vs loc' cfa cache) cache (cfaSuc loc cfa)
     -- Compute update functions for each outgoing transition
     rels <- mapM (\(s, loc') -> varUpdateStat s (cache' M.! loc')) (cfaSuc loc cfa)
     -- Aggregate results
     let avs = S.toList $ S.fromList $ concatMap snd rels
-    bdds <- lift $ mapM (C.disj m) $ transpose $ map fst rels
-    lift $ mapM (C.deref m) $ concatMap fst rels
+    bdds <- lift $ mapM (C.disj ?m) $ transpose $ map fst rels
+    lift $ mapM (C.deref ?m) $ concatMap fst rels
     return $ M.insert loc (bdds, avs) cache'
 
 -- Compute variable update functions for an individual statement
-varUpdateStat :: (?spec::Spec) => TranLabel -> ([C.DDNode s u], [TAbsVar]) -> PDB s u ([C.DDNode s u],[TAbsVar])
+varUpdateStat :: (?spec::Spec, ?ops::PVarOps pdb s u, ?m::C.STDdManager s u) => TranLabel -> ([C.DDNode s u], [AbsVar]) -> PDB pdb s u ([C.DDNode s u],[AbsVar])
 varUpdateStat (TranStat (SAssume e)) (rels, vs) = do
     pred <- pdbPred
-    m    <- pdbCtx
     let ?pred = pred
     let f = bexprToFormulaPlus e
         vs' = formAbsVars f
     rel <- compileFormula f
-    fs  <- lift $ mapM (C.band m rel) rels
-    lift $ C.deref m rel
+    fs  <- lift $ mapM (C.band ?m rel) rels
+    lift $ C.deref ?m rel
     return (fs, S.toList $ S.fromList $ vs ++ vs')
 
 varUpdateStat (TranStat (SAssign e1 e2)) (rels, vs) = 
     foldM (varUpdateAsnStat1 e1 e2) (rels,[]) vs
 
 varUpdateStat _ (rels, vs) = do
-    m    <- pdbCtx
     lift $ mapM C.ref rels
     return (rels,vs)
 
 -- Given a list of variable update relations computed so far and  
 -- assignment statement, recompute individual abstract variable and 
 -- substitute the expression for it to all relations.
-varUpdateAsnStat1 :: (?spec::Spec) => Expr -> Expr -> ([C.DDNode s u], [TAbsVar]) -> TAbsVar -> PDB s u ([C.DDNode s u],[TAbsVar])
+varUpdateAsnStat1 :: (?spec::Spec, ?ops::PVarOps pdb s u, ?m::C.STDdManager s u) => Expr -> Expr -> ([C.DDNode s u], [AbsVar]) -> AbsVar -> PDB pdb s u ([C.DDNode s u],[AbsVar])
 varUpdateAsnStat1 lhs rhs (rels, vs) av = do
     pred <- pdbPred
     let ?pred = pred
     case av of
-         (PredVar p) -> do let repl = updatePredAsn lhs rhs p
-                               vs'  = formAbsVars repl
-                           rels' <- mapM (\r -> formSubst r av repl) rels
-                           return (rels', S.toList $ S.fromList $ vs ++ vs')
-         _           -> do let repl = casMap exprExpandPtr 
-                                      $ updateScalAsn lhs rhs (TVar $ varName $ getVar $ avarName av)
-                           case varType $ getVar $ avarName av of
-                                Bool -> do let frepl = fcasToFormula $ fmap bexprToFormula' repl
-                                               vs' = formAbsVars frepl
-                                           --trace ("varUpdateAsnStat1(" ++ show av ++ ", " ++ (intercalate "," $ map show vs) ++ ") " ++ show lhs ++ ":=" ++ show rhs ++ " = " ++ show frepl) $ return ()
-                                           rels' <- mapM (\r -> formSubst r av frepl) rels
-                                           return (rels', S.toList $ S.fromList $ vs ++ vs')
-                                _    -> do let trepl = fmap exprToTerm repl
-                                               vs'  = tcasAbsVars trepl
-                                           rels' <- mapM (\r -> tcasSubst r av trepl) rels
-                                           return (rels', S.toList $ S.fromList $ vs ++ vs')
-
+         (AVarPred p) -> do let repl = updatePredAsn lhs rhs p
+                                vs'  = formAbsVars repl
+                            rels' <- mapM (\r -> formSubst r av repl) rels
+                            return (rels', S.toList $ S.fromList $ vs ++ vs')
+         (AVarTerm t) -> do let repl = casMap exprExpandPtr 
+                                       $ updateScalAsn lhs rhs t
+                            case typ t of
+                                 Bool -> do let frepl = fcasToFormula $ fmap bexprToFormula' repl
+                                                vs' = formAbsVars frepl
+                                            --trace ("varUpdateAsnStat1(" ++ show av ++ ", " ++ (intercalate "," $ map show vs) ++ ") " ++ show lhs ++ ":=" ++ show rhs ++ " = " ++ show frepl) $ return ()
+                                            rels' <- mapM (\r -> formSubst r av frepl) rels
+                                            return (rels', S.toList $ S.fromList $ vs ++ vs')
+                                 _    -> do let trepl = fmap exprToTerm repl
+                                                vs'  = tcasAbsVars trepl
+                                            rels' <- mapM (\r -> tcasSubst r av trepl) rels
+                                            return (rels', S.toList $ S.fromList $ vs ++ vs')
+ 
 -- Predicate update by assignment statement
-updatePredAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Predicate -> Formula
+updatePredAsn :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Expr -> Expr -> Predicate -> Formula
 updatePredAsn lhs rhs p = {-trace ("updatePredAsn (" ++ show lhs ++ ":=" ++ show rhs ++ ", " ++ show p ++ ") = " ++ show res)-} res
     where sc' = map (updateScalAsn lhs rhs) $ pScalars p
           res = pSubstScalCas p sc'
@@ -353,12 +368,11 @@ updatePredAsn lhs rhs p = {-trace ("updatePredAsn (" ++ show lhs ++ ":=" ++ show
 -- Computes possible overlaps of the lhs with the term and
 -- corresponding next-state values of the term expressed as concatenation 
 -- of slices of the rhs and the original term.
-updateScalAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Term -> ECascade
+updateScalAsn :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Expr -> Expr -> Term -> ECascade
 updateScalAsn lhs rhs t = {-trace ("updateScalAsn(" ++ show t ++ ") " ++ show lhs ++ ":=" ++ show rhs ++ " = " ++ render (nest' $ pp res))-} res
     where res = updateScalAsn' lhs rhs t
 
-updateScalAsn' :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Term -> ECascade
-
+updateScalAsn' :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Expr -> Expr -> Term -> ECascade
 updateScalAsn' e                rhs (TSlice t s) = fmap (\e -> exprSlice e s) (updateScalAsn' e rhs t)
 updateScalAsn' (ESlice e (l,h)) rhs t            = 
     fmap (\b -> if b
@@ -375,7 +389,7 @@ updateScalAsn' lhs              rhs t            =
 
 -- Takes lhs expression and a term and computes the condition 
 -- when the expression is a synonym of the term.
-lhsTermEq :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Term -> BCascade
+lhsTermEq :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Expr -> Term -> BCascade
 lhsTermEq (EVar n1)       (TVar n2)        | n1 == n2 = CasLeaf True
 lhsTermEq (EField e f1)   (TField t f2)    | f1 == f2 = lhsTermEq e t
 lhsTermEq (EIndex ae ie)  (TIndex at it)              = 
@@ -418,7 +432,7 @@ tScalars   (TSlice t _)     = tScalars t
 
 -- Substitute all scalar terms in a predicate with cascades of scalar expressions.
 -- The order of cascades is assumed to be the same one returned by pScalars.
-pSubstScalCas :: (?spec::Spec, ?pred::[Predicate]) => Predicate -> [ECascade] -> Formula
+pSubstScalCas :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Predicate -> [ECascade] -> Formula
 pSubstScalCas (PAtom op t1 t2) cas = fcasToFormula $ (\e1 e2 -> bexprToFormulaPlus $ EBinOp (relOpToBOp op) e1 e2) <$> t1' <*> t2'
     where (t1', cas') = tSubstCas t1 cas
           (t2', _   ) = tSubstCas t2 cas'

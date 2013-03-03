@@ -15,6 +15,7 @@ import Text.PrettyPrint
 import Predicate
 import Ops
 import PP
+import IVar
 import ISpec
 
 -- Logical operations
@@ -47,9 +48,9 @@ boolOpToBOp Equiv = Eq
 -- connected with boolean connectors
 data Formula = FTrue
              | FFalse
-             | FPred    Predicate
-             | FBinOp   BoolBOp Formula Formula
-             | FNot     Formula
+             | FPred  Predicate
+             | FBinOp BoolBOp Formula Formula
+             | FNot   Formula
              deriving (Eq)
 
 instance PP Formula where
@@ -96,4 +97,11 @@ fAtom' REq  l r | isConstTerm l && isConstTerm r = if evalConstTerm l == evalCon
 fAtom' REq  l r | l < r                          = FPred $ PAtom REq l r
                 | otherwise                      = FPred $ PAtom REq r l
 fAtom' RNeq l r                                  = fnot $ fAtom' REq l r
+
+fVar :: (?spec::Spec) => Formula -> [Var]
+fVar FTrue            = []
+fVar FFalse           = []
+fVar (FPred p)        = concatMap termVar $ predTerm p
+fVar (FBinOp _ f1 f2) = fVar f1 ++ fVar f2
+fVar (FNot f)         = fVar f
 
