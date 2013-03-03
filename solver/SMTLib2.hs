@@ -1,14 +1,24 @@
+{-# LANGUAGE ImplicitParams #-}
+
 -- Interface to SMT2 format
 
-module SMT2Lib() where
+module SMTLib2() where
 
 import Text.PrettyPrint
-import Text.Parsec
-import qualified Text.Parsec.Token as T
+import qualified Text.Parsec          as P
+import qualified Text.Parsec.Language as P
+import qualified Text.Parsec.Token    as PT
 import System.IO.Unsafe
 import System.Process
+import System.Exit
 import Control.Monad.Error
+import Control.Applicative hiding (many,optional,Const,empty)
+import Data.List
+import qualified Data.Set             as S
+import qualified Data.Map             as M
 
+import Util
+import Predicate
 import BFormula
 import ISpec
 import IVar
@@ -27,68 +37,153 @@ class SMTPP a where
     smtpp :: a -> Doc
 
 instance (?spec::Spec) => SMTPP [Formula] where
-    smtpp fs = -- variable declarations
-               vcat
-               $ map smptpp 
-               $ S.fromList $ S.toList 
-               $ concatMap fVar fs
-               $+$
-               vcat
-               $ map smtpp fs
+    smtpp fs = 
+        let (typemap, typedecls) = mkTypeMap vars
+            vars = S.toList $ S.fromList $ concatMap fVar fs
+        in let ?typemap = typemap
+           in -- type declarations
+              typedecls 
+              $+$
+              -- variable declarations
+              (vcat $ map smtpp vars)
+              $+$
+              -- formulas
+              (vcat $ mapIdx (\f i -> parens $ text "assert" 
+                                               <+> (parens $ char '!' <+> smtpp f <+> text ":named" <+> text "a" <> int i)) fs)
 
-instance (?spec::Spec) => SMTPP Var where
-    smtpp v = parens $  text "declare-fun" 
-                    <+> (char '|' <> varName v <> char '|') 
-                    <+> text "()" 
-                    <+> smtpp (varType v)
+instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Var where
+    smtpp v = parens $  text "declare-const"
+                    <+> (char '|' <> text (varName v) <> char '|')
+                    <+> text (?typemap M.! (varType v))
 
-instance (?spec::Spec) => SMTPP Type where
-    smtpp Bool            = text "Bool"
-    smtpp (SInt w)        = parens $ char '_' <+> text "BitVec" <+> int w
-    smtpp (UInt w)        = parens $ char '_' <+> text "BitVec" <+> int w
-    smtpp (Enum n)        = text n
-    smtpp (Struct [Field])
-          | Ptr      Type
-          | Array    Type Int
+mkTypeMap :: (?spec::Spec) => [Var] -> (M.Map Type String, Doc)
+mkTypeMap vs = foldl' (\m v -> mkTypeMap' m (varType v)) (M.empty, empty) vs
 
+mkTypeMap' :: (?spec::Spec) => (M.Map Type String, Doc) -> Type -> (M.Map Type String, Doc)
+mkTypeMap' (m,doc) t = if M.member t m
+                          then (m,doc)
+                          else let (m', doc') = foldl' mkTypeMap' (m,doc) (subtypes t)
+                                   (tname, tdecl) = mkTypeMap1 m' t
+                               in (M.insert t tname m', doc' $$ tdecl)
 
-instance (?spec::Spec) => SMTPP Formula where
+subtypes :: Type -> [Type]
+subtypes Bool        = []
+subtypes (SInt _)    = []
+subtypes (UInt _)    = []
+subtypes (Enum _)    = []
+subtypes (Struct fs) = map typ fs
+subtypes (Array t _) = [t]
+subtypes (Ptr t)     = [t]
+
+mkTypeMap1 :: (?spec::Spec) => M.Map Type String -> Type -> (String, Doc)
+mkTypeMap1 _ Bool        = ( "Bool"                                  
+                           , empty)
+mkTypeMap1 _ (SInt w)    = ( "(_ BitVec " ++ show w ++ ")"
+                           , empty)
+mkTypeMap1 _ (UInt w)    = ( "(_ BitVec " ++ show w ++ ")"
+                           , empty)
+mkTypeMap1 _ (Enum n)    = ( n
+                           , parens $ text "declare-datatypes ()" <+> (parens $ parens $ hsep $ map text $ n:(enumEnums $ getEnumeration n)))
+mkTypeMap1 m (Struct fs) = ( tname
+                           , parens $ text "declare-datatypes ()" 
+                                      <+> (parens $ parens $ text tname 
+                                           <+> (hsep $ map (\(Field n t) -> parens $ text (tname ++ n) <+> text (m M.! t)) fs)))
+                           where tname = "Struct" ++ (show $ M.size m)
+mkTypeMap1 m (Ptr t)     = ( tname
+                           , parens $ text "declare-sort" <+> text tname)
+                           where tname = "|Ptr" ++ (m M.! t) ++ "|"
+mkTypeMap1 m (Array t s) = ( "(Array Int " ++ m M.! t ++ ")"
+                           , empty)
+
+instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Formula where
+    smtpp FTrue             = text "true"
+    smtpp FFalse            = text "false"
+    smtpp (FPred p)         = smtpp p
+    smtpp (FBinOp op f1 f2) = parens $ smtpp op <+> smtpp f1 <+> smtpp f2
+    smtpp (FNot f)          = parens $ text "not" <+> smtpp f
+
+instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Predicate where
+    smtpp (PAtom op t1 t2) = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
+
+instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
+    smtpp (TVar n)               = text n
+    smtpp (TSInt w v) |v>=0      = text $ "(_ bv" ++ show v ++ " " ++ show w ++ ")"
+                      |otherwise = text $ "(bvneg (_ bv" ++ show (-v) ++ " " ++ show w ++ "))"
+    smtpp (TUInt w v)            = text $ "(_ bv" ++ show v ++ " " ++ show w ++ ")"
+    smtpp (TEnum n)              = text n
+    smtpp TTrue                  = text "true"
+    smtpp (TAddr t)              = parens $ text "addr-of" <+> smtpp t
+    smtpp (TField t f)           = parens $ text ((?typemap M.! typ t) ++ f) <+> smtpp t
+    smtpp (TIndex a i)           = parens $ text "select" <+> smtpp a <+> smtpp i
+    smtpp (TUnOp op t)           = parens $ smtpp op <+> smtpp t
+    smtpp (TBinOp op t1 t2)      = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
+    smtpp (TSlice t (l,h))       = parens $ (parens $ char '_' <+> text "extract" <+> int l <+> int h) <+> smtpp t
+
+instance SMTPP RelOp where
+    smtpp REq  = text "="
+    smtpp RLt  = text "bvslt"
+    smtpp RGt  = text "bvsgt"
+    smtpp RLte = text "bvsle"
+    smtpp RGte = text "bvsge"
+
+instance SMTPP ArithUOp where
+    smtpp AUMinus = text "bvneg"
+    smtpp ABNeg   = text "bvnot"
+
+instance SMTPP ArithBOp where
+    smtpp ABAnd     = text "bvand"
+    smtpp ABOr      = text "bvor"
+    smtpp ABXor     = text "bvxor"
+    smtpp ABConcat  = text "concat"
+    smtpp APlus     = text "bvadd"
+    smtpp ABinMinus = text "bvsub"
+    smtpp AMod      = text "bvsmod"
+    smtpp AMul      = text "bvmul"
+
+instance SMTPP BoolBOp where
+    smtpp Conj      = text "and"
+    smtpp Disj      = text "or"
+    smtpp Impl      = text "=>"
+    smtpp Equiv     = text "="
 
 ------------------------------------------------------
 -- Parsing solver output
 ------------------------------------------------------
 
-lexer  = T.makeTokenParser emptyDef
+lexer  = PT.makeTokenParser P.emptyDef
 
-symbol  = T.symbol  lexer
-decimal = T.decimal lexer
+lidentifier = PT.identifier lexer
+lsymbol     = PT.symbol     lexer
+ldecimal    = PT.decimal    lexer
+lparens     = PT.parens     lexer
 
-satres = ((Just False) <$> symbol "unsat") <|> 
-         ((Just True)  <$> symbol "sat")
+satres = ((Just False) <$ lsymbol "unsat") <|> 
+         ((Just True)  <$ lsymbol "sat")
 
-unsatcore = option [] (parens $ many $ decimal)
+unsatcore :: P.Parsec String () [Int]
+unsatcore = P.option [] (lparens $ P.many $ (P.char 'a' *> (fromInteger <$> ldecimal)))
 
 ------------------------------------------------------
 -- Running solver in different modes
 ------------------------------------------------------
 
-runSolver :: SMT2Config -> Doc -> Parsec String () a -> a
+runSolver :: SMT2Config -> Doc -> P.Parsec String () a -> a
 runSolver cfg spec parser = 
     let (retcode, out, err) = unsafePerformIO $ readProcessWithExitCode (s2Solver cfg) (s2Opts cfg) (show spec)
-    if retcode == ExitSuccess 
-       then case parse parser "" out of
-                 Left e  -> error $ "Error parsing SMT solver output: " ++ e
-                 Right x -> x
-       else error $ "Error running SMT solver: " ++ err
+    in if retcode == ExitSuccess 
+          then case P.parse parser "" out of
+                    Left e  -> error $ "Error parsing SMT solver output: " ++ show e
+                    Right x -> x
+          else error $ "Error running SMT solver: " ++ err
 
-checkSat :: SMT2Config -> [Formula] -> Maybe Bool
+checkSat :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe Bool
 checkSat cfg fs = runSolver cfg spec satres
     where spec = smtpp fs 
               $$ text "(check-sat)"
 
 
-getUnsatCore :: [Formula] -> Maybe [Int]
-getUnsatCore =
+getUnsatCore :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe [Int]
+getUnsatCore cfg fs =
     runSolver cfg spec
     $ ((\res core -> case res of
                           Just False -> Just core

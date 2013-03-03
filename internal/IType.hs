@@ -11,7 +11,7 @@ import Text.PrettyPrint
 
 import PP
 
-data Field = Field String Type deriving (Eq)
+data Field = Field String Type deriving (Eq,Ord)
 
 instance PP Field where
     pp (Field n t) = pp t <+> text n
@@ -26,7 +26,7 @@ data Type = Bool
           | Struct   [Field]
           | Ptr      Type
           | Array    Type Int
-          deriving (Eq)
+          deriving (Eq,Ord)
 
 instance PP Type where
     pp Bool        = text "bool"

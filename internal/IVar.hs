@@ -16,6 +16,12 @@ data Var = Var { varMem  :: Bool
                , varType :: Type
                }
 
+instance Eq Var where
+    (==) v1 v2 = varName v1 == varName v2
+
+instance Ord Var where
+    compare v1 v2 = compare (varName v1) (varName v2)
+
 instance PP Var where
     pp (Var mem cat n t) = (text $ if cat == VarTmp then "temp" else "state") <+> (if mem then text "mem" else empty) <+> pp t <+> text n
 

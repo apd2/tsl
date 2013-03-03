@@ -6,6 +6,7 @@ module BFormula(BoolBOp(..),
                 fconj,
                 fnot,
                 fAtom,
+                fVar,
                 bopToBoolOp,
                 boolOpToBOp) where
 
