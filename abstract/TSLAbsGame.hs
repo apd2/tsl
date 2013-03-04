@@ -210,7 +210,7 @@ combineExpr op e1 e2 | typ e1 == Bool                =
                                           in if op == REq then f else fnot f
                      | otherwise                     = fAtom op (exprToTerm e1) (exprToTerm e2)
 
--- To addrof expressions are equal if they are isomorphic and
+-- Two addrof expressions are equal if they are isomorphic and
 -- array indices in matching positions in these expressions are equal.
 combineAddrOfExpr :: (?spec::Spec) => Expr -> Expr -> Formula
 combineAddrOfExpr (EVar n1)      (EVar n2)      | n1 == n2 = FTrue

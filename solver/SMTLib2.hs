@@ -50,11 +50,21 @@ instance (?spec::Spec) => SMTPP [Formula] where
               -- formulas
               (vcat $ mapIdx (\f i -> parens $ text "assert" 
                                                <+> (parens $ char '!' <+> smtpp f <+> text ":named" <+> text "a" <> int i)) fs)
+              $+$
+              -- pointer consistency constraints
+              mkPtrConstraints typemap fs
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Var where
     smtpp v = parens $  text "declare-const"
-                    <+> (char '|' <> text (varName v) <> char '|')
+                    <+> text (mkIdent $ varName v)
                     <+> text (?typemap M.! (varType v))
+
+-- convert string into a valid smtlib identifier by
+-- bracketing it with '|' if necessary
+mkIdent :: String -> String
+mkIdent str = if valid then str else "|" ++ str ++ "|"
+    where valid = all (\c -> elem c ("_"++['a'..'z']++['A'..'Z']++['0'..'9'])) str
+                  && notElem (head str) ['0'..'9']
 
 mkTypeMap :: (?spec::Spec) => [Var] -> (M.Map Type String, Doc)
 mkTypeMap vs = foldl' (\m v -> mkTypeMap' m (varType v)) (M.empty, empty) vs
@@ -91,9 +101,15 @@ mkTypeMap1 m (Struct fs) = ( tname
                            where tname = "Struct" ++ (show $ M.size m)
 mkTypeMap1 m (Ptr t)     = ( tname
                            , parens $ text "declare-sort" <+> text tname)
-                           where tname = "|Ptr" ++ (m M.! t) ++ "|"
+                           where tname = ptrTypeName m t
 mkTypeMap1 m (Array t s) = ( "(Array Int " ++ m M.! t ++ ")"
                            , empty)
+
+ptrTypeName :: M.Map Type String -> Type -> String
+ptrTypeName m t = mkIdent $ "Ptr" ++ (m M.! t)
+
+addrofFuncName :: M.Map Type String -> Type -> String
+addrofFuncName m t = mkIdent $ "addrof" ++ (m M.! t)
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Formula where
     smtpp FTrue             = text "true"
@@ -106,7 +122,7 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Predicate where
     smtpp (PAtom op t1 t2) = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
-    smtpp (TVar n)               = text n
+    smtpp (TVar n)               = text $ mkIdent n
     smtpp (TSInt w v) |v>=0      = text $ "(_ bv" ++ show v ++ " " ++ show w ++ ")"
                       |otherwise = text $ "(bvneg (_ bv" ++ show (-v) ++ " " ++ show w ++ "))"
     smtpp (TUInt w v)            = text $ "(_ bv" ++ show v ++ " " ++ show w ++ ")"
@@ -145,6 +161,52 @@ instance SMTPP BoolBOp where
     smtpp Disj      = text "or"
     smtpp Impl      = text "=>"
     smtpp Equiv     = text "="
+
+------------------------------------------------------
+-- Pointer-related stuff
+------------------------------------------------------
+
+-- Consider all pairs of address-of terms of matching 
+-- types that occur in the formulas and generate
+-- conditions on when these terms are equal, namely:
+-- * &x != &y if x and y are distinct variables
+-- * &x[i] == &x[j] iff i==j
+
+mkPtrConstraints :: (?spec::Spec) => M.Map Type String -> [Formula] -> Doc
+mkPtrConstraints m fs =
+    let ?typemap = m  
+    in parens 
+       $ ((text "and") <+> )
+       $ hsep 
+       $ concatMap (map (smtpp . ptrEqConstr) . pairs)
+       $ groupBy (\t1 t2 -> typ t1 == typ t2) 
+       $ S.toList $ S.fromList 
+       $ concatMap faddrofTerms fs
+
+faddrofTerms :: (?spec::Spec, ?typemap::M.Map Type String) => Formula -> [Term]
+faddrofTerms FTrue                   = []
+faddrofTerms FFalse                  = []
+faddrofTerms (FPred (PAtom _ t1 t2)) = taddrofTerms t1 ++ taddrofTerms t2
+faddrofTerms (FBinOp _ f1 f2)        = faddrofTerms f1 ++ faddrofTerms f2
+faddrofTerms (FNot f)                = faddrofTerms f
+
+taddrofTerms :: Term -> [Term]
+taddrofTerms (TAddr t) = [t]
+taddrofTerms _         = []
+
+ptrEqConstr :: (?spec::Spec, ?typemap::M.Map Type String) => (Term, Term) -> Formula
+ptrEqConstr (t1, t2) = case ptrEqCond t1 t2 of
+                           FFalse -> neq (TAddr t1) (TAddr t2)
+                           f      -> FBinOp Equiv (eq (TAddr t1) (TAddr t2)) f
+
+eq  t1 t2 = FPred $ PAtom REq t1 t2
+neq t1 t2 = FNot $ eq t1 t2
+
+ptrEqCond :: (?spec::Spec, ?typemap::M.Map Type String) => Term -> Term -> Formula
+ptrEqCond t1@(TField s1 f1) t2@(TField s2 f2) | f1 == f2 = ptrEqCond s1 s2
+ptrEqCond t1@(TIndex a1 i1) t2@(TIndex a2 i2)            = fconj [ptrEqCond a1 a2, eq i1 i2]
+ptrEqCond t1@(TSlice v1 s1) t2@(TSlice v2 s2) | s1 == s2 = ptrEqCond v1 v2
+ptrEqCond _                 _                            = FFalse
 
 ------------------------------------------------------
 -- Parsing solver output
