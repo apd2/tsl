@@ -38,21 +38,24 @@ class SMTPP a where
 
 instance (?spec::Spec) => SMTPP [Formula] where
     smtpp fs = 
-        let (typemap, typedecls) = mkTypeMap vars
-            vars = S.toList $ S.fromList $ concatMap fVar fs
-        in let ?typemap = typemap
-           in -- type declarations
-              typedecls 
-              $+$
-              -- variable declarations
-              (vcat $ map smtpp vars)
-              $+$
-              -- formulas
-              (vcat $ mapIdx (\f i -> parens $ text "assert" 
-                                               <+> (parens $ char '!' <+> smtpp f <+> text ":named" <+> text "a" <> int i)) fs)
-              $+$
-              -- pointer consistency constraints
-              mkPtrConstraints typemap fs
+        let vars = S.toList $ S.fromList $ concatMap fVar fs
+            (typemap, typedecls) = mkTypeMap vars in
+        let ?typemap = typemap in
+        let (ptrvars, ptrconstr) = mkPtrConstraints fs in
+            -- type declarations
+            typedecls 
+            $+$
+            -- variable declarations
+            (vcat $ map smtpp vars)
+            $+$
+            ptrvars
+            $+$
+            -- formulas
+            (vcat $ mapIdx (\f i -> parens $ text "assert" 
+                                             <+> (parens $ char '!' <+> smtpp f <+> text ":named" <+> text "a" <> int i)) fs)
+            $+$
+            -- pointer consistency constraints
+            ptrconstr
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Var where
     smtpp v = parens $  text "declare-const"
@@ -67,14 +70,16 @@ mkIdent str = if valid then str else "|" ++ str ++ "|"
                   && notElem (head str) ['0'..'9']
 
 mkTypeMap :: (?spec::Spec) => [Var] -> (M.Map Type String, Doc)
-mkTypeMap vs = foldl' (\m v -> mkTypeMap' m (varType v)) (M.empty, empty) vs
+mkTypeMap vs = foldl' mkTypeMap' (M.empty, empty) alltypes
+    where -- sort all types occurring in the spec in dependency order
+          alltypes = sortBy (\t1 t2 -> if' (elem t1 $ subtypesRec t2) LT $
+                                       if' (elem t2 $ subtypesRec t1) GT $
+                                       EQ)
+                     $ nub $ concatMap (subtypesRec . typ) vs
 
 mkTypeMap' :: (?spec::Spec) => (M.Map Type String, Doc) -> Type -> (M.Map Type String, Doc)
-mkTypeMap' (m,doc) t = if M.member t m
-                          then (m,doc)
-                          else let (m', doc') = foldl' mkTypeMap' (m,doc) (subtypes t)
-                                   (tname, tdecl) = mkTypeMap1 m' t
-                               in (M.insert t tname m', doc' $$ tdecl)
+mkTypeMap' (m,doc) t = let (tname, tdecl) = mkTypeMap1 m t
+                       in (M.insert t tname m, doc $$ tdecl)
 
 subtypes :: Type -> [Type]
 subtypes Bool        = []
@@ -84,6 +89,9 @@ subtypes (Enum _)    = []
 subtypes (Struct fs) = map typ fs
 subtypes (Array t _) = [t]
 subtypes (Ptr t)     = [t]
+
+subtypesRec :: Type -> [Type]
+subtypesRec t = t:(concatMap subtypesRec $ subtypes t)
 
 mkTypeMap1 :: (?spec::Spec) => M.Map Type String -> Type -> (String, Doc)
 mkTypeMap1 _ Bool        = ( "Bool"                                  
@@ -97,7 +105,7 @@ mkTypeMap1 _ (Enum n)    = ( n
 mkTypeMap1 m (Struct fs) = ( tname
                            , parens $ text "declare-datatypes ()" 
                                       <+> (parens $ parens $ text tname 
-                                           <+> (hsep $ map (\(Field n t) -> parens $ text (tname ++ n) <+> text (m M.! t)) fs)))
+                                           <+> parens (text ("mk-" ++ tname) <+> (hsep $ map (\(Field n t) -> parens $ text (tname ++ n) <+> text (m M.! t)) fs))))
                            where tname = "Struct" ++ (show $ M.size m)
 mkTypeMap1 m (Ptr t)     = ( tname
                            , parens $ text "declare-sort" <+> text tname)
@@ -105,11 +113,11 @@ mkTypeMap1 m (Ptr t)     = ( tname
 mkTypeMap1 m (Array t s) = ( "(Array Int " ++ m M.! t ++ ")"
                            , empty)
 
-ptrTypeName :: M.Map Type String -> Type -> String
-ptrTypeName m t = mkIdent $ "Ptr" ++ (m M.! t)
+ptrTypeName :: (Typed a) => M.Map Type String -> a -> String
+ptrTypeName m t = mkIdent $ "Ptr" ++ (m M.! typ t)
 
-addrofFuncName :: M.Map Type String -> Type -> String
-addrofFuncName m t = mkIdent $ "addrof" ++ (m M.! t)
+addrofVarName :: Term -> String
+addrofVarName t = mkIdent $ "addrof-" ++ show t
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Formula where
     smtpp FTrue             = text "true"
@@ -128,7 +136,7 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TUInt w v)            = text $ "(_ bv" ++ show v ++ " " ++ show w ++ ")"
     smtpp (TEnum n)              = text n
     smtpp TTrue                  = text "true"
-    smtpp (TAddr t)              = parens $ text "addr-of" <+> smtpp t
+    smtpp (TAddr t)              = text $ addrofVarName t
     smtpp (TField t f)           = parens $ text ((?typemap M.! typ t) ++ f) <+> smtpp t
     smtpp (TIndex a i)           = parens $ text "select" <+> smtpp a <+> smtpp i
     smtpp (TUnOp op t)           = parens $ smtpp op <+> smtpp t
@@ -171,17 +179,23 @@ instance SMTPP BoolBOp where
 -- conditions on when these terms are equal, namely:
 -- * &x != &y if x and y are distinct variables
 -- * &x[i] == &x[j] iff i==j
+-- Returns a bunch of constant declarations, one for 
+-- each address-of term that occurs in the formulas and
+-- the generated condition over these variables
+mkPtrConstraints :: (?spec::Spec, ?typemap::M.Map Type String) => [Formula] -> (Doc, Doc)
+mkPtrConstraints fs =
+    (vcat $ map mkAddrofVar addrterms,
+     parens 
+     $ ((text "and") <+> )
+     $ hsep 
+     $ concatMap (map (smtpp . ptrEqConstr) . pairs)
+     $ sortAndGroup typ addrterms)
+    where addrterms = nub $ concatMap faddrofTerms fs
 
-mkPtrConstraints :: (?spec::Spec) => M.Map Type String -> [Formula] -> Doc
-mkPtrConstraints m fs =
-    let ?typemap = m  
-    in parens 
-       $ ((text "and") <+> )
-       $ hsep 
-       $ concatMap (map (smtpp . ptrEqConstr) . pairs)
-       $ sortAndGroup (\t1 t2 -> typ t1 == typ t2) 
-       $ S.toList $ S.fromList 
-       $ concatMap faddrofTerms fs
+mkAddrofVar :: (?spec::Spec, ?typemap::M.Map Type String) => Term -> Doc
+mkAddrofVar t = parens $ text "declare-const" 
+                     <+> text (addrofVarName t)
+                     <+> text (ptrTypeName ?typemap t)
 
 faddrofTerms :: (?spec::Spec, ?typemap::M.Map Type String) => Formula -> [Term]
 faddrofTerms FTrue                   = []
