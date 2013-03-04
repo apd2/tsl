@@ -179,7 +179,7 @@ mkPtrConstraints m fs =
        $ ((text "and") <+> )
        $ hsep 
        $ concatMap (map (smtpp . ptrEqConstr) . pairs)
-       $ groupBy (\t1 t2 -> typ t1 == typ t2) 
+       $ sortAndGroup (\t1 t2 -> typ t1 == typ t2) 
        $ S.toList $ S.fromList 
        $ concatMap faddrofTerms fs
 
