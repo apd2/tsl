@@ -5,6 +5,7 @@ module Inline where
 import Data.List
 import Data.List.Split
 import Data.Maybe
+import Data.Tuple.Select
 import Control.Monad.State
 import qualified Data.Map as M
 import Text.PrettyPrint
@@ -326,16 +327,16 @@ data CFACtx = CFACtx { ctxPID     :: PID                                     -- 
                      }
 
 ctxScope :: CFACtx -> Scope
-ctxScope = fst4 . head . ctxStack
+ctxScope = sel1 . head . ctxStack
 
 ctxRetLoc :: CFACtx -> I.Loc
-ctxRetLoc = snd4 . head . ctxStack
+ctxRetLoc = sel2 . head . ctxStack
 
 ctxLHS :: CFACtx -> Maybe I.Expr
-ctxLHS = trd4 . head . ctxStack
+ctxLHS = sel3 . head . ctxStack
 
 ctxLNMap :: CFACtx -> NameMap
-ctxLNMap = frt4 . head . ctxStack
+ctxLNMap = sel4 . head . ctxStack
 
 ctxPushScope :: Scope -> I.Loc -> Maybe I.Expr -> NameMap -> State CFACtx ()
 ctxPushScope scope retloc lhs nmap = modify (\ctx -> ctx {ctxStack = (scope, retloc, lhs, nmap) : (ctxStack ctx)})
@@ -407,8 +408,8 @@ ctxFrames loc = do
     -- CFACtx stack stores return locations in stack frames,  but the Stack 
     -- type stores current locations in frames.  Shift ret locations by one 
     -- and append current location in the end. 
-    let scopes = map fst4 cfastack
-        locs   = (tail $ map snd4 cfastack) ++ [loc]
+    let scopes = map sel1 cfastack
+        locs   = (tail $ map sel2 cfastack) ++ [loc]
     return $ map (uncurry I.Frame) $ zip scopes locs
 
 

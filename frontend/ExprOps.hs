@@ -18,6 +18,7 @@ import Control.Monad.Error
 import Data.Maybe
 import Data.Bits
 import Data.List
+import Data.Tuple.Select
 import qualified Data.Map as M
 
 import Util hiding (name)
@@ -95,7 +96,7 @@ eval' (EField _ e f) _        = let StructVal v = val $ eval e
 --                                    iv          = evalInt i
 --                                in val $ av !! (fromInteger iv)
 eval' (EUnOp _ op e) _ | isArithUOp op = let i = evalInt e
-                                         in IntVal $ fst3 $ arithUOp op (i, typeSigned e, typeWidth e)
+                                         in IntVal $ sel1 $ arithUOp op (i, typeSigned e, typeWidth e)
 eval' (EUnOp _ Not e) _       = BoolVal $ not $ evalBool e
 eval' (EUnOp _ AddrOf e) _    = PtrVal e
 eval' (EBinOp  _ Eq e1 e2) _  = BoolVal $ eval e1 == eval e2
@@ -114,7 +115,7 @@ eval' (EBinOp  _ op e1 e2) _ | elem op [And,Or,Imp] =
 eval' (EBinOp  _ op e1 e2) _ | isArithBOp op = 
                                 let i1 = evalInt e1
                                     i2 = evalInt e2
-                                in IntVal $ fst3 $ arithBOp op (i1, typeSigned e1, typeWidth e1) (i2, typeSigned e1, typeWidth e2)
+                                in IntVal $ sel1 $ arithBOp op (i1, typeSigned e1, typeWidth e1) (i2, typeSigned e1, typeWidth e2)
 eval' (ETernOp _ e1 e2 e3) _  = if evalBool e1
                                    then val $ eval e2
                                    else val $ eval e3

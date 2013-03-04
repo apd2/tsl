@@ -24,6 +24,7 @@ module TemplateValidate(checkConcreteTemplate,
 
 import Data.List
 import Data.Maybe
+import Data.Tuple.Select
 import qualified Data.Map as M
 import Control.Monad.Error
 import Control.Applicative
@@ -276,7 +277,7 @@ validateTmProcesses2 tm = do {mapM (validateProc tm) (tmProcess tm); return ()}
 -- Third pass (after the template has been merged with its parents)
 validateTmProcesses3 :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmProcesses3 tm = uniqNames (\n -> "Process " ++ n ++ " declared multiple times in template " ++ sname tm) 
-                                    (map fst3 $ tmSubprocess tm)
+                                    (map sel1 $ tmSubprocess tm)
 
 ------------------------------------------------------------------------------
 -- Validate template namespace
