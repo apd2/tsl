@@ -5,9 +5,6 @@
 module SMTLib2() where
 
 import Text.PrettyPrint
-import qualified Text.Parsec          as P
-import qualified Text.Parsec.Language as P
-import qualified Text.Parsec.Token    as PT
 import System.IO.Unsafe
 import System.Process
 import System.Exit
@@ -23,6 +20,7 @@ import BFormula
 import ISpec
 import IVar
 import IType
+import SMTLib2Parse
 
 data SMT2Config = SMT2Config {
     s2Solver :: String,  -- Name of the solver executable
@@ -36,26 +34,28 @@ data SMT2Config = SMT2Config {
 class SMTPP a where
     smtpp :: a -> Doc
 
-instance (?spec::Spec) => SMTPP [Formula] where
-    smtpp fs = 
-        let vars = S.toList $ S.fromList $ concatMap fVar fs
-            (typemap, typedecls) = mkTypeMap vars in
-        let ?typemap = typemap in
-        let (ptrvars, ptrconstr) = mkPtrConstraints fs in
-            -- type declarations
-            typedecls 
-            $+$
-            -- variable declarations
-            (vcat $ map smtpp vars)
-            $+$
-            ptrvars
-            $+$
-            -- formulas
-            (vcat $ mapIdx (\f i -> parens $ text "assert" 
-                                             <+> (parens $ char '!' <+> smtpp f <+> text ":named" <+> text "a" <> int i)) fs)
-            $+$
-            -- pointer consistency constraints
-            ptrconstr
+mkFormulas :: (?spec::Spec) => [Formula] -> (Doc, [(String, Term)])
+mkFormulas = 
+    let vars = S.toList $ S.fromList $ concatMap fVar fs
+        (typemap, typedecls) = mkTypeMap vars in
+    let ?typemap = typemap in
+    let (ptrvars, ptrconstr, ptrmap) = mkPtrConstraints fs in
+        (-- type declarations
+         typedecls 
+         $+$
+         -- variable declarations
+         (vcat $ map smtpp vars)
+         $+$
+         ptrvars
+         $+$
+         -- formulas
+         (vcat $ mapIdx (\f i -> parens $ text "assert" 
+                                          <+> (parens $ char '!' <+> smtpp f <+> text ":named" <+> text "a" <> int i)) fs)
+         $+$
+         -- pointer consistency constraints
+         ptrconstr
+         ,
+         ptrmap)
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Var where
     smtpp v = parens $  text "declare-const"
@@ -179,18 +179,22 @@ instance SMTPP BoolBOp where
 -- conditions on when these terms are equal, namely:
 -- * &x != &y if x and y are distinct variables
 -- * &x[i] == &x[j] iff i==j
--- Returns a bunch of constant declarations, one for 
--- each address-of term that occurs in the formulas and
--- the generated condition over these variables
-mkPtrConstraints :: (?spec::Spec, ?typemap::M.Map Type String) => [Formula] -> (Doc, Doc)
+-- Returns:
+-- * a bunch of constant declarations, one for 
+--   each address-of term that occurs in the formulas 
+-- * the generated condition over these variables
+-- * a map from constant names to the terms they represent
+mkPtrConstraints :: (?spec::Spec, ?typemap::M.Map Type String) => [Formula] -> (Doc, Doc, [(String, Term)])
 mkPtrConstraints fs =
     (vcat $ map mkAddrofVar addrterms,
      parens 
      $ ((text "and") <+> )
      $ hsep 
      $ concatMap (map (smtpp . ptrEqConstr) . pairs)
-     $ sortAndGroup typ addrterms)
+     $ sortAndGroup typ addrterms,
+     map (map2 (addrofVarName, id)) addrterms)
     where addrterms = nub $ concatMap faddrofTerms fs
+          
 
 mkAddrofVar :: (?spec::Spec, ?typemap::M.Map Type String) => Term -> Doc
 mkAddrofVar t = parens $ text "declare-const" 
@@ -221,23 +225,6 @@ ptrEqCond t1@(TField s1 f1) t2@(TField s2 f2) | f1 == f2 = ptrEqCond s1 s2
 ptrEqCond t1@(TIndex a1 i1) t2@(TIndex a2 i2)            = fconj [ptrEqCond a1 a2, eq i1 i2]
 ptrEqCond t1@(TSlice v1 s1) t2@(TSlice v2 s2) | s1 == s2 = ptrEqCond v1 v2
 ptrEqCond _                 _                            = FFalse
-
-------------------------------------------------------
--- Parsing solver output
-------------------------------------------------------
-
-lexer  = PT.makeTokenParser P.emptyDef
-
-lidentifier = PT.identifier lexer
-lsymbol     = PT.symbol     lexer
-ldecimal    = PT.decimal    lexer
-lparens     = PT.parens     lexer
-
-satres = ((Just False) <$ lsymbol "unsat") <|> 
-         ((Just True)  <$ lsymbol "sat")
-
-unsatcore :: P.Parsec String () [Int]
-unsatcore = P.option [] (lparens $ P.many $ (P.char 'a' *> (fromInteger <$> ldecimal)))
 
 ------------------------------------------------------
 -- Running solver in different modes

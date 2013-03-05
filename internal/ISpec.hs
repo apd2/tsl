@@ -3,7 +3,9 @@
 module ISpec(Goal(..),
              Transition(..),
              Spec(..),
+             lookupVar,
              getVar,
+             lookupEnumerator,
              getEnumerator,
              getEnumeration,
              enumToInt) where
@@ -77,13 +79,17 @@ instance PP Spec where
            $+$
            (vcat $ map (($+$ text "") . pp) (specFair s))
 
+lookupVar :: (?spec::Spec) => String -> Maybe Var
+lookupVar n = find ((==n) . varName) $ specVar ?spec 
+
 getVar :: (?spec::Spec) => String -> Var
-getVar n = fromJustMsg ("getVar: variable " ++ n ++ " not found") 
-                       $ find ((==n) . varName) $ specVar ?spec 
+getVar n = fromJustMsg ("getVar: variable " ++ n ++ " not found") $ lookupVar n
+
+lookupEnumerator :: (?spec::Spec) => String -> Maybe Enumeration
+lookupEnumerator e = find (elem e . enumEnums) $ specEnum ?spec
 
 getEnumerator :: (?spec::Spec) => String -> Enumeration
-getEnumerator e = fromJustMsg ("getEnumerator: enumerator " ++ e ++ " not found")
-                  $ find (elem e . enumEnums) $ specEnum ?spec
+getEnumerator e = fromJustMsg ("getEnumerator: enumerator " ++ e ++ " not found") $ lookupEnumerator e
 
 getEnumeration :: (?spec::Spec) => String -> Enumeration
 getEnumeration e = fromJustMsg ("getEnumeration: enumeration " ++ e ++ " not found")

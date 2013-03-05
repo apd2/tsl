@@ -18,6 +18,7 @@ module IExpr(LVal(..),
              Slice,
              exprSimplify,
              evalConstExpr,
+             evalLExpr,
              exprPtrSubexpr) where
 
 import Data.Maybe
