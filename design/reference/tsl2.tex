@@ -708,7 +708,7 @@ Table~\ref{t:ops} in the order of decreasing precedence.
     {\bf operator}                   & {\bf syntax} & {\bf arg type} & {\bf res type} & {\bf comment} \\
     \hline
     \hline 
-    {\tt[:]}                         & {\tt e[l:h]} & integer        & integer        & bit slice \\
+    {\tt[:]}                         & {\tt e[l:h]} & integer        & unsigned int   & bit slice \\
     {\tt[~]}                         & {\tt e[i]}   & array          & -              & array index \\
     {\tt.}                           & {\tt e.f}    & struct         & -              & struct field \\
     {\tt\verb=->=}                   & {\tt\verb=e->f=}  & struct pointer & -              & struct dereference \\
@@ -1123,7 +1123,9 @@ arguments~\ref{s:r:method} must be L-expressions~\ref{s:r:lexpr}.
 \end{bnflisting}
 
 The left-hand side of an assignment statement must be an 
-L-expression (Section~\ref{s:r:lexpr}).  
+L-expression (Section~\ref{s:r:lexpr}).  Types of left- 
+and right-hand side expressions must match, including sign 
+and width for integer types.
 
 \subsection{Return statements}\label{s:r:return}
 
