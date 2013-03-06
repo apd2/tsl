@@ -16,6 +16,7 @@ import Control.Monad
 import Ops
 import IExpr
 import IType
+import ISpec
 
 
 -- Variable assignments
@@ -31,7 +32,7 @@ storeUnions :: [Store] -> Store
 storeUnions stores = foldl' (\s1 s2 -> storeUnion s1 s2) (SStruct []) stores
 
 storeNonDet :: Type -> Store
-storeNonDet (Struct fs) = SStruct $ map (\Field n t -> (n, storeNonDet t)) fs
+storeNonDet (Struct fs) = SStruct $ map (\(Field n t) -> (n, storeNonDet t)) fs
 storeNonDet (Array t sz)  = SArr $ replicate sz $ storeNonDet t
 
 -- project store on a subset of variables
@@ -40,21 +41,20 @@ storeProject (SStruct entries) names = SStruct $ filter (\(n,_) -> elem n names)
 
 -- Expression evaluation over stores
 storeTryEval :: Store -> Expr -> Maybe Store
-storeTryEval (SStruct fs) (EVar name)       = fmap snd $ find (==name . fst) fs
+storeTryEval (SStruct fs) (EVar name)       = fmap snd $ find ((==name) . fst) fs
 storeTryEval _            (EVar _)          = Nothing
-storeTryEval _            (EConst v)        = SVal $ Just v
-storeTryEval s            (EField e name)   = join $ fmap (\fs -> fmap snd $ find (==name . fst) fs) $ storeTryEvalStruct s e 
-storeTryEval _            (EField _ _)      = Nothing
-storeTryEval s            (EIndex e i)      = do idx <- storeTryEvalInt s i
+storeTryEval _            (EConst v)        = Just $ SVal $ Just v
+storeTryEval s            (EField e name)   = join $ fmap (\fs -> fmap snd $ find ((==name) . fst) fs) $ storeTryEvalStruct s e 
+storeTryEval s            (EIndex e i)      = do idx <- liftM fromInteger $ storeTryEvalInt s i
                                                  es  <- storeTryEvalArr s e
                                                  if (idx >= 0 && idx < length es)
                                                     then return $ es !! idx
                                                     else Nothing
-storeTryEval s            (EUnOp op e)      = fmap (\v -> evalConstExpr (EUnOp op $ EConst v)) $ storeTryEvalScalar s e
+storeTryEval s            (EUnOp op e)      = fmap (\v -> SVal $ Just $ evalConstExpr (EUnOp op $ EConst v)) $ storeTryEvalScalar s e
 storeTryEval s            (EBinOp op e1 e2) = do v1 <- storeTryEvalScalar s e1
                                                  v2 <- storeTryEvalScalar s e2
-                                                 return $ evalConstExpr (EBinOp op (EConst v1) (EConst v2))
-storeTryEval s            (ESlice e sl)     = fmap (\v -> evalConstExpr (ESlice (EConst e) sl)) $ storeTryEvalScalar s e
+                                                 return $ SVal $ Just $ evalConstExpr (EBinOp op (EConst v1) (EConst v2))
+storeTryEval s            (ESlice e sl)     = fmap (\v -> SVal $ Just $ evalConstExpr (ESlice (EConst v) sl)) $ storeTryEvalScalar s e
 
 storeTryEvalScalar :: Store -> Expr -> Maybe Val
 storeTryEvalScalar s e = case storeTryEval s e of
@@ -69,14 +69,14 @@ storeTryEvalInt s e = case storeTryEvalScalar s e of
 
 storeTryEvalBool :: Store -> Expr -> Maybe Bool
 storeTryEvalBool s e = case storeTryEvalScalar s e of
-                           Just (BoolVal b) -> Just b
-                           _                -> Nothing
+                            Just (BoolVal b) -> Just b
+                            _                -> Nothing
 
 
 storeTryEvalEnum :: Store -> Expr -> Maybe String
 storeTryEvalEnum s e = case storeTryEvalScalar s e of
-                           Just (EnumVal s) -> Just s
-                           _                -> Nothing
+                            Just (EnumVal s) -> Just s
+                            _                -> Nothing
 
 storeTryEvalStruct :: Store -> Expr -> Maybe [(String, Store)]
 storeTryEvalStruct s e = case storeTryEval s e of
@@ -95,7 +95,7 @@ storeEval store e = case storeTryEval store e of
 
 storeEvalScalar :: Store -> Expr -> Val
 storeEvalScalar s e = case storeTryEvalScalar s e of
-                           Just v -> return v
+                           Just v -> v
                            _      -> error "storeEvalScalar: invalid expression"
 
 storeEvalBool :: Store -> Expr -> Bool
@@ -109,7 +109,7 @@ storeEvalInt store e = case storeTryEvalInt store e of
                             Just i  -> i
 
 storeEvalEnum :: Store -> Expr -> String
-storeEvalEnum store e = case storeTryEvalEnum of
+storeEvalEnum store e = case storeTryEvalEnum store e of
                              Nothing -> error "storeEvalEnum: invalid expression"
                              Just s  -> s
 
@@ -117,16 +117,17 @@ storeSet :: Store -> Expr -> Store -> Store
 storeSet s (ESlice e (l,h)) val = 
     let ?store = s in
     let SVal (Just v') = val
+        f :: Store -> Store
         f (SVal (Just v)) = 
             SVal $ Just $ evalConstExpr $ econcat $
-            (if l > 0 then [exprSlice (EConst v) (0, l-1)] else []) ++
-            [v'] ++
-            (if h < typeWidth v - 1 then [exprSlice (EConst v) (h+1, typeWidth v - 1)] else [])
+            (if l > 0 then [EConst $ valSlice v (0, l-1)] else []) ++
+            [EConst v'] ++
+            (if h < ivalWidth  v - 1 then [EConst $ valSlice v (h+1, ivalWidth v - 1)] else [])
     in storeUpdate s e f
 storeSet s e val = let ?store = s in storeUpdate s e (\_ -> val)
 
 storeUpdate :: (?store::Store) => Store -> Expr -> (Store -> Store) -> Store
-storeUpdate (SStruct fs) (EVar vname) f = SStruct $ map (\(n,v) -> if n == vname then f v else v) fs
+storeUpdate (SStruct fs) (EVar vname) f = SStruct $ map (\(n,v) -> if n == vname then (n, f v) else (n,v)) fs
 storeUpdate s            (EField e n) f = storeUpdate s e (\s' -> storeUpdate s' (EVar n) f)
 storeUpdate s            (EIndex a i) f = storeUpdate s a (\s' -> case s' of
                                                                        SArr es -> if idx >= 0 && idx < length es 
@@ -135,7 +136,7 @@ storeUpdate s            (EIndex a i) f = storeUpdate s a (\s' -> case s' of
                                                                                           -- transitions on array dereferences, so that this cannot happen
                                                                                           error "storeUpdate: index out of bounds"
                                                                        _       -> error "storeUpdate: not an array")
-                                          where idx = storeEvalInt ?store i
+                                          where idx = fromInteger $ storeEvalInt ?store i
 storeUpdate s            (EUnOp Deref e) f = storeUpdate s (lvalToExpr l) f
-                                             where PtrVal l = storeEval ?store e
+                                             where PtrVal l = storeEvalScalar ?store e
 storeUpdate _            e            f = error $ "storeUpdate: " ++ show e

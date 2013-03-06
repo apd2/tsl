@@ -4,6 +4,7 @@
 
 module SMTLib2() where
 
+import qualified Text.Parsec as P
 import Text.PrettyPrint
 import System.IO.Unsafe
 import System.Process
@@ -21,6 +22,7 @@ import ISpec
 import IVar
 import IType
 import SMTLib2Parse
+import Store
 
 data SMT2Config = SMT2Config {
     s2Solver :: String,  -- Name of the solver executable
@@ -35,7 +37,7 @@ class SMTPP a where
     smtpp :: a -> Doc
 
 mkFormulas :: (?spec::Spec) => [Formula] -> (Doc, [(String, Term)])
-mkFormulas = 
+mkFormulas fs = 
     let vars = S.toList $ S.fromList $ concatMap fVar fs
         (typemap, typedecls) = mkTypeMap vars in
     let ?typemap = typemap in
@@ -192,7 +194,7 @@ mkPtrConstraints fs =
      $ hsep 
      $ concatMap (map (smtpp . ptrEqConstr) . pairs)
      $ sortAndGroup typ addrterms,
-     map (map2 (addrofVarName, id)) addrterms)
+     map (\t -> (addrofVarName t, t)) addrterms)
     where addrterms = nub $ concatMap faddrofTerms fs
           
 
@@ -240,19 +242,31 @@ runSolver cfg spec parser =
           else error $ "Error running SMT solver: " ++ err
 
 checkSat :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe Bool
-checkSat cfg fs = runSolver cfg spec satres
-    where spec = smtpp fs 
+checkSat cfg fs = runSolver cfg spec satresParser
+    where spec = (fst $ mkFormulas fs)
               $$ text "(check-sat)"
 
 
 getUnsatCore :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe [Int]
 getUnsatCore cfg fs =
     runSolver cfg spec
-    $ ((\res core -> case res of
-                          Just False -> Just core
-                          _          -> Nothing)
-       <$> satres <*> unsatcore)
+    $ do res <- satresParser
+         case res of
+              Just False -> liftM Just unsatcoreParser
+              _          -> return Nothing
     where spec = text "(set-option :produce-unsat-cores true)"
-              $$ smtpp fs 
+              $$ (fst $ mkFormulas fs)
               $$ text "(check-sat)"
               $$ text "(get-unsat-core)"
+
+getModel :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe Store
+getModel cfg fs =
+    runSolver cfg spec
+    $ do res <- satresParser
+         case res of 
+              Just True -> liftM Just $ modelParser ptrmap
+              _         -> return Nothing
+    where (spec0, ptrmap) = mkFormulas fs
+          spec = spec0
+              $$ text "(check-sat)"
+              $$ text "(get-model)"

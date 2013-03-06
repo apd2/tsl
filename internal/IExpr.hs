@@ -4,6 +4,7 @@ module IExpr(LVal(..),
              Val(..),
              Expr(..),
              lvalToExpr,
+             valSlice,
              parseVal,
              exprSlice,
              exprScalars,
@@ -86,6 +87,13 @@ type Slice = (Int, Int)
 
 instance PP Slice where
     pp (l,h) = brackets $ pp l <> colon <> pp h
+
+valSlice :: Val -> Slice -> Val
+valSlice v (l,h) = UIntVal (h - l + 1)
+                   $ foldl' (\a idx -> case testBit (ivalVal v) idx of
+                                            True  -> a + bit (idx - l)
+                                            False -> a)
+                   0 [l..h]
 
 parseVal :: (MonadError String me) => Type -> String -> me Val
 parseVal (SInt w) str = do
@@ -251,12 +259,8 @@ evalConstExpr (EBinOp op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] =
                                                          BoolVal b2 = v2
                                                          i1 = ivalVal v1
                                                          i2 = ivalVal v2
-evalConstExpr (ESlice e (l,h)) = UIntVal (h - l + 1)
-                                         $ foldl' (\a idx -> case testBit v idx of
-                                                                  True  -> a + bit (idx - l)
-                                                                  False -> a)
-                                           0 [l..h]
-                                 where v = ivalVal $ evalConstExpr e
+evalConstExpr (ESlice e s)     = valSlice (evalConstExpr e) s
+
 
 evalLExpr :: Expr -> LVal
 evalLExpr (EVar n)     = LVar n

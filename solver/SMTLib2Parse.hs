@@ -1,14 +1,25 @@
 {-# LANGUAGE ImplicitParams #-}
 
-module SMTLib2Parse () where
+module SMTLib2Parse (satresParser,
+                     unsatcoreParser,
+                     modelParser) where
 
 import Data.Maybe
-import Text.Parsec
+import Data.List
+import Data.Bits
+import Text.Parsec hiding ((<|>))
 import Text.Parsec.Language
 import qualified Text.Parsec.Token    as T
+import Control.Applicative hiding (many)
+import Numeric
 
+import Util
 import ISpec
+import IType
+import IVar
+import IExpr
 import Store
+import Predicate
 
 data ModelDecl = DeclConst  {dconstName::String, dconstType::TypeSpec}
                | DeclVarAsn {dvarName::String, dvarVal::SMTExpr}
@@ -32,69 +43,77 @@ data SMTExpr = ExpIdent String
              | ExpApply String [SMTExpr]
              deriving (Eq, Ord, Show)
 
+------------------------------------------------------
+-- exports
+------------------------------------------------------
+
+satresParser :: Parsec String () (Maybe Bool)
+satresParser = ((Just False) <$ symbol "unsat") <|> 
+               ((Just True)  <$ symbol "sat")
+
+unsatcoreParser :: Parsec String () [Int]
+unsatcoreParser = option [] (parens $ many $ (char 'a' *> (fromInteger <$> decimal)))
+
+modelParser :: (?spec::Spec) => [(String, Term)] -> Parsec String () Store
+modelParser ptrmap = storeFromModel ptrmap <$> model
 
 ------------------------------------------------------
 -- Parsing solver output
 ------------------------------------------------------
 
-reserved    = ["model", "declare-fun", "define-fun", "forall", "BitVec", "true", "false"]
-reservedOps = ["_"]
+reservedNames   = ["model", "declare-fun", "define-fun", "forall", "BitVec", "true", "false"]
+reservedOpNames = ["_"]
 
 lexer  = T.makeTokenParser emptyDef { T.identStart      = letter <|> char '_'
                                     , T.identLetter     = alphaNum <|> char '_' <|> char '-' <|> char '!'
                                     , T.commentLine     = ";;"
-                                    , T.reservedNames   = reserved
-                                    , T.reservedOpNames = reservedOps
+                                    , T.reservedNames   = reservedNames
+                                    , T.reservedOpNames = reservedOpNames
                                     }
 
-lidentifier = T.identifier lexer
-lsymbol     = T.symbol     lexer
-ldecimal    = T.decimal    lexer
-lparens     = T.parens     lexer
-lreserved   = T.reserved   lexer
-loperator   = T.operator   lexer
-lreservedOp = T.reservedOp lexer
-lexeme      = T.lexeme     lexer
+identifier = T.identifier lexer
+symbol     = T.symbol     lexer
+decimal    = T.decimal    lexer
+parens     = T.parens     lexer
+reserved   = T.reserved   lexer
+operator   = T.operator   lexer
+reservedOp = T.reservedOp lexer
+lexeme     = T.lexeme     lexer
 
-ident =  lidentifier 
+ident =  identifier 
      <|> char '|' *> (many $ noneOf ['|']) <* char '|'
 
-satres = ((Just False) <$ lsymbol "unsat") <|> 
-         ((Just True)  <$ lsymbol "sat")
+model = catMaybes <$> (parens $ reserved "model" *> many model_decl)
 
-unsatcore :: Parsec String () [Int]
-unsatcore = option [] (lparens $ many $ (char 'a' *> (fromInteger <$> ldecimal)))
+model_decl :: Parsec String () (Maybe ModelDecl)
+model_decl =  try const_decl
+          <|> try var_asn
+          <|> try forall
 
-model = catMaybes <$> lparens $ lreserved "model" *> many model_decl
+const_decl = parens $ (\n t -> Just $ DeclConst  n t)   <$ reserved "declare-fun" <*> ident <* (parens spaces) <*> typespec
+var_asn    = parens $ (\n _ e -> Just $ DeclVarAsn n e) <$ reserved "define-fun"  <*> ident <* (parens spaces) <*> typespec <*> expr
+forall     = parens $ (\_ _ -> Nothing)                 <$ reserved "forall"      <*> args  <*> expr
 
-model_decl =  const_decl
-          <|> var_asn
-          <|> forall
-
-const_decl = (Just . (\n t   -> DeclConst  n t)) <$> lparens $ lreserved "declare-fun" *> ident <*> (lparens spaces) *> typespec
-var_asn    = (Just . (\n _ e -> DeclVarAsn n e)) <$> lparens $ lreserved "define-fun"  *> ident <*> (lparens spaces) *> typespec <*> expr
-forall     = (\_ _ -> Nothing)                   <$> lparens $ lreserved "forall"      *> args  <*> expr
-
-args = lparens $ many arg
-arg  = lparens $ ident <*> typespec
+args = parens $ (,) <$> many arg
+arg  = parens $ (,) <$> ident <*> typespec
 
 expr =  fapply
-    <|> (ExpLit   <$> literal)
+    <|> literal
     <|> (ExpIdent <$> ident)
 
-fapply = ExpApply <$> lparens $ fname <*> (many expr)
+fapply = parens $ ExpApply <$> fname <*> (many expr)
 fname  =  ident 
-      <|> loperator
+      <|> operator
 
-typespec =  ident
+typespec =  TypeName <$> ident
         <|> bvtype
 
-bvtype = parens $ lreservedOp "_" *> lreserved "BitVec" *> ldecimal
+bvtype = parens $ (TypeBV . fromInteger) <$> (reservedOp "_" *> reserved "BitVec" *> decimal)
 
-literal =  (ExpInt <$> ldecimal)
-       <|> (ExpBool True <$ lreserved "true")
-       <|> (ExpBool False <$ lreserved "false")
-       <|> ((ExpInt . fst . head . readHex) <$> llexeme $ char '#' *> char 'x' *> many1 hexDigit)
+literal =  (ExpInt <$> decimal)
+       <|> (ExpBool True <$ reserved "true")
+       <|> (ExpBool False <$ reserved "false")
+       <|> ((ExpInt . fst . head . readHex) <$> lexeme (char '#' *> char 'x' *> many1 hexDigit))
 
 ------------------------------------------------------
 -- Compiling parsed data
@@ -120,21 +139,21 @@ storeFromAsn (name, e) = SStruct [(varName var, val)]
 storeFromExpr :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => Type -> SMTExpr -> Store
 storeFromExpr t e = case lookup e ?addrofmap of
                          Nothing -> storeFromExpr' t e
-                         Just t  -> SVal $ PtrVal $ evalLExpr $ termToExpr t
+                         Just t  -> SVal $ Just $ PtrVal $ evalLExpr $ termToExpr t
 
 storeFromExpr' :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => Type -> SMTExpr -> Store
 storeFromExpr' t (ExpIdent i) = if' (typ v /= t) (error "storeFromExpr: identifier type mismatch") $ 
                                (SVal $ Just v)
     where v = valFromIdent i
-storeFromExpr' t (ExpBool b) = if' (typ v /= Bool) (error "storeFromExpr: bool type mismatch") $ 
+storeFromExpr' t (ExpBool b) = if' (t /= Bool) (error "storeFromExpr: bool type mismatch") $ 
                                (SVal $ Just $ BoolVal b)
-storeFromExpr' (UInt w) (ExpIdent i) = SVal $ Just $ UIntVal w i
-storeFromExpr' (SInt w) (ExpIdent i) | msb v == w - 1 = 
+storeFromExpr' (UInt w) (ExpInt v) = SVal $ Just $ UIntVal w v
+storeFromExpr' (SInt w) (ExpInt v) | msb v == w - 1 = 
     SVal $ Just $ SIntVal w $ - ((foldl' (\v i -> complementBit v i) v [0..w-1]) + 1)
-                                     | otherwise      = SVal $ Just $ SIntVal w i
+                                   | otherwise      = SVal $ Just $ SIntVal w v
 storeFromExpr' (Struct fs) (ExpApply f as) | length fs /= length as = error "storeFromExpr: incorrect number of fields in a struct"
                                            | otherwise = 
-    SStruct $ map (\(Field n t) e -> (n, storeFromExpr t e)) $ zip fs as
+    SStruct $ map (\((Field n t), e) -> (n, storeFromExpr t e)) $ zip fs as
 storeFromExpr' t e = error $ "storeFromExp " ++ show t ++ " " ++ show e
 
 valFromIdent :: (?spec::Spec) => String -> Val

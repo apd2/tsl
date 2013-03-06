@@ -22,6 +22,7 @@ import Data.List
 import Data.Bits
 import Debug.Trace
 
+import Util hiding (slice,index)
 import PP
 import Pos
 import Name
@@ -467,13 +468,6 @@ mkLit (Just w) True  r     v | w < 2               = fail "Signed literals must 
                                                         return $ ELit nopos w True r (-v')
                              | msb v < w - 1       = return $ ELit nopos w True r v
                              | otherwise           = fail "Value exceeds specified width"
-
--- Determine the most significant set bit of a non-negative number 
--- (returns 0 if not bits are set)
-msb :: (Bits b, Num b) => b -> Int
-msb 0 = 0
-msb 1 = 0
-msb n = 1 + (msb $ n `shiftR` 1)
 
 expr' True  = expr
 expr' False = detexpr
