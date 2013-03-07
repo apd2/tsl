@@ -22,10 +22,10 @@ import Method
 import Type
 import ExprInline
 
-import qualified IExpr   as I
-import qualified CFA     as I
-import qualified IVar    as I
-import qualified CFASpec as C
+import qualified IExpr as I
+import qualified CFA   as I
+import qualified IVar  as I
+import qualified ISpec as I
 
 statSimplify :: (?spec::Spec, ?scope::Scope, ?uniq::Uniq) => Statement -> Statement
 statSimplify s = sSeq (pos s) $ statSimplify' s
@@ -87,7 +87,7 @@ statSimplify' st                    = [st]
 ----------------------------------------------------------
 -- Convert statement to CFA
 ----------------------------------------------------------
-statToCFA :: (?spec::Spec, ?procs::[C.Process]) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA :: (?spec::Spec, ?procs::[I.Process]) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA before   (SSeq _ ss)    = foldM statToCFA before ss
 statToCFA before s@(SPause _)     = do ctxLocSetAct before (I.ActStat s)
                                        ctxPause before I.true
@@ -103,7 +103,7 @@ statToCFA before   s@stat         = do ctxLocSetAct before (I.ActStat s)
                                        return after
 
 -- Only safe to call from statToCFA.  Do not call this function directly!
-statToCFA' :: (?spec::Spec, ?procs::[C.Process]) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
+statToCFA' :: (?spec::Spec, ?procs::[I.Process]) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
 statToCFA' before _ (SReturn _ rval) = do
     -- add transition before before to return location
     mlhs  <- gets ctxLHS
@@ -127,10 +127,10 @@ statToCFA' before after (SPar _ ps) = do
     let pids  = map (childPID pid . fst) ps
     -- enable child processes
     aften <- ctxInsTransMany' before $ map (\pid' -> I.TranStat $ mkEnVar pid' Nothing I.=: I.true) pids
-    let mkFinalCheck (n,_) = I.disj $ map (\loc -> mkPCVar pid' I.=== mkPC pid' loc) $ I.cfaFinal $ C.procCFA p
+    let mkFinalCheck (n,_) = I.disj $ map (\loc -> mkPCVar pid' I.=== mkPC pid' loc) $ I.cfaFinal $ I.procCFA p
                              where pid' = childPID pid n
                                    p = fromJustMsg ("mkFinalCheck: process " ++ pidToName pid' ++ " unknown") 
-                                       $ find ((== sname n) . C.procName) ?procs
+                                       $ find ((== sname n) . I.procName) ?procs
     -- pause and wait for all of them to reach final states
     aftwait <- ctxPause aften $ I.conj $ map mkFinalCheck ps
     -- Disable forked processes and bring them back to initial states
@@ -275,7 +275,7 @@ statToCFA' before after (SMagic _ _) = do
     aftwait <- ctxPause aftmag $ mkMagicVar I.=== I.false
     ctxInsTrans aftwait after I.TranNop
 
-methInline :: (?spec::Spec,?procs::[C.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
+methInline :: (?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
 methInline before after meth args mlhs = do
     -- save current context
     pid <- gets ctxPID
@@ -359,7 +359,7 @@ copyOutArgs loc meth args = do
 -- Top-level function: convert process statement to CFA
 ----------------------------------------------------------
 
-procStatToCFA :: (?spec::Spec, ?procs::[C.Process]) => Statement -> I.Loc -> State CFACtx I.Loc
+procStatToCFA :: (?spec::Spec, ?procs::[I.Process]) => Statement -> I.Loc -> State CFACtx I.Loc
 procStatToCFA stat before = do
     after <- statToCFA before stat
     modify (\ctx -> ctx {ctxCFA = I.cfaAddNullPtrTrans (ctxCFA ctx) mkNullVar})

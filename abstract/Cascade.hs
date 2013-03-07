@@ -7,15 +7,12 @@ module Cascade(Cascade(..),
                fcasToFormula,
                fcasPrune) where
 
-import Data.Functor
 import Control.Applicative
 import Data.List
 import Text.PrettyPrint
 
 import PP
-import TSLUtil
 import Util
-import ISpec
 import IExpr
 import BFormula
 import Predicate
@@ -25,9 +22,6 @@ import Predicate
 -- or other conditions
 data Cascade a = CasTree  [(Formula, Cascade a)] 
                | CasLeaf a
-
-ctrue :: Cascade Expr
-ctrue = CasLeaf true
 
 -- Map leaves of a cascade to cascades
 casMap :: (a -> Cascade b) -> Cascade a -> Cascade b
@@ -65,7 +59,7 @@ fcasToFormula (CasTree (b:bs)) = foldl' (\f (c,cas) -> fdisj [f, fconj [c, fcasT
 fcasPrune :: FCascade -> FCascade
 fcasPrune (CasLeaf f)  = CasLeaf f
 fcasPrune (CasTree bs) = if null bs' then CasLeaf FFalse else CasTree bs'
-    where bs' = filter (\(f,cas) -> case cas of 
+    where bs' = filter (\(_,cas) -> case cas of 
                                          CasLeaf FFalse -> False
                                          _              -> True)
                        $ map (mapSnd fcasPrune) bs

@@ -60,7 +60,7 @@ data AbsVar = AVarPred Predicate      -- predicate variable
             deriving(Eq, Ord)
 
 avarWidth :: (?spec::Spec) => AbsVar -> Int
-avarWidth (AVarPred p) = 1
+avarWidth (AVarPred _) = 1
 avarWidth (AVarTerm t) = termWidth t
 
 avarCategory :: (?spec::Spec) => AbsVar -> VarCategory
@@ -167,7 +167,7 @@ termVar (TUInt _ _)      = []
 termVar (TEnum _)        = []
 termVar TTrue            = []
 termVar (TAddr t)        = termVar t
-termVar (TField t f)     = termVar t
+termVar (TField t _)     = termVar t
 termVar (TIndex a i)     = termVar a ++ termVar i
 termVar (TUnOp _ t)      = termVar t
 termVar (TBinOp _ t1 t2) = termVar t1 ++ termVar t2

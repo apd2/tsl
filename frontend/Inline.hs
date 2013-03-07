@@ -11,13 +11,13 @@ import qualified Data.Map as M
 import Text.PrettyPrint
 
 import PP
-import Pos
 import Util hiding (name)
-import qualified ISpec as I
-import qualified IExpr as I
-import qualified CFA   as I
-import qualified IType as I
-import qualified IVar  as I
+--import qualified ISpec    as I
+import qualified TranSpec as I
+import qualified IExpr    as I
+import qualified CFA      as I
+import qualified IType    as I
+import qualified IVar     as I
 import Name
 import NS
 import Method
@@ -27,8 +27,6 @@ import Process
 import Type
 import TypeOps
 import ExprOps
-import Const
-import Val
 import Ops
 
 -- Extract template from flattened spec (that only has one template)
@@ -103,8 +101,8 @@ mkVarDecl :: (?spec::Spec, WithName a, WithType a) => Bool -> Maybe PID -> Maybe
 mkVarDecl mem mpid mmeth x = I.Var mem I.VarState (mkVarName mpid mmeth x) (mkType $ typ x)
 
 parseVarName :: String -> (Maybe PID, Maybe String, String)
-parseVarName name = (pid, meth, vname)
-    where toks = splitOn "/" name
+parseVarName n = (pid, meth, vname)
+    where toks = splitOn "/" n
           vname = last toks
           (pid, meth) = case init toks of
                              [] -> (Nothing, Nothing)
@@ -140,15 +138,15 @@ mkWaitForTask pid meth = envar I.=== I.false
     where envar = mkEnVar pid (Just meth)
 
 isWaitForTask :: I.Expr -> Maybe String
-isWaitForTask (I.EBinOp Eq (I.EVar name) e2) | e2 == I.false = 
-    case parseVarName name of
+isWaitForTask (I.EBinOp Eq (I.EVar n) e2) | e2 == I.false = 
+    case parseVarName n of
          (_, ms, "$en") -> ms
          _              -> Nothing
 isWaitForTask _ = Nothing
 
 isWaitForMagic :: I.Expr -> Bool
-isWaitForMagic (I.EBinOp Eq (I.EVar name) e2) | (e2 == I.false) && (name == mkMagicVarName) = True
-                                              | otherwise = False
+isWaitForMagic (I.EBinOp Eq (I.EVar n) e2) | (e2 == I.false) && (n == mkMagicVarName) = True
+                                           | otherwise = False
 isWaitForMagic _ = False
 
 mkPCVarName :: PID -> String
@@ -295,14 +293,14 @@ globalNMap = M.fromList $ gvars ++ wires ++ enums
 mkType :: (?spec::Spec) => Type -> I.Type
 mkType t = 
     case typ' t of
-         Type s (BoolSpec   _)     -> I.Bool
-         Type s (SIntSpec   _ w)   -> I.SInt w
-         Type s (UIntSpec   _ w)   -> I.UInt w
-         Type s (StructSpec _ fs)  -> I.Struct $ map (\(Field _ t n) -> I.Field (sname n) (mkType (Type s t))) fs 
-         Type s (EnumSpec   _ es)  -> I.Enum $ getEnumName $ name $ head es
-         Type s (PtrSpec    _ t)   -> I.Ptr $ mkType $ Type s t
-         Type s (ArraySpec  _ t l) -> let ?scope = s in I.Array (mkType $ Type s t) (fromInteger $ evalInt l)
-         Type s t -> error $ "mkType: " ++ show t
+         Type _ (BoolSpec   _)      -> I.Bool
+         Type _ (SIntSpec   _ w)    -> I.SInt w
+         Type _ (UIntSpec   _ w)    -> I.UInt w
+         Type s (StructSpec _ fs)   -> I.Struct $ map (\(Field _ t' n) -> I.Field (sname n) (mkType (Type s t'))) fs 
+         Type _ (EnumSpec   _ es)   -> I.Enum $ getEnumName $ name $ head es
+         Type s (PtrSpec    _ t')   -> I.Ptr $ mkType $ Type s t'
+         Type s (ArraySpec  _ t' l) -> let ?scope = s in I.Array (mkType $ Type s t') (fromInteger $ evalInt l)
+         Type _ t'                  -> error $ "mkType: " ++ show t'
 
 
 getEnumName :: (?spec::Spec) => Ident -> String
@@ -339,7 +337,7 @@ ctxLNMap :: CFACtx -> NameMap
 ctxLNMap = sel4 . head . ctxStack
 
 ctxPushScope :: Scope -> I.Loc -> Maybe I.Expr -> NameMap -> State CFACtx ()
-ctxPushScope scope retloc lhs nmap = modify (\ctx -> ctx {ctxStack = (scope, retloc, lhs, nmap) : (ctxStack ctx)})
+ctxPushScope sc retloc lhs nmap = modify (\ctx -> ctx {ctxStack = (sc, retloc, lhs, nmap) : (ctxStack ctx)})
 
 ctxPopScope :: State CFACtx ()
 ctxPopScope = modify (\ctx -> ctx {ctxStack = tail $ ctxStack ctx})
@@ -390,15 +388,15 @@ ctxInsTransMany' from ts = do
 
 ctxInsTmpVar :: I.Type -> State CFACtx I.Var
 ctxInsTmpVar t = do
-    last  <- gets ctxLastVar
-    pid   <- gets ctxPID
-    scope <- gets ctxScope
-    let m = case scope of
+    lst <- gets ctxLastVar
+    pid <- gets ctxPID
+    sc  <- gets ctxScope
+    let m = case sc of
                  ScopeMethod _ meth -> Just meth
                  _                  -> Nothing
-        name = mkVarNameS (Just pid) m ("$tmp" ++ show (last + 1))
-        v = I.Var False I.VarTmp name t
-    modify $ (\ctx -> ctx { ctxLastVar = last + 1
+        vname = mkVarNameS (Just pid) m ("$tmp" ++ show (lst + 1))
+        v = I.Var False I.VarTmp vname t
+    modify $ (\ctx -> ctx { ctxLastVar = lst + 1
                           , ctxVar     = v:(ctxVar ctx)})
     return v
 
