@@ -7,7 +7,6 @@ module FCompile (formAbsVars,
                  tcasSubst,
                  formSubst) where
 
-import qualified Data.Map as M
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.State
@@ -15,13 +14,11 @@ import Control.Monad.ST.Lazy
 
 import qualified CuddExplicitDeref as C
 import qualified BDDHelpers        as C
-import TSLUtil
 import ISpec
 import qualified Interface         as Abs
 import Cascade
 import Predicate
 import BFormula
-import LogicClasses
 import IType
 import IVar
 
@@ -100,7 +97,7 @@ compileFormula (FPred p@(PAtom op t1 t2)) =
                       case op of 
                            REq  -> lift $ C.bxnor ?m t1' t2'
                            RNeq -> lift $ C.bxor  ?m t1' t2'
-         Enum n -> case (t1,t2) of
+         Enum _ -> case (t1,t2) of
                         (TEnum n1, TEnum n2) -> do let res = if (n1 == n2) 
                                                                 then C.bone ?m 
                                                                 else C.bzero ?m
@@ -140,7 +137,7 @@ compileTCas (CasTree bs)        v = do
                                lift $ C.deref ?m cas'
                                return res) bs
     res <- lift $ C.disj ?m fs
-    lift $ mapM (C.deref ?m) fs
+    _ <- lift $ mapM (C.deref ?m) fs
     return res
 
 

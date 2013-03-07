@@ -16,13 +16,12 @@ import Control.Monad
 import Ops
 import IExpr
 import IType
-import ISpec
 
 
 -- Variable assignments
 data Store = SStruct [(String, Store)] -- name/value pairs (used for structs and for top-level store)
            | SArr    [Store]           -- array assignment
-           | SVal    (Maybe Val)     -- scalar
+           | SVal    (Maybe Val)       -- scalar
 
 -- shallow union of stores
 storeUnion :: Store -> Store -> Store
@@ -75,7 +74,7 @@ storeTryEvalBool s e = case storeTryEvalScalar s e of
 
 storeTryEvalEnum :: Store -> Expr -> Maybe String
 storeTryEvalEnum s e = case storeTryEvalScalar s e of
-                            Just (EnumVal s) -> Just s
+                            Just (EnumVal n) -> Just n
                             _                -> Nothing
 
 storeTryEvalStruct :: Store -> Expr -> Maybe [(String, Store)]

@@ -3,14 +3,12 @@
 module EqSMT(eqTheorySolver) where
 
 import Data.List
-import Debug.Trace
 import qualified Data.Set as S
 
 import qualified DecisionProcedure as DP
 import qualified Var               as DP
 import qualified DNFTypes          as DP
 import qualified PLit              as DP
-import qualified Term              as DP
 import qualified SyntaxTree2       as DP
 import qualified SymTab            as DP
 
@@ -39,9 +37,9 @@ eqTheorySolver spec m = TheorySolver { unsatCoreState      = eqUnsatCore        
                                      }
 
 
-predVars :: Spec -> Predicate -> [(String, VarCategory)]
-predVars spec (PAtom _ t1 t2) = let ?spec = spec
-                                  in S.toList $ S.fromList $ map (\v -> (varName v, varCat v)) $ termVar t1 ++ termVar t2
+--predVars :: Spec -> Predicate -> [(String, VarCategory)]
+--predVars spec (PAtom _ t1 t2) = let ?spec = spec
+--                                in S.toList $ S.fromList $ map (\v -> (varName v, varCat v)) $ termVar t1 ++ termVar t2
 
 eqCheckSat :: Spec -> [(AbsVar,[Bool])] -> Maybe Bool
 eqCheckSat spec ps = 
@@ -105,7 +103,7 @@ mkTerm   (TVar n)                = DP.TVar $ mkVar n
 mkTerm   (TSInt w i)             = DP.TLit i w
 mkTerm   (TUInt w i)             = DP.TLit i w
 mkTerm x@(TField t f)            = case mkTerm t of
-                                        DP.TVar (DP.Var p typ c) -> DP.TVar $ DP.Var (p++[(f,Nothing)]) typ c
+                                        DP.TVar (DP.Var p t' c) -> DP.TVar $ DP.Var (p++[(f,Nothing)]) t' c
                                         _                        -> error $ "EqSMT.mkTerm " ++ show x
 mkTerm   (TSlice t s)            = DP.TSlice s $ mkTerm t
 mkTerm   t                       = error $ "EqSMT.mkTerm " ++ show t

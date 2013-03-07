@@ -8,6 +8,7 @@ module Predicate(PVarOps,
                  avarIsPred,
                  avarCategory,
                  avarVar,
+                 avarAsnToPred,
                  ArithUOp(..),
                  uopToArithOp,
                  arithOpToUOp,
@@ -74,6 +75,16 @@ avarIsPred _            = False
 avarVar :: (?spec::Spec) => AbsVar -> [Var]
 avarVar (AVarPred p) = predVar p
 avarVar (AVarTerm t) = termVar t
+
+avarAsnToPred :: (?spec::Spec) => AbsVar -> Integer -> Predicate
+avarAsnToPred (AVarPred (PAtom op t1 t2)) 0 = PAtom (relOpNeg op) t1 t2
+avarAsnToPred (AVarPred p)                1 = p
+avarAsnToPred (AVarTerm t)                i = 
+    case typ t of
+         Bool   -> if i==0 then PAtom RNeq t TTrue else PAtom REq t TTrue
+         Enum n -> PAtom REq t $ TEnum $ (enumEnums $ getEnumeration n) !! (fromInteger i)
+         SInt w -> PAtom REq t $ TSInt w i
+         UInt w -> PAtom REq t $ TUInt w i
 
 instance Show AbsVar where
     show (AVarPred p) = show p
@@ -224,6 +235,14 @@ relOpToBOp RLt  = Lt
 relOpToBOp RGt  = Gt
 relOpToBOp RLte = Lte
 relOpToBOp RGte = Gte
+
+relOpNeg :: RelOp -> RelOp
+relOpNeg REq  = RNeq
+relOpNeg RNeq = REq
+relOpNeg RLt  = RGte
+relOpNeg RGt  = RLte
+relOpNeg RLte = RGt
+relOpNeg RGte = RLt
 
 -- Predicates
 data Predicate = PAtom {pOp :: RelOp, pTerm1 :: Term, pTerm2 :: Term} deriving (Eq, Ord)

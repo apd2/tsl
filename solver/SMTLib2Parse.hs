@@ -90,7 +90,7 @@ model_decl =  try const_decl
           <|> try var_asn
           <|> try forall
 
-const_decl = parens $ (\n t -> Just $ DeclConst  n t)   <$ reserved "declare-fun" <*> ident <* (parens spaces) <*> typespec
+const_decl = parens $ (\n t -> Just $ DeclConst n t)    <$ reserved "declare-fun" <*> ident <* (parens spaces) <*> typespec
 var_asn    = parens $ (\n _ e -> Just $ DeclVarAsn n e) <$ reserved "define-fun"  <*> ident <* (parens spaces) <*> typespec <*> expr
 forall     = parens $ (\_ _ -> Nothing)                 <$ reserved "forall"      <*> args  <*> expr
 
@@ -132,8 +132,8 @@ storeFromModel ptrmap decls =
     storeUnions $ map storeFromAsn asndecls
 
 storeFromAsn :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => (String, SMTExpr) -> Store
-storeFromAsn (name, e) = SStruct [(varName var, val)]
-    where var = getVar name 
+storeFromAsn (n, e) = SStruct [(varName var, val)]
+    where var = getVar n
           val = storeFromExpr (varType var) e
 
 storeFromExpr :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => Type -> SMTExpr -> Store

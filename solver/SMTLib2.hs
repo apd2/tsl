@@ -10,7 +10,6 @@ import System.IO.Unsafe
 import System.Process
 import System.Exit
 import Control.Monad.Error
-import Control.Applicative hiding (many,optional,Const,empty)
 import Data.List
 import qualified Data.Set             as S
 import qualified Data.Map             as M
@@ -259,14 +258,16 @@ getUnsatCore cfg fs =
               $$ text "(check-sat)"
               $$ text "(get-unsat-core)"
 
-getModel :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe Store
+getModel :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe (Either [Int] Store)
 getModel cfg fs =
     runSolver cfg spec
     $ do res <- satresParser
          case res of 
-              Just True -> liftM Just $ modelParser ptrmap
-              _         -> return Nothing
+              Just True  -> liftM (Just . Right) $ modelParser ptrmap
+              Just False -> liftM (Just . Left)  $ unsatcoreParser
+              _          -> return Nothing
     where (spec0, ptrmap) = mkFormulas fs
-          spec = spec0
+          spec = text "(set-option :produce-unsat-cores true)"
+              $$ spec0
               $$ text "(check-sat)"
               $$ text "(get-model)"

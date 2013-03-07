@@ -59,20 +59,6 @@ instance PP Spec where
                   $+$
                   pp specTran 
 
---           $+$
---           (text "wires: " <+> (pp $ tsWire s))
---           $+$
---           (text "init: " <+> (pp $ fst $ tsInit s))
---           $+$
---           (text "aux_init: " <+> (pp $ snd $ tsInit s))
---           $+$
---           (text "always: " <+> (pp $ tsAlways s))
---           $+$
---           (vcat $ map (($+$ text "") . pp) (tsGoal s))
---           $+$
---           (vcat $ map (($+$ text "") . pp) (tsFair s))
-
-
 lookupVar :: (?spec::Spec) => String -> Maybe Var
 lookupVar n = find ((==n) . varName) $ specVar ?spec 
 
