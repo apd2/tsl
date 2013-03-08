@@ -4,7 +4,6 @@ module Store (Store(..),
               storeUnion,
               storeUnions,
               storeProject,
-              storeNonDet,
               storeEval,
               storeEvalEnum,
               storeEvalBool,
@@ -12,80 +11,64 @@ module Store (Store(..),
 
 import Data.List
 import Control.Monad
+import qualified Data.Map as M
 
 import Ops
 import IExpr
-import IType
 
 
 -- Variable assignments
-data Store = SStruct [(String, Store)] -- name/value pairs (used for structs and for top-level store)
-           | SArr    [Store]           -- array assignment
-           | SVal    (Maybe Val)       -- scalar
+data Store = SStruct {storeFields :: M.Map String Store} -- name/value pairs (used for structs and for top-level store)
+           | SArr    {storeArr    :: M.Map Int Store}    -- array assignment
+           | SVal    {storeVal    :: Val}                -- scalar
 
 -- shallow union of stores
 storeUnion :: Store -> Store -> Store
-storeUnion (SStruct entries1) (SStruct entries2) = SStruct $ entries1 ++ entries2
+storeUnion (SStruct entries1) (SStruct entries2) = SStruct $ M.union entries1 entries2
 
 storeUnions :: [Store] -> Store
-storeUnions stores = foldl' (\s1 s2 -> storeUnion s1 s2) (SStruct []) stores
-
-storeNonDet :: Type -> Store
-storeNonDet (Struct fs) = SStruct $ map (\(Field n t) -> (n, storeNonDet t)) fs
-storeNonDet (Array t sz)  = SArr $ replicate sz $ storeNonDet t
+storeUnions stores = foldl' storeUnion (SStruct M.empty) stores
 
 -- project store on a subset of variables
 storeProject :: Store -> [String] -> Store
-storeProject (SStruct entries) names = SStruct $ filter (\(n,_) -> elem n names) entries
+storeProject (SStruct entries) names = SStruct $ M.filterWithKey (\n _ -> elem n names) entries
 
 -- Expression evaluation over stores
 storeTryEval :: Store -> Expr -> Maybe Store
-storeTryEval (SStruct fs) (EVar name)       = fmap snd $ find ((==name) . fst) fs
+storeTryEval (SStruct fs) (EVar name)       = M.lookup name fs
 storeTryEval _            (EVar _)          = Nothing
-storeTryEval _            (EConst v)        = Just $ SVal $ Just v
-storeTryEval s            (EField e name)   = join $ fmap (\fs -> fmap snd $ find ((==name) . fst) fs) $ storeTryEvalStruct s e 
+storeTryEval _            (EConst v)        = Just $ SVal v
+storeTryEval s            (EField e name)   = join $ fmap (M.lookup name) $ storeTryEvalStruct s e
 storeTryEval s            (EIndex e i)      = do idx <- liftM fromInteger $ storeTryEvalInt s i
                                                  es  <- storeTryEvalArr s e
-                                                 if (idx >= 0 && idx < length es)
-                                                    then return $ es !! idx
-                                                    else Nothing
-storeTryEval s            (EUnOp op e)      = fmap (\v -> SVal $ Just $ evalConstExpr (EUnOp op $ EConst v)) $ storeTryEvalScalar s e
+                                                 M.lookup idx es
+storeTryEval s            (EUnOp op e)      = fmap (SVal . evalConstExpr . EUnOp op . EConst) $ storeTryEvalScalar s e
 storeTryEval s            (EBinOp op e1 e2) = do v1 <- storeTryEvalScalar s e1
                                                  v2 <- storeTryEvalScalar s e2
-                                                 return $ SVal $ Just $ evalConstExpr (EBinOp op (EConst v1) (EConst v2))
-storeTryEval s            (ESlice e sl)     = fmap (\v -> SVal $ Just $ evalConstExpr (ESlice (EConst v) sl)) $ storeTryEvalScalar s e
+                                                 return $ SVal $ evalConstExpr (EBinOp op (EConst v1) (EConst v2))
+storeTryEval s            (ESlice e sl)     = fmap (\v -> SVal $ evalConstExpr (ESlice (EConst v) sl)) $ storeTryEvalScalar s e
 
 storeTryEvalScalar :: Store -> Expr -> Maybe Val
-storeTryEvalScalar s e = case storeTryEval s e of
-                              Just (SVal (Just v)) -> return v
-                              _                    -> Nothing
+storeTryEvalScalar s e = fmap storeVal $ storeTryEval s e
 
 storeTryEvalInt :: Store -> Expr -> Maybe Integer
-storeTryEvalInt s e = case storeTryEvalScalar s e of
-                           Just (SIntVal _ i) -> Just i
-                           Just (UIntVal _ i) -> Just i
-                           _                  -> Nothing
+storeTryEvalInt s e = fmap ivalVal $ storeTryEvalScalar s e
 
 storeTryEvalBool :: Store -> Expr -> Maybe Bool
 storeTryEvalBool s e = case storeTryEvalScalar s e of
                             Just (BoolVal b) -> Just b
                             _                -> Nothing
 
-
 storeTryEvalEnum :: Store -> Expr -> Maybe String
 storeTryEvalEnum s e = case storeTryEvalScalar s e of
                             Just (EnumVal n) -> Just n
                             _                -> Nothing
 
-storeTryEvalStruct :: Store -> Expr -> Maybe [(String, Store)]
-storeTryEvalStruct s e = case storeTryEval s e of
-                              Just (SStruct fs) -> Just fs
-                              _                 -> Nothing
+storeTryEvalStruct :: Store -> Expr -> Maybe (M.Map String Store) 
+storeTryEvalStruct s e = fmap storeFields $ storeTryEval s e
 
-storeTryEvalArr :: Store -> Expr -> Maybe [Store]
-storeTryEvalArr s e = case storeTryEval s e of
-                           Just (SArr es) -> Just es
-                           _              -> Nothing
+storeTryEvalArr :: Store -> Expr -> Maybe (M.Map Int Store)
+storeTryEvalArr s e = fmap storeArr $ storeTryEval s e
 
 storeEval :: Store -> Expr -> Store
 storeEval store e = case storeTryEval store e of
@@ -113,29 +96,26 @@ storeEvalEnum store e = case storeTryEvalEnum store e of
                              Just s  -> s
 
 storeSet :: Store -> Expr -> Store -> Store
-storeSet s (ESlice e (l,h)) val = 
+storeSet s (ESlice e (l,h)) (SVal val) = 
     let ?store = s in
-    let SVal (Just v') = val
-        f :: Store -> Store
-        f (SVal (Just v)) = 
-            SVal $ Just $ evalConstExpr $ econcat $
-            (if l > 0 then [EConst $ valSlice v (0, l-1)] else []) ++
-            [EConst v'] ++
-            (if h < ivalWidth  v - 1 then [EConst $ valSlice v (h+1, ivalWidth v - 1)] else [])
-    in storeUpdate s e f
-storeSet s e val = let ?store = s in storeUpdate s e (\_ -> val)
+    let old = storeEvalScalar s e
+        new = evalConstExpr $ econcat $
+              (if l > 0 then [EConst $ valSlice old (0, l-1)] else []) ++
+              [EConst $ val] ++
+              (if h < ivalWidth old - 1 then [EConst $ valSlice old (h+1, ivalWidth old - 1)] else []) in
+    storeSet s e (SVal $ old {ivalVal = ivalVal new})
 
-storeUpdate :: (?store::Store) => Store -> Expr -> (Store -> Store) -> Store
-storeUpdate (SStruct fs) (EVar vname) f = SStruct $ map (\(n,v) -> if n == vname then (n, f v) else (n,v)) fs
-storeUpdate s            (EField e n) f = storeUpdate s e (\s' -> storeUpdate s' (EVar n) f)
-storeUpdate s            (EIndex a i) f = storeUpdate s a (\s' -> case s' of
-                                                                       SArr es -> if idx >= 0 && idx < length es 
-                                                                                     then SArr $ (take idx es) ++ [f $ es !! idx] ++ (drop (idx+1) es)
-                                                                                     else -- we should probably do the same thing as with pointers: add error 
-                                                                                          -- transitions on array dereferences, so that this cannot happen
-                                                                                          error "storeUpdate: index out of bounds"
-                                                                       _       -> error "storeUpdate: not an array")
+storeSet s e val = let ?store = s in storeSet' s e val
+
+storeSet' :: (?store::Store) => Store -> Expr -> Store -> Store
+storeSet' (SStruct fs) (EVar vname) val = SStruct $ M.insert vname val fs
+storeSet' s            (EField e n) val = storeSet' s e $ case storeTryEval s e of
+                                                               Nothing -> storeSet' (SStruct M.empty) (EVar n) val
+                                                               Just s' -> storeSet' s'                (EVar n) val
+storeSet' s            (EIndex a i) val = storeSet' s a $ case storeTryEval s a of
+                                                               Nothing        -> SArr $ M.singleton idx val
+                                                               Just (SArr es) -> SArr $ M.insert    idx val es                                                                 
                                           where idx = fromInteger $ storeEvalInt ?store i
-storeUpdate s            (EUnOp Deref e) f = storeUpdate s (lvalToExpr l) f
+storeSet' s            (EUnOp Deref e) val = storeSet' s (lvalToExpr l) val
                                              where PtrVal l = storeEvalScalar ?store e
-storeUpdate _            e            f = error $ "storeUpdate: " ++ show e
+storeSet' _            e            _   = error $ "storeSet': " ++ show e

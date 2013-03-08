@@ -7,6 +7,7 @@ module SMTLib2Parse (satresParser,
 import Data.Maybe
 import Data.List
 import Data.Bits
+import qualified Data.Map             as M
 import Text.Parsec hiding ((<|>))
 import Text.Parsec.Language
 import qualified Text.Parsec.Token    as T
@@ -132,28 +133,28 @@ storeFromModel ptrmap decls =
     storeUnions $ map storeFromAsn asndecls
 
 storeFromAsn :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => (String, SMTExpr) -> Store
-storeFromAsn (n, e) = SStruct [(varName var, val)]
+storeFromAsn (n, e) = SStruct $ M.singleton (varName var) val
     where var = getVar n
           val = storeFromExpr (varType var) e
 
 storeFromExpr :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => Type -> SMTExpr -> Store
 storeFromExpr t e = case lookup e ?addrofmap of
-                         Nothing -> storeFromExpr' t e
-                         Just t  -> SVal $ Just $ PtrVal $ evalLExpr $ termToExpr t
+                         Nothing   -> storeFromExpr' t e
+                         Just term -> SVal $ PtrVal $ evalLExpr $ termToExpr term
 
 storeFromExpr' :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => Type -> SMTExpr -> Store
 storeFromExpr' t (ExpIdent i) = if' (typ v /= t) (error "storeFromExpr: identifier type mismatch") $ 
-                               (SVal $ Just v)
+                                (SVal v)
     where v = valFromIdent i
 storeFromExpr' t (ExpBool b) = if' (t /= Bool) (error "storeFromExpr: bool type mismatch") $ 
-                               (SVal $ Just $ BoolVal b)
-storeFromExpr' (UInt w) (ExpInt v) = SVal $ Just $ UIntVal w v
+                               (SVal $ BoolVal b)
+storeFromExpr' (UInt w) (ExpInt v) = SVal $ UIntVal w v
 storeFromExpr' (SInt w) (ExpInt v) | msb v == w - 1 = 
-    SVal $ Just $ SIntVal w $ - ((foldl' (\v i -> complementBit v i) v [0..w-1]) + 1)
-                                   | otherwise      = SVal $ Just $ SIntVal w v
+    SVal $ SIntVal w $ - ((foldl' complementBit v [0..w-1]) + 1)
+                                   | otherwise      = SVal $ SIntVal w v
 storeFromExpr' (Struct fs) (ExpApply f as) | length fs /= length as = error "storeFromExpr: incorrect number of fields in a struct"
                                            | otherwise = 
-    SStruct $ map (\((Field n t), e) -> (n, storeFromExpr t e)) $ zip fs as
+    SStruct $ M.fromList $ map (\((Field n t), e) -> (n, storeFromExpr t e)) $ zip fs as
 storeFromExpr' t e = error $ "storeFromExp " ++ show t ++ " " ++ show e
 
 valFromIdent :: (?spec::Spec) => String -> Val
