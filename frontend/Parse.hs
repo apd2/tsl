@@ -3,7 +3,8 @@
 module Parse(SpecItem(..),
              Import(..),
              litParser, 
-             grammar) where
+             grammar,
+             detexpr) where
 
 import qualified Data.Map as M
 import Control.Monad

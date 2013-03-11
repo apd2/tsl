@@ -11,9 +11,7 @@ import Data.List
 import Data.Maybe
 import Control.Monad.State
 import qualified Data.Map as M
-import Debug.Trace
 
-import qualified ISpec as I
 import qualified IExpr as I
 import qualified IType as I
 import qualified IVar  as I

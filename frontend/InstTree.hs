@@ -4,7 +4,9 @@
 
 module InstTree (IID,
                  mapInstTree,
+                 itreeTemplate,
                  itreeFlattenName,
+                 itreeParseName,
                  itreeRelToAbsPath) where
 
 import qualified Data.Tree as T

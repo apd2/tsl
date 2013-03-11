@@ -177,6 +177,9 @@ mkPIDVar = I.EVar mkPIDVarName
 mkPIDEnumeratorName :: PID -> String
 mkPIDEnumeratorName pid = "$" ++ pidToName pid
 
+parsePIDEnumerator :: String -> PID
+parsePIDEnumerator n = splitOn "/" $ tail n
+
 mkPIDEnum :: PID -> I.Expr
 mkPIDEnum = I.EConst . I.EnumVal . mkPIDEnumeratorName
 
