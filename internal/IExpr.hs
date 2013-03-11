@@ -31,7 +31,6 @@ import qualified Text.Parsec as P
 
 import Parse
 import PP
-import Util hiding (name)
 import TSLUtil
 import Ops
 import IType
@@ -53,7 +52,7 @@ instance (?spec::Spec) => Typed LVal where
     typ (LVar n)     = typ $ getVar n
     typ (LField s n) = let Struct fs = typ s
                        in typ $ fromJust $ find (\(Field f _) -> n == f) fs 
-    typ (LIndex a i) = t where Array t _ = typ a
+    typ (LIndex a _) = t where Array t _ = typ a
 
 instance PP LVal where
     pp (LVar n)     = pp n
@@ -67,6 +66,10 @@ data Val = BoolVal   Bool
          | EnumVal   String
          | PtrVal    LVal
          deriving (Eq)
+
+ivalIsSigned :: Val -> Bool
+ivalIsSigned (SIntVal _ _) = True
+ivalIsSigned (UIntVal _ _) = False
 
 instance (?spec::Spec) => Typed Val where
     typ (BoolVal _)   = Bool
@@ -97,13 +100,13 @@ valSlice v (l,h) = UIntVal (h - l + 1)
 
 parseVal :: (MonadError String me) => Type -> String -> me Val
 parseVal (SInt w) str = do
-    (w',_,r,v) <- case P.parse litParser "" str of
+    (w',_,_,v) <- case P.parse litParser "" str of
                        Left e  -> throwError $ show e
                        Right x -> return x
     when  (w' > w) $ throwError $ "Width mismatch"
     return $ SIntVal w v 
 parseVal (UInt w) str = do
-    (w',s,r,v) <- case P.parse litParser "" str of
+    (w',s,_,v) <- case P.parse litParser "" str of
                        Left e  -> throwError $ show e
                        Right x -> return x
     when (w' > w) $ throwError $ "Width mismatch"
@@ -141,7 +144,7 @@ instance (?spec::Spec) => Typed Expr where
                                                     then SInt w
                                                     else UInt w
                                                  where (s,w) = arithUOpType op (typeSigned e, typeWidth e)
-    typ (EUnOp Not e)                          = Bool
+    typ (EUnOp Not _)                          = Bool
     typ (EUnOp Deref e)                        = t where Ptr t = typ e
     typ (EUnOp AddrOf e)                       = Ptr $ typ e
     typ (EBinOp op e1 e2) | isRelBOp op        = Bool
@@ -158,7 +161,7 @@ instance (?spec::Spec) => Typed Expr where
 -- TODO: optimise slicing of concatenations
 exprSlice :: (?spec::Spec) => Expr -> Slice -> Expr
 exprSlice e                      (l,h) | l == 0 && h == typeWidth e - 1 = e
-exprSlice (ESlice e (l',h'))     (l,h)                                  = exprSlice e (l'+l,l'+h)
+exprSlice (ESlice e (l',_))      (l,h)                                  = exprSlice e (l'+l,l'+h)
 exprSlice (EBinOp BConcat e1 e2) (l,h) | l > typeWidth e1 - 1           = exprSlice e2 (l - typeWidth e1, h - typeWidth e1)
                                        | h <= typeWidth e1 - 1          = exprSlice e1 (l,h)
                                        | otherwise                      = econcat [exprSlice e1 (l,typeWidth e1-1), exprSlice e2 (0, h - typeWidth e1)]
@@ -168,7 +171,7 @@ exprSlice e                      s                                      = ESlice
 exprScalars :: Expr -> Type -> [Expr]
 exprScalars e (Struct fs)  = concatMap (\(Field n t) -> exprScalars (EField e n) t) fs
 exprScalars e (Array  t s) = concatMap (\i -> exprScalars (EIndex e (EConst $ UIntVal (bitWidth $ s-1) $ fromIntegral i)) t) [0..s-1]
-exprScalars e t            = [e]
+exprScalars e _            = [e]
 
 -- Variables involved in the expression
 exprVars :: (?spec::Spec) => Expr -> [Var]
@@ -209,8 +212,8 @@ exprPtrSubexpr (EIndex a i)     = exprPtrSubexpr a ++ exprPtrSubexpr i
 exprPtrSubexpr (EUnOp Deref e)  = e:(exprPtrSubexpr e)
 exprPtrSubexpr (EUnOp _ e)      = exprPtrSubexpr e
 exprPtrSubexpr (EBinOp _ e1 e2) = exprPtrSubexpr e1 ++ exprPtrSubexpr e2
-exprPtrSubexpr (ESlice e s)     = exprPtrSubexpr e
-exprPtrSubexpr e                = []
+exprPtrSubexpr (ESlice e _)     = exprPtrSubexpr e
+exprPtrSubexpr _                = []
 
 -- TODO
 exprSimplify :: Expr -> Expr
@@ -218,26 +221,21 @@ exprSimplify = id
 
 evalConstExpr :: Expr -> Val
 evalConstExpr (EConst v)                         = v
-evalConstExpr (EUnOp op e) | isArithUOp op       = case s' of
-                                                        True  -> SIntVal w' v'
-                                                        False -> UIntVal w' v'
-                                                   where (v,s,w) = case evalConstExpr e of
-                                                                        SIntVal w v -> (v,True,w)
-                                                                        UIntVal w v -> (v,False,w)
-                                                         (v',s',w') = arithUOp op (v,s,w)
+evalConstExpr (EUnOp op e) | isArithUOp op       = case s of
+                                                        True  -> SIntVal w v
+                                                        False -> UIntVal w v
+                                                   where val     = evalConstExpr e
+                                                         (v,s,w) = arithUOp op (ivalVal val,ivalIsSigned val,ivalWidth val)
 evalConstExpr (EUnOp Not e)                      = BoolVal $ not b
                                                    where BoolVal b = evalConstExpr e
 evalConstExpr (EUnOp AddrOf e)                   = PtrVal $ evalLExpr e
-evalConstExpr (EBinOp op e1 e2) | isArithBOp op  = case s' of
-                                                        True  -> SIntVal w' v'
-                                                        False -> UIntVal w' v'
-                                                   where (v1,s1,w1) = case evalConstExpr e1 of
-                                                                           SIntVal w v -> (v,True,w)
-                                                                           UIntVal w v -> (v,False,w)
-                                                         (v2,s2,w2) = case evalConstExpr e2 of
-                                                                           SIntVal w v -> (v,True,w)
-                                                                           UIntVal w v -> (v,False,w)
-                                                         (v',s',w') = arithBOp op (v1,s1,w1) (v2,s2,w2)
+evalConstExpr (EBinOp op e1 e2) | isArithBOp op  = case s of
+                                                        True  -> SIntVal w v
+                                                        False -> UIntVal w v
+                                                   where val1    = evalConstExpr e1
+                                                         val2    = evalConstExpr e2
+                                                         (v,s,w) = arithBOp op (ivalVal val1, ivalIsSigned val1, ivalWidth val1)
+                                                                               (ivalVal val2, ivalIsSigned val2, ivalWidth val2)
 evalConstExpr (EBinOp op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] = 
                                                    case v1 of
                                                         BoolVal _ -> case op of

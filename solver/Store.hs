@@ -5,6 +5,7 @@ module Store (Store(..),
               storeUnions,
               storeProject,
               storeEval,
+              storeEvalScalar,
               storeEvalEnum,
               storeEvalBool,
               storeSet) where

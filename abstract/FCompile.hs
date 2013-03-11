@@ -189,5 +189,5 @@ withTmpMany :: Abs.VarOps pdb v s u -> Int -> ([C.DDNode s u] -> StateT pdb (ST 
 withTmpMany ops n f = withTmpMany' ops [] n f
 
 withTmpMany' :: Abs.VarOps pdb v s u -> [C.DDNode s u] -> Int -> ([C.DDNode s u] -> StateT pdb (ST s) a) -> StateT pdb (ST s) a
-withTmpMany' ops nodes 0 f = f nodes
+withTmpMany' _   nodes 0 f = f nodes
 withTmpMany' ops nodes n f = (Abs.withTmp ops) (\node -> withTmpMany' ops (node:nodes) (n-1) f)

@@ -3,7 +3,8 @@
 module ISpec(Spec(..),
              Task(..),
              Process(..),
-             specTmpVars,
+             specTmpVar,
+             specStateVar,
              specGetProcess,
              specAllProcs,
              specGetCFA,
@@ -52,6 +53,12 @@ data Spec = Spec {
                                -- computation
 }
 
+specStateVar :: Spec -> [Var]
+specStateVar = filter ((==VarState) . varCat) . specVar
+
+specTmpVar :: Spec -> [Var]
+specTmpVar = filter ((==VarTmp) . varCat) . specVar
+
 instance PP Spec where
     pp Spec{..} = (vcat $ map (($+$ text "") . pp) specEnum)
                   $+$
@@ -78,9 +85,6 @@ getEnumeration e = fromJustMsg ("getEnumeration: enumeration " ++ e ++ " not fou
 -- Get sequence number of an enumerator
 enumToInt :: (?spec::Spec) => String -> Int
 enumToInt n = fst $ fromJust $ find ((==n) . snd) $ zip [0..] (enumEnums $ getEnumerator n)
-
-specTmpVars :: Spec -> [Var]
-specTmpVars Spec{..} = filter ((== VarTmp) . varCat) specVar
 
 specGetProcess :: Spec -> PID -> Process
 specGetProcess spec (name:names) | names == [] = root

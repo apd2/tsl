@@ -32,6 +32,7 @@ module Predicate(PVarOps,
                  predVar,
                  predToExpr,
                  exprToTerm,
+                 valToTerm,
                  termToExpr) where
 
 import Text.PrettyPrint
@@ -280,6 +281,9 @@ exprToTerm' (EUnOp AddrOf e)        = TAddr  (exprToTerm' e)
 exprToTerm' (EUnOp op e)            = TUnOp  (uopToArithOp op) (exprToTerm' e)
 exprToTerm' (EBinOp op e1 e2)       = TBinOp (bopToArithOp op) (exprToTerm' e1) (exprToTerm' e2)
 exprToTerm' (ESlice e s)            = TSlice (exprToTerm' e) s
+
+valToTerm :: Val -> Term
+valToTerm = exprToTerm . EConst
 
 termToExpr :: Term -> Expr
 termToExpr (TVar n)          = EVar   n
