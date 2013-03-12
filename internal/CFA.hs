@@ -2,6 +2,7 @@
 
 module CFA(Statement(..),
            Frame(..),
+           frameMethod,
            Stack,
            (=:),
            Loc,
@@ -44,6 +45,7 @@ import System.IO.Unsafe
 import System.Process
 import Data.String.Utils
 
+import Name
 import PP
 import Util hiding (name,trace)
 import NS
@@ -52,7 +54,7 @@ import IExpr
 -- Frontend imports
 import qualified Statement as F
 import qualified Expr      as F
-
+import qualified Method    as F
 
 -- Atomic statement
 data Statement = SAssume Expr
@@ -86,6 +88,11 @@ data Frame = Frame {
     fLoc   :: Loc
 }
 
+frameMethod :: Frame -> Maybe F.Method
+frameMethod f = case fScope f of
+                     ScopeMethod _ m -> Just m
+                     _               -> Nothing
+
 type Stack = [Frame]
 
 data LocLabel = LInst  {locAct :: LocAction}
@@ -100,14 +107,20 @@ instance PP LocLabel where
 instance Show LocLabel where
     show = render . pp
 
-data TranLabel = TranCall Scope
+data TranLabel = TranCall F.Method
                | TranReturn
                | TranNop
                | TranStat Statement
-               deriving (Eq)
+
+instance Eq TranLabel where
+    (==) (TranCall m1) (TranCall m2) = sname m1 == sname m2
+    (==) TranReturn    TranReturn    = True
+    (==) TranNop       TranNop       = True
+    (==) (TranStat s1) (TranStat s2) = s1 == s2
+    (==) _             _             =  False
 
 instance PP TranLabel where
-    pp (TranCall s)  = text "call" <+> text (show s)
+    pp (TranCall m)  = text "call" <+> text (sname m)
     pp TranReturn    = text "return"
     pp TranNop       = text ""
     pp (TranStat st) = pp st

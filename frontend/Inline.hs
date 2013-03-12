@@ -193,9 +193,11 @@ mkTagVarName = "$tag"
 mkTagVar :: I.Expr
 mkTagVar = I.EVar mkTagVarName
 
+mkTagIdle = "$idle"
+
 mkTagVarDecl :: (?spec::Spec) => (I.Var, I.Enumeration)
 mkTagVarDecl = (I.Var False I.VarState mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" tags)
-    where tags = "$idle" :
+    where tags = mkTagIdle :
                  (map sname
                       $ filter ((== Task Controllable) . methCat)
                       $ tmMethod tmMain)

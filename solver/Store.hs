@@ -4,6 +4,7 @@ module Store (Store(..),
               storeUnion,
               storeUnions,
               storeProject,
+              storeTryEval,
               storeEval,
               storeEvalScalar,
               storeEvalEnum,
@@ -110,27 +111,30 @@ storeEvalEnum store e = case storeTryEvalEnum store e of
                              Nothing -> error "storeEvalEnum: invalid expression"
                              Just s  -> s
 
-storeSet :: Store -> Expr -> Store -> Store
-storeSet s (ESlice e (l,h)) (SVal val) = 
+storeSet :: Store -> Expr -> Maybe Store -> Store
+storeSet s (ESlice e (l,h)) (Just (SVal val)) = 
     let ?store = s in
     let old = storeEvalScalar s e
         new = evalConstExpr $ econcat $
               (if l > 0 then [EConst $ valSlice old (0, l-1)] else []) ++
               [EConst $ val] ++
               (if h < ivalWidth old - 1 then [EConst $ valSlice old (h+1, ivalWidth old - 1)] else []) in
-    storeSet s e (SVal $ old {ivalVal = ivalVal new})
+    storeSet s e (Just $ SVal $ old {ivalVal = ivalVal new})
 
 storeSet s e val = let ?store = s in storeSet' s e val
 
-storeSet' :: (?store::Store) => Store -> Expr -> Store -> Store
-storeSet' (SStruct fs) (EVar vname) val = SStruct $ M.insert vname val fs
-storeSet' s            (EField e n) val = storeSet' s e $ case storeTryEval s e of
-                                                               Nothing -> storeSet' (SStruct M.empty) (EVar n) val
-                                                               Just s' -> storeSet' s'                (EVar n) val
-storeSet' s            (EIndex a i) val = storeSet' s a $ case storeTryEval s a of
-                                                               Nothing        -> SArr $ M.singleton idx val
-                                                               Just (SArr es) -> SArr $ M.insert    idx val es                                                                 
-                                          where idx = fromInteger $ storeEvalInt ?store i
-storeSet' s            (EUnOp Deref e) val = storeSet' s (lvalToExpr l) val
-                                             where PtrVal l = storeEvalScalar ?store e
-storeSet' _            e            _   = error $ "storeSet': " ++ show e
+storeSet' :: (?store::Store) => Store -> Expr -> Maybe Store -> Store
+storeSet' (SStruct fs) (EVar vname) Nothing  = SStruct $ M.delete vname fs
+storeSet' (SStruct fs) (EVar vname) (Just v) = SStruct $ M.insert vname v fs
+storeSet' s            (EField e n) val      = storeSet' s e $ case storeTryEval s e of
+                                                                    Nothing -> Just $ storeSet' (SStruct M.empty) (EVar n) val
+                                                                    Just s' -> Just $ storeSet' s'                (EVar n) val
+storeSet' s            (EIndex a i) val      = storeSet' s a $ case (storeTryEval s a, val) of
+                                                                    (Nothing, Nothing)        -> Nothing
+                                                                    (Nothing, Just v)         -> Just $ SArr $ M.singleton idx v
+                                                                    (Just (SArr es), Nothing) -> Just $ SArr $ M.delete idx es
+                                                                    (Just (SArr es), Just v)  -> Just $ SArr $ M.insert idx v es
+                                               where idx = fromInteger $ storeEvalInt ?store i
+storeSet' s            (EUnOp Deref e) val   = storeSet' s (lvalToExpr l) val
+                                               where PtrVal l = storeEvalScalar ?store e
+storeSet' _            e               _     = error $ "storeSet': " ++ show e
