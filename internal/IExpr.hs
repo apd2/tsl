@@ -86,6 +86,9 @@ instance PP Val where
     pp (EnumVal n)     = text n
     pp (PtrVal a)      = char '&' <> pp a
 
+instance Show Val where
+    show = render . pp
+
 type Slice = (Int, Int)
 
 instance PP Slice where

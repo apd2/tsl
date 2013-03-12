@@ -23,6 +23,20 @@ data Store = SStruct {storeFields :: M.Map String Store} -- name/value pairs (us
            | SArr    {storeArr    :: M.Map Int Store}    -- array assignment
            | SVal    {storeVal    :: Val}                -- scalar
 
+instance Show Store where
+    show (SStruct fs) = "{" ++
+                        (intercalate ", "
+                         $ map (\(n, val) -> show n ++ "=" ++ show val)
+                         $ M.toList fs) ++
+                        "}"
+    show (SArr ar)    = "[" ++
+                        (intercalate ", "
+                         $ map (\(idx, val) -> show idx ++ ": " ++ show val)
+                         $ sortBy (\x y -> compare (fst x) (fst y)) 
+                         $ M.toList ar) ++
+                        "]"
+    show (SVal v)     = show v
+
 -- shallow union of stores
 storeUnion :: Store -> Store -> Store
 storeUnion (SStruct entries1) (SStruct entries2) = SStruct $ M.union entries1 entries2

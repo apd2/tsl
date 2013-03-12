@@ -43,13 +43,11 @@ import Text.PrettyPrint
 import System.IO.Unsafe
 import System.Process
 import Data.String.Utils
-import Debug.Trace
 
 import PP
 import Util hiding (name,trace)
 import NS
 import IExpr
-import Pos
 
 -- Frontend imports
 import qualified Statement as F
@@ -141,19 +139,19 @@ sanitize title = replace "\"" "_" $ replace "/" "_" $ replace "$" "" $ replace "
 
 cfaTraceFile :: CFA -> String -> a -> a
 cfaTraceFile cfa title x = unsafePerformIO $ do
-    cfaSave cfa title False
+    _ <- cfaSave cfa title False
     return x
 
 cfaTraceFileMany :: [CFA] -> String -> a -> a
 cfaTraceFileMany cfas title x = unsafePerformIO $ do
-    fnames <- mapM (\(cfa,n) -> cfaSave cfa (title++show n) True) $ zip cfas [1..]
-    readProcess "psmerge" (["-o" ++ (sanitize title) ++ ".ps"]++fnames) ""
+    fnames <- mapM (\(cfa,n) -> cfaSave cfa (title++show n) True) $ zip cfas ([1..]::[Int])
+    _ <- readProcess "psmerge" (["-o" ++ (sanitize title) ++ ".ps"]++fnames) ""
     return x
 
 cfaShow :: CFA -> String -> IO ()
 cfaShow cfa title = do
     fname <- cfaSave cfa title True
-    readProcess "evince" [fname] ""
+    _ <- readProcess "evince" [fname] ""
     return ()
 
 cfaSave :: CFA -> String -> Bool -> IO String
@@ -163,7 +161,7 @@ cfaSave cfa title tmp = do
         fname = (if tmp then "/tmp/" else "") ++ "cfa_" ++ title' ++ ".ps"
         graphstr = cfaToDot cfa title'
     writeFile (fname++".dot") graphstr
-    readProcess "dot" ["-Tps", "-o" ++ fname] graphstr 
+    _ <- readProcess "dot" ["-Tps", "-o" ++ fname] graphstr 
     return fname
 
 cfaToDot :: CFA -> String -> String
@@ -182,8 +180,8 @@ isDelayLabel (LInst _)      = False
 
 
 newCFA :: Scope -> F.Statement -> Expr -> CFA 
-newCFA scope stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame scope cfaInitLoc] initcond) 
-                           $ G.insNode (cfaErrLoc,LPause ActNone [Frame scope cfaErrLoc] false) G.empty
+newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame sc cfaInitLoc] initcond) 
+                        $ G.insNode (cfaErrLoc,LPause ActNone [Frame sc cfaErrLoc] false) G.empty
 
 cfaErrLoc :: Loc
 cfaErrLoc = 0
@@ -205,13 +203,13 @@ cfaLocLabel :: Loc -> CFA -> LocLabel
 cfaLocLabel loc cfa = fromJustMsg "cfaLocLabel" $ G.lab cfa loc
 
 cfaLocSetAct :: Loc -> LocAction -> CFA -> CFA
-cfaLocSetAct loc act cfa = G.gmap (\(to, id, n, from) -> 
-                                    (to, id, if id == loc then n {locAct = act} else n, from)) cfa
+cfaLocSetAct loc act cfa = G.gmap (\(to, lid, n, from) -> 
+                                    (to, lid, if lid == loc then n {locAct = act} else n, from)) cfa
 
 
 cfaLocSetStack :: Loc -> Stack -> CFA -> CFA
-cfaLocSetStack loc stack cfa = G.gmap (\(to, id, n, from) -> 
-                                      (to, id, if id == loc then n {locStack = stack} else n, from)) cfa
+cfaLocSetStack loc stack cfa = G.gmap (\(to, lid, n, from) -> 
+                                      (to, lid, if lid == loc then n {locStack = stack} else n, from)) cfa
 
 
 cfaInsTrans :: Loc -> Loc -> TranLabel -> CFA -> CFA
@@ -220,7 +218,7 @@ cfaInsTrans from to stat cfa = G.insEdge (from,to,stat) cfa
 cfaInsTransMany :: Loc -> Loc -> [TranLabel] -> CFA -> CFA
 cfaInsTransMany from to [] cfa = cfaInsTrans from to TranNop cfa
 cfaInsTransMany from to stats cfa = cfaInsTrans aft to (last stats) cfa'
-    where (cfa', aft) = foldl' (\(cfa, loc) stat -> cfaInsTrans' loc stat cfa) 
+    where (cfa', aft) = foldl' (\(_cfa, loc) stat -> cfaInsTrans' loc stat _cfa) 
                                (cfa, from) (init stats)
 
 cfaInsTrans' :: Loc -> TranLabel -> CFA -> (CFA, Loc)
@@ -267,4 +265,4 @@ cfaPruneUnreachable cfa keep =
     in if null unreach 
           then cfa
           else --trace ("cfaPruneUnreachable: " ++ show cfa ++ "\n"++ show unreach) $
-               cfaPruneUnreachable (foldl' (\cfa n -> G.delNode n cfa) cfa unreach) keep
+               cfaPruneUnreachable (foldl' (\_cfa n -> G.delNode n _cfa) cfa unreach) keep
