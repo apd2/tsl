@@ -403,7 +403,7 @@ taskToCFA pid meth ctl = I.cfaTraceFile (ctxCFA ctx') (pidToName pid ++ "_" ++ s
                        , ctxLastVar = 0
                        , ctxVar     = []}
           ctx' = execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume guard
-                               aftcall <- ctxInsTrans' aftguard $ I.TranCall sc
+                               aftcall <- ctxInsTrans' aftguard $ I.TranCall meth
                                retloc  <- ctxInsLoc
                                ctxInsTrans retloc I.cfaInitLoc (I.TranStat reset)
                                ctxPushScope sc retloc (mkRetVar (Just pid) meth) (methodLMap pid meth)

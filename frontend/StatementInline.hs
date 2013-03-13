@@ -295,7 +295,7 @@ methInline before after meth args mlhs = do
     -- change syntactic scope
     ctxPushScope sc retloc lhs (methodLMap pid meth)
     -- build CFA of the method
-    aftcall <- ctxInsTrans' aftarg (I.TranCall sc)
+    aftcall <- ctxInsTrans' aftarg (I.TranCall meth)
     aftbody <- statToCFA aftcall (fromRight $ methBody meth)
     ctxInsTrans aftbody retloc I.TranReturn
     -- restore syntactic scope
