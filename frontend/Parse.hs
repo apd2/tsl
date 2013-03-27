@@ -481,8 +481,11 @@ detexpr =  (reservedOp "*" *> unexpected "unexpected * in deterministic expressi
        <|> buildExpressionParser table detterm
        <?> "expression (deterministic)"
 
-table = [[postSlice, postIndex, postField, postPField]
-        ,[prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus, prefix "*" Deref, prefix "&" AddrOf]
+pref  p = Prefix  . chainl1 p $ return       (.)
+postf p = Postfix . chainl1 p $ return (flip (.))
+
+table = [[postf $ choice [postSlice, postIndex, postField, postPField]]
+        ,[pref  $ choice [prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus, prefix "*" Deref, prefix "&" AddrOf]]
         ,[binary "==" Eq AssocLeft, 
           binary "!=" Neq AssocLeft,
           binary "<"  Lt AssocNone, 
@@ -501,10 +504,10 @@ table = [[postSlice, postIndex, postField, postPField]
         ,[binary "-" BinMinus AssocLeft]
         ]
 
-postSlice  = Postfix $ try $ (\s end e -> ESlice (fst $ pos e, end) e s) <$> slice <*> getPosition
-postIndex  = Postfix $ (\i end e -> EIndex (fst $ pos e, end) e i) <$> index <*> getPosition
-postField  = Postfix $ (\f end e -> EField (fst $ pos e, end) e f) <$> field <*> getPosition
-postPField = Postfix $ (\f end e -> EPField (fst $ pos e, end) e f) <$> ptrfield <*> getPosition
+postSlice  = try $ (\s end e -> ESlice (fst $ pos e, end) e s) <$> slice <*> getPosition
+postIndex  = (\i end e -> EIndex (fst $ pos e, end) e i) <$> index <*> getPosition
+postField  = (\f end e -> EField (fst $ pos e, end) e f) <$> field <*> getPosition
+postPField = (\f end e -> EPField (fst $ pos e, end) e f) <$> ptrfield <*> getPosition
 
-prefix name fun = Prefix $ (\start e -> EUnOp (start, snd $ pos e) fun e) <$> getPosition <* reservedOp name
+prefix name fun = (\start e -> EUnOp (start, snd $ pos e) fun e) <$> getPosition <* reservedOp name
 binary name fun = Infix $ (\le re -> EBinOp (fst $ pos le, snd $ pos re) fun le re) <$ reservedOp name
