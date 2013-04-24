@@ -29,6 +29,8 @@ module CFA(Statement(..),
            cfaFinal,
            cfaAddNullPtrTrans,
            cfaPruneUnreachable,
+           cfaReachInst,
+           cfaPrune,
            cfaTrace,
            cfaTraceFile,
            cfaTraceFileMany,
@@ -83,10 +85,8 @@ data LocAction = ActStat F.Statement
                | ActNone
 
 -- Stack frame
-data Frame = Frame {
-    fScope :: Scope,
-    fLoc   :: Loc
-}
+data Frame = FrameStatic      {fScope :: Scope, fLoc :: Loc}
+           | FrameInteractive {fScope :: Scope, fLoc :: Loc, fCFA :: CFA}
 
 frameMethod :: Frame -> Maybe F.Method
 frameMethod f = case fScope f of
@@ -193,8 +193,8 @@ isDelayLabel (LInst _)      = False
 
 
 newCFA :: Scope -> F.Statement -> Expr -> CFA 
-newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame sc cfaInitLoc] initcond) 
-                        $ G.insNode (cfaErrLoc,LPause ActNone [Frame sc cfaErrLoc] false) G.empty
+newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [FrameStatic sc cfaInitLoc] initcond) 
+                        $ G.insNode (cfaErrLoc,LPause ActNone [FrameStatic sc cfaErrLoc] false) G.empty
 
 cfaErrLoc :: Loc
 cfaErrLoc = 0
@@ -279,3 +279,24 @@ cfaPruneUnreachable cfa keep =
           then cfa
           else --trace ("cfaPruneUnreachable: " ++ show cfa ++ "\n"++ show unreach) $
                cfaPruneUnreachable (foldl' (\_cfa n -> G.delNode n _cfa) cfa unreach) keep
+
+-- locations reachable from specified location before reaching the next delay location
+-- (the from location if not included in the result)
+cfaReachInst :: I.CFA -> I.Loc -> S.Set I.Loc
+cfaReachInst cfa from = cfaReachInst' cfa S.empty (S.singleton from)
+
+cfaReachInst' :: I.CFA -> S.Set I.Loc -> S.Set I.Loc -> S.Set I.Loc
+cfaReachInst' cfa found frontier = if S.null frontier'
+                                     then found'
+                                     else cfaReachInst' cfa found' frontier'
+    where new       = suc frontier
+          found'    = S.union found new
+          -- frontier' - all newly discovered states that are not pause or final states
+          frontier' = S.filter (not . I.isDelayLabel . fromJust . G.lab cfa) $ new S.\\ found
+          suc locs  = S.unions $ map suc1 (S.toList locs)
+          suc1 loc  = S.fromList $ G.suc cfa loc
+
+-- Prune CFA, leaving only specified subset of locations
+cfaPrune :: I.CFA -> S.Set I.Loc -> I.CFA
+cfaPrune cfa locs = foldl' (\g l -> if S.member l locs then g else G.delNode l g) cfa (G.nodes cfa)
+

@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
 module StatementOps(mapStat,
+                    mapStatM,
                     statMapExpr,
                     statMapTSpec,
                     statCallees,
@@ -50,6 +51,25 @@ mapStat f s (SChoice  p ss)        = f s $ SChoice  p (map (mapStat f s) ss)
 mapStat f s (SITE     p c t me)    = f s $ SITE     p c (mapStat f s t) (fmap (mapStat f s) me)
 mapStat f s (SCase    p c cs md)   = f s $ SCase    p c (map (\(e,st) -> (e,mapStat f s st)) cs) (fmap (mapStat f s) md)
 mapStat f s st                     = f s st
+
+mapStatM :: (Monad m, ?spec::Spec) => (Scope -> Statement -> m Statement) -> Scope -> Statement -> m Statement
+mapStatM f s (SSeq     p ss)        = f s =<< (liftM  $ SSeq     p)       (mapM (mapStat f s) ss)
+mapStatM f s (SPar     p ss)        = f s =<< (liftM  $ SPar     p)       (mapM (mapSnd (mapStat f s)) ss)
+mapStatM f s (SForever p b)         = f s =<< (liftM  $ SForever p)       (mapStat f s b)
+mapStatM f s (SDo      p b c)       = f s =<< (liftM  $ (flip $ SDo p) c) (mapStat f s b)
+mapStatM f s (SWhile   p c b)       = f s =<< (liftM  $ SWhile   p c)     (mapStat f s b)
+mapStatM f s (SFor     p (i,c,u) b) = do i' <- sequence $ fmap (mapStat f s) i
+                                         u' <- mapStat f s u
+                                         b' <- mapStat f s b
+                                         f s $ SFor p (i', c, u') b'
+mapStatM f s (SChoice  p ss)        = f s =<< (liftM  $ SChoice  p)       (mapM (mapStat f s) ss)
+mapStatM f s (SITE     p c t me)    = f s =<< (liftM2 $ SITE     p c)     (mapStat f s t) (sequence $ fmap (mapStat f s) me)
+mapStatM f s (SCase    p c cs md)   = do cs' <- mapM (\(e,st) -> do st' <- mapStat f s st
+                                                                    return (e,st')) cs
+                                         md' <- sequence $ fmap (mapStat f s) md
+                                         f s $ SCase p c cs' md'
+mapStatM f s st                     = f s st
+
 
 -- Map function over all TypeSpec's in the statement
 statMapTSpec :: (?spec::Spec) => (Scope -> TypeSpec -> TypeSpec) -> Scope -> Statement -> Statement
@@ -361,7 +381,7 @@ checkLoopBody s = do
                                                                         Left st -> spos st ++ ": " ++ show st
                                                                         Right e -> spos e  ++ ": " ++ show e) p)
                                   
--- Find instanteneous path through the statement.  
+-- Find instantaneous path through the statement.  
 -- If the first argument is true, then Break is considered
 -- instantaneous; otherwise it's not.
 findInstPath :: (?spec::Spec, ?scope::Scope) => Bool -> Statement -> Maybe [Either Statement Expr]

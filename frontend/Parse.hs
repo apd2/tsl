@@ -4,7 +4,9 @@ module Parse(SpecItem(..),
              Import(..),
              litParser, 
              grammar,
-             detexpr) where
+             detexpr,
+             statement,
+             statements) where
 
 import qualified Data.Map as M
 import Control.Monad
@@ -350,9 +352,11 @@ statement =  withPos $
          <|> sassign
          <?> "statement")
 
+statements = many $ statement <* semi
+
 svarDecl = SVarDecl nopos <$> varDecl
 sreturn  = SReturn nopos <$ reserved "return" <*> (optionMaybe expr)
-sseq     = SSeq nopos <$> (braces $ many $ statement <* semi)
+sseq     = SSeq nopos <$> (braces statements)
 spar     = SPar nopos <$ reserved "fork" <*> (braces $ many $ (,) <$> (ident <* reservedOp ":") <*> statement <* semi)
 sforever = SForever nopos <$ reserved "forever" <*> statement
 sdo      = SDo nopos <$ reserved "do" <*> statement <* reserved "while" <*> (parens expr)

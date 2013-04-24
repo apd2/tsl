@@ -227,6 +227,9 @@ mkMagicVar = I.EVar mkMagicVarName
 mkMagicVarDecl :: I.Var
 mkMagicVarDecl = I.Var False I.VarState mkMagicVarName I.Bool
 
+mkMagicDoneCond :: I.Expr
+mkMagicDoneCond = mkMagicVar I.=== I.false
+
 mkNullVarName :: String
 mkNullVarName = "$null"
 
@@ -273,6 +276,13 @@ methodLMap pid meth =
 procLMap :: Process -> NameMap
 procLMap p = M.fromList $ map (\v -> (name v, mkVar (Just [sname p]) Nothing v)) (procVar p)
 
+scopeLMap :: Scope -> NameMap
+scopeLMap sc = 
+    case sc of
+         Front.ScopeMethod   _ meth -> methodLMap pid meth
+         Front.ScopeProcess  _ proc -> procLMap proc
+         Front.ScopeTemplate _      -> M.empty
+         
 globalNMap :: (?spec::Spec) => NameMap
 globalNMap = M.fromList $ gvars ++ wires ++ enums
     where -- global variables
@@ -413,7 +423,7 @@ ctxFrames loc = do
     -- and append current location in the end. 
     let scopes = map sel1 cfastack
         locs   = (tail $ map sel2 cfastack) ++ [loc]
-    return $ map (uncurry I.Frame) $ zip scopes locs
+    return $ map (uncurry I.FrameStatic) $ zip scopes locs
 
 
 ctxPause :: I.Loc -> I.Expr -> State CFACtx I.Loc

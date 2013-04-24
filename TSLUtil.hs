@@ -6,9 +6,6 @@ module TSLUtil(fromLeft,
                assert,
                uniqNames,
                grCycle,
-               Uniq, 
-               newUniq, 
-               getUniq,
                bitWidth) where
 
 import Control.Monad.Error
@@ -56,19 +53,6 @@ grCycle g = case mapMaybe nodeCycle (nodes g) of
     nodeCycle n = listToMaybe $ map (\s -> map (\id -> (id, fromJust $ lab g id)) (n:(esp s n g))) $ 
                                 filter (\s -> elem n (reachable s g)) $ suc g n
 
-
--- Unique number generator
-type Uniq = IORef Integer
-
--- Create a new generator initialised to 0
-newUniq :: Uniq
-newUniq = unsafePerformIO $ newIORef 0
-
-getUniq :: Uniq -> Integer
-getUniq u = unsafePerformIO $
-            do v <- readIORef u
-               writeIORef u (v+1)
-               return (v+1)
 
 -- The number of bits required to encode range [0..i]
 bitWidth :: (Integral a) => a -> Int
