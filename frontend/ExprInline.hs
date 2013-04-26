@@ -43,7 +43,7 @@ tmpVar p mem t = do
 -- Extract all function calls from expression to a list of temporary
 -- assignment statements
 exprSimplify :: (?spec::Spec, ?scope::Scope) => Expr -> NameGen ([Statement], Expr)
-exprSimplify e = mapSnd exprFlattenStruct $ exprSimplify' e
+exprSimplify e = liftM (mapSnd exprFlattenStruct) $ exprSimplify' e
 
 exprSimplify' :: (?spec::Spec, ?scope::Scope) => Expr -> NameGen ([Statement], Expr)
 exprSimplify' e@(EApply p mref as)      = do 
@@ -69,7 +69,7 @@ exprSimplify' (EBinOp p op a1 a2)       = do (ss1,a1') <- exprSimplify a1
 exprSimplify' e@(ETernOp p a1 a2 a3)    = condSimplify p (Left $ tspec e) [(a1,a2)] (Just a3)
 exprSimplify' e@(ECase p c cs md)       = do (ss, c') <- exprSimplify c
                                              let cs' = map (mapFst $ (\e -> EBinOp (pos e) Eq c' e)) cs
-                                             liftM mapFst (ss++) $ condSimplify p (Left $ tspec e) cs' md
+                                             liftM (mapFst (ss++)) $ condSimplify p (Left $ tspec e) cs' md
 exprSimplify' e@(ECond p cs md)         = condSimplify p (Left $ tspec e) cs md
 exprSimplify' (ESlice p e (l,h))        = do (ss, e') <- exprSimplify e
                                              (ssl,l') <- exprSimplify l
@@ -97,7 +97,7 @@ exprSimplifyAsn p lhs (ECase _ c cs md)    = do let cs' = map (mapFst $ (\e -> E
                                                 liftM fst $ condSimplify p (Right lhs) cs' md
 exprSimplifyAsn p lhs (ECond _ cs md)      = liftM fst $ condSimplify p (Right lhs) cs md
 exprSimplifyAsn p lhs rhs                  = do (ss, rhs') <- exprSimplify rhs
-                                             return ss++[SAssign p lhs rhs']
+                                                return $ ss++[SAssign p lhs rhs']
 
 condSimplify :: (?spec::Spec, ?scope::Scope) => Pos -> Either TypeSpec Expr -> [(Expr, Expr)] -> Maybe Expr -> NameGen ([Statement], Expr)
 condSimplify p mlhs cs mdef = do

@@ -276,12 +276,12 @@ methodLMap pid meth =
 procLMap :: Process -> NameMap
 procLMap p = M.fromList $ map (\v -> (name v, mkVar (Just [sname p]) Nothing v)) (procVar p)
 
-scopeLMap :: Scope -> NameMap
-scopeLMap sc = 
+scopeLMap :: PID -> Scope -> NameMap
+scopeLMap pid sc = 
     case sc of
-         Front.ScopeMethod   _ meth -> methodLMap pid meth
-         Front.ScopeProcess  _ proc -> procLMap proc
-         Front.ScopeTemplate _      -> M.empty
+         ScopeMethod   _ meth -> methodLMap pid meth
+         ScopeProcess  _ proc -> procLMap proc
+         ScopeTemplate _      -> M.empty
          
 globalNMap :: (?spec::Spec) => NameMap
 globalNMap = M.fromList $ gvars ++ wires ++ enums

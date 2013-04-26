@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE ImplicitParams, TupleSections #-}
 
 module StatementInline(statSimplify, 
                        procStatToCFA) where
@@ -7,6 +7,7 @@ import Control.Monad
 import Control.Monad.State
 import Data.List
 import Data.Maybe
+import qualified Data.Traversable as Tr
 
 import Util hiding (name,trace)
 import Inline
@@ -34,7 +35,7 @@ statSimplify' :: (?spec::Spec, ?scope::Scope) => Statement -> NameGen [Statement
 statSimplify' (SVarDecl p v) = 
     case varInit v of
          Just e  -> do asn <- (statSimplify' $ SAssign p (ETerm (pos $ varName v) [varName v]) e)
-                       return $ SVarDecl p v{varInit = Nothing}) : asn
+                       return $ SVarDecl p v{varInit = Nothing} : asn
          Nothing -> do asn <- statSimplify' $ SAssign p (ETerm (pos $ varName v) [varName v]) (ENonDet nopos)
                        return $ SVarDecl p v{varInit = Nothing} : asn
 
@@ -46,25 +47,25 @@ statSimplify' (SSeq p ss)           = (liftM $ return . SSeq p . concat) $ mapM 
 statSimplify' (SPar p ss)           = (liftM $ return . SPar p)          $ mapM (\(n,s) -> liftM (n,) $ statSimplify s) ss
 statSimplify' (SForever p s)        = (liftM $ return . SForever p)      $ statSimplify s
 statSimplify' (SDo p b c)           = do (ss,c') <- exprSimplify c
-                                         b'      <- statSimplify' b ++ ss
-                                         return [SDo p (sSeq (pos b) b') c']
+                                         b'      <- statSimplify' b
+                                         return [SDo p (sSeq (pos b) (b'++ss)) c']
 statSimplify' (SWhile p c b)        = do (ss,c') <- exprSimplify c
-                                         b'      <- statSimplify' b ++ ss
-                                         return $ ss ++ [SWhile p c' (sSeq (pos b) b')]
+                                         b'      <- statSimplify' b
+                                         return $ ss ++ [SWhile p c' (sSeq (pos b) (b'++ss))]
 statSimplify' (SFor p (mi, c, s) b) = do i' <- case mi of
                                                     Nothing -> return []
                                                     Just i  -> statSimplify' i
                                          (ss,c') <- exprSimplify c
                                          s' <- statSimplify s
-                                         b' <- statSimplify' b ++ ss
-                                         return $ i' ++ ss ++ [SFor p (Nothing, c',s') (sSeq (pos b) b')]
+                                         b' <- statSimplify' b
+                                         return $ i' ++ ss ++ [SFor p (Nothing, c',s') (sSeq (pos b) (b'++ss))]
 statSimplify' (SChoice p ss)        = liftM (return . SChoice p)         $ mapM statSimplify ss
 statSimplify' (SInvoke p mref as)   = -- Order of argument evaluation is undefined in C;
                                       -- Go left-to-right
-                                      do (ss, as') <- liftMunzip $ mapM exprSimplify as
+                                      do (ss, as') <- liftM unzip $ mapM exprSimplify as
                                          return $ (concat ss) ++ [SInvoke p mref as']
 statSimplify' (SWait p c)           = do (ss,c') <- exprSimplify c
-                                         return (SPause p) : (ss ++ [SAssume p c'])
+                                         return $ (SPause p) : (ss ++ [SAssume p c'])
 statSimplify' (SAssert p c)         = do (ss,c') <- exprSimplify c
                                          return $ ss ++ [SAssert p c']
 statSimplify' (SAssume p c)         = do (ss,c') <- exprSimplify c
@@ -75,15 +76,15 @@ statSimplify' (SAssign p l r)       = -- Evaluate lhs first
                                          return $ ssl ++ ssr
 statSimplify' (SITE p c t me)       = do (ss,c') <- exprSimplify c
                                          t'      <- statSimplify t
-                                         me'     <- fmap statSimplify me
+                                         me'     <- Tr.sequence $ fmap statSimplify me
                                          return $ ss ++ [SITE p c' t' me']
 statSimplify' (SCase p c cs md)     = -- Case labels must be side-effect-free, so it is ok to 
                                       -- evaluate them in advance
                                       do (ssc,c')      <- exprSimplify c
                                          (sscs,clabs') <- (liftM unzip) $ mapM exprSimplify (fst $ unzip cs)
                                          cstats        <- mapM statSimplify (snd $ unzip cs)
-                                         md'           <- fmap statSimplify md
-                                         return $ (concat sscs) ++ ssc ++ [SCase p c' (zip clabs' cstats) md']
+                                         md'           <- Tr.sequence $ fmap statSimplify md
+                                         return $ concat sscs ++ ssc ++ [SCase p c' (zip clabs' cstats) md']
 statSimplify' (SMagic p (Right e))  = do (ss,e') <- exprSimplify e
                                          return $ (SMagic p (Right $ EBool (pos e) True)):(ss ++ [SAssert (pos e) e'])
 statSimplify' st                    = return [st]
@@ -281,7 +282,7 @@ statToCFA' before after (SMagic _ _) = do
     aftwait <- ctxPause aftmag mkMagicDoneCond
     ctxInsTrans aftwait after I.TranNop
 
-methInline :: (?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
+methInline :: (?cont::Bool, ?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
 methInline before after meth args mlhs = do
     -- save current context
     pid <- gets ctxPID
@@ -318,11 +319,11 @@ methInline before after meth args mlhs = do
 
 
 taskCall :: (?cont::Bool, ?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
-taskCall before after meth args mlhs | ?cont     = contTaskCall  before after meth args mlhs
-                                     | otherwise = ucontTastCall before after meth args mlhs
+taskCall before after meth args mlhs | ?cont     = contTaskCall  before after meth args
+                                     | otherwise = ucontTaskCall before after meth args mlhs
 
-contTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
-contTaskCall before after meth args mlhs = do
+contTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> State CFACtx ()
+contTaskCall before after meth args = do
     -- set tag
     afttag <- ctxInsTrans' before $ I.TranStat $ mkTagVar I.=: tagMethod meth
     -- set input arguments

@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, FlexibleContexts #-}
+{-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
 module StatementOps(mapStat,
                     mapStatM,
@@ -19,6 +19,7 @@ import Control.Monad.Error
 import Data.Maybe
 import Data.List
 import Debug.Trace
+import qualified Data.Traversable as Tr
 
 import TSLUtil
 import Util hiding (name)
@@ -53,20 +54,20 @@ mapStat f s (SCase    p c cs md)   = f s $ SCase    p c (map (\(e,st) -> (e,mapS
 mapStat f s st                     = f s st
 
 mapStatM :: (Monad m, ?spec::Spec) => (Scope -> Statement -> m Statement) -> Scope -> Statement -> m Statement
-mapStatM f s (SSeq     p ss)        = f s =<< (liftM  $ SSeq     p)       (mapM (mapStat f s) ss)
-mapStatM f s (SPar     p ss)        = f s =<< (liftM  $ SPar     p)       (mapM (mapSnd (mapStat f s)) ss)
-mapStatM f s (SForever p b)         = f s =<< (liftM  $ SForever p)       (mapStat f s b)
-mapStatM f s (SDo      p b c)       = f s =<< (liftM  $ (flip $ SDo p) c) (mapStat f s b)
-mapStatM f s (SWhile   p c b)       = f s =<< (liftM  $ SWhile   p c)     (mapStat f s b)
-mapStatM f s (SFor     p (i,c,u) b) = do i' <- sequence $ fmap (mapStat f s) i
-                                         u' <- mapStat f s u
-                                         b' <- mapStat f s b
+mapStatM f s (SSeq     p ss)        = f s =<< (liftM  $ SSeq     p)       (mapM (mapStatM f s) ss)
+mapStatM f s (SPar     p ss)        = f s =<< (liftM  $ SPar     p)       (mapM (\(n,st) -> liftM (n,) $ mapStatM f s st) ss)
+mapStatM f s (SForever p b)         = f s =<< (liftM  $ SForever p)       (mapStatM f s b)
+mapStatM f s (SDo      p b c)       = f s =<< (liftM  $ (flip $ SDo p) c) (mapStatM f s b)
+mapStatM f s (SWhile   p c b)       = f s =<< (liftM  $ SWhile   p c)     (mapStatM f s b)
+mapStatM f s (SFor     p (i,c,u) b) = do i' <- Tr.sequence $ fmap (mapStatM f s) i
+                                         u' <- mapStatM f s u
+                                         b' <- mapStatM f s b
                                          f s $ SFor p (i', c, u') b'
-mapStatM f s (SChoice  p ss)        = f s =<< (liftM  $ SChoice  p)       (mapM (mapStat f s) ss)
-mapStatM f s (SITE     p c t me)    = f s =<< (liftM2 $ SITE     p c)     (mapStat f s t) (sequence $ fmap (mapStat f s) me)
-mapStatM f s (SCase    p c cs md)   = do cs' <- mapM (\(e,st) -> do st' <- mapStat f s st
+mapStatM f s (SChoice  p ss)        = f s =<< (liftM  $ SChoice  p)       (mapM (mapStatM f s) ss)
+mapStatM f s (SITE     p c t me)    = f s =<< (liftM2 $ SITE     p c)     (mapStatM f s t) (Tr.sequence $ fmap (mapStatM f s) me)
+mapStatM f s (SCase    p c cs md)   = do cs' <- mapM (\(e,st) -> do st' <- mapStatM f s st
                                                                     return (e,st')) cs
-                                         md' <- sequence $ fmap (mapStat f s) md
+                                         md' <- Tr.sequence $ fmap (mapStatM f s) md
                                          f s $ SCase p c cs' md'
 mapStatM f s st                     = f s st
 

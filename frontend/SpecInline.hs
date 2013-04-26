@@ -70,15 +70,15 @@ spec2Internal s =
         pidinit  = mkPIDVar   I.=== mkPIDEnum pidIdle
         errinit  = mkErrVar   I.=== I.false
  
-        let ((specWire, specAlways, inittran, goals), (_, extratmvars)) = 
-                runState (do wire     <- mkWires
-                             always   <- mkAlways
-                             inittran <- mkInit
-                             goals    <- mapM mkGoal $ tmGoal tmMain
-                             maggoal  <- mkMagicGoal
-                             return (wire, always, inittran, maggoal:goals))
-                         0
-            extraivars = map (\v -> mkVarDecl (varMem v) Nothing Nothing v) extratmvars
+        ((specWire, specAlways, inittran, goals), (_, extratmvars)) = 
+            runState (do wire      <- mkWires
+                         always    <- mkAlways
+                         inittr    <- mkInit
+                         usergoals <- mapM mkGoal $ tmGoal tmMain
+                         maggoal   <- mkMagicGoal
+                         return (wire, always, inittr, maggoal:usergoals))
+                     (0,[])
+        extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) Nothing Nothing v) extratmvars
         (specProc, tmppvs) = unzip $ map procToCProc $ tmProcess tmMain
         (specCTask,tmpcvs) = unzip
                              $ map (\m -> let (cfa, vs) = let ?procs = [] in taskToCFA [] m True
@@ -117,11 +117,11 @@ tmSimplify tm = tm { tmProcess = map (procSimplify tm) (tmProcess tm)
 
 procSimplify :: (?spec::Spec) => Template -> Process -> Process
 procSimplify tm p = let ?scope = ScopeProcess tm p
-                    in p { procStatement = evalState (statSimplify $ procStatement p) 0}
+                    in p { procStatement = evalState (statSimplify $ procStatement p) (0,[])}
 
 methSimplify :: (?spec::Spec) => Template -> Method -> Method
 methSimplify tm m = let ?scope = ScopeMethod tm m
-                    in m { methBody = Right $ evalState (statSimplify $ fromRight $ methBody m) 0}
+                    in m { methBody = Right $ evalState (statSimplify $ fromRight $ methBody m) (0,[])}
 
 ----------------------------------------------------------------------
 -- Wires
@@ -129,13 +129,13 @@ methSimplify tm m = let ?scope = ScopeMethod tm m
 
 -- Generate transition that assigns all wire variables.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkWires :: (?spec::Spec) => (I.CFA, ??? [I.Var])
-mkWires = 
+mkWires :: (?spec::Spec) => NameGen I.CFA
+mkWires = do
     let wires = orderWires
         -- Generate assignment statement for each wire
-        stat = let ?scope = ScopeTemplate tmMain
-               in statSimplify $ SSeq nopos $ map (\w -> SAssign nopos (ETerm nopos [name w]) (fromJust $ wireRHS w)) wires
-        ctx = CFACtx { ctxPID     = []
+    stat <- let ?scope = ScopeTemplate tmMain
+            in statSimplify $ SSeq nopos $ map (\w -> SAssign nopos (ETerm nopos [name w]) (fromJust $ wireRHS w)) wires
+    let ctx = CFACtx { ctxPID     = []
                      , ctxStack   = [(ScopeTemplate tmMain, error "return from a wire assignment", Nothing, M.empty)]
                      , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
                      , ctxBrkLocs = [error "break outside a loop"]
@@ -144,7 +144,7 @@ mkWires =
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA False stat I.cfaInitLoc
                                                ctxPause aft I.true) ctx
-    in I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ ctxCFA ctx'
+    return $ I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ ctxCFA ctx'
 
 
 -- Build total order of wires so that for each wire, all wires that
@@ -168,12 +168,11 @@ orderWires' g | G.noNodes g == 0  = []
 
 -- Generate transition that performs all always-actions.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkAlways :: (?spec::Spec) => (I.CFA, ??? [I.Var])
-mkAlways = 
-    let stat = let ?scope = ScopeTemplate tmMain
-                   ?uniq  = newUniq
-               in statSimplify $ SSeq nopos $ map alwBody $ tmAlways tmMain
-        ctx = CFACtx { ctxPID     = []
+mkAlways :: (?spec::Spec) => NameGen I.CFA
+mkAlways = do
+    stat <- let ?scope = ScopeTemplate tmMain
+            in statSimplify $ SSeq nopos $ map alwBody $ tmAlways tmMain
+    let ctx = CFACtx { ctxPID     = []
                      , ctxStack   = [(ScopeTemplate tmMain, error "return from an always-block", Nothing, M.empty)]
                      , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
                      , ctxBrkLocs = [error "break outside a loop"]
@@ -182,7 +181,7 @@ mkAlways =
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA False stat I.cfaInitLoc
                                                ctxPause aft I.true) ctx
-    in I.cfaTraceFile (ctxCFA ctx') "always_cfa" $ ctxCFA ctx'
+    return $ I.cfaTraceFile (ctxCFA ctx') "always_cfa" $ ctxCFA ctx'
 
 ----------------------------------------------------------------------
 -- Fair sets
@@ -203,36 +202,35 @@ mkFair procs = fsched : fproc
 -- Init and goal conditions
 ----------------------------------------------------------------------
 
-mkInit :: (?spec::Spec) => I.Transition
-mkInit = mkCond "$init" cond []
-    where -- conjunction of initial variable assignments
-          ass = mapMaybe (\v -> case varInit $ gvarVar v of
-                                     Nothing -> Nothing
-                                     Just e  -> Just (EBinOp (pos v) Eq (ETerm nopos $ [name v]) e)) (tmVar tmMain)
-          -- add init blocks
-          cond = eAnd nopos (ass ++ map initBody (tmInit tmMain))
+mkInit :: (?spec::Spec) => NameGen I.Transition
+mkInit = do 
+    -- conjunction of initial variable assignments
+    let ass = mapMaybe (\v -> case varInit $ gvarVar v of
+                               Nothing -> Nothing
+                               Just e  -> Just (EBinOp (pos v) Eq (ETerm nopos $ [name v]) e)) (tmVar tmMain)
+        -- add init blocks
+        cond = eAnd nopos (ass ++ map initBody (tmInit tmMain))
+    mkCond "$init" cond []
 
 -- $err == false
 noerror :: I.Expr
 noerror = I.EUnOp Not mkErrVar
 
-mkGoal :: (?spec::Spec) => Goal -> I.Goal
+mkGoal :: (?spec::Spec) => Goal -> NameGen I.Goal
 mkGoal g = -- Add $err==false to the goal condition
-           I.Goal (sname g) (mkCond (sname g) (goalCond g) [noerror])
+           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (goalCond g) [noerror]
 
 -- In addition to regular goals, we are required to be outside a magic block
 -- infinitely often
-mkMagicGoal :: (?spec::Spec) => I.Goal
-mkMagicGoal = I.Goal "$magic_goal" $ mkCond "$magic_goal" (EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
+mkMagicGoal :: (?spec::Spec) => NameGen I.Goal
+mkMagicGoal = (liftM $ I.Goal "$magic_goal") $ mkCond "$magic_goal" (EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
 
-mkCond :: (?spec::Spec) => String -> Expr -> [I.Expr] -> (I.Transition, ??? [I.Var])
-mkCond descr e extra = 
-    let -- simplify and convert into a statement
-        (ss, cond') = let ?scope = ScopeTemplate tmMain 
-                          ?uniq = newUniq
-                      in exprSimplify e
-        stat = SSeq nopos (ss ++ [SAssume nopos cond'])
-
+mkCond :: (?spec::Spec) => String -> Expr -> [I.Expr] -> NameGen I.Transition
+mkCond descr e extra = do
+    -- simplify and convert into a statement
+    (ss, cond') <- let ?scope = ScopeTemplate tmMain 
+                   in exprSimplify e
+    let stat = SSeq nopos (ss ++ [SAssume nopos cond'])
         ctx = CFACtx { ctxPID     = []
                      , ctxStack   = [(ScopeTemplate tmMain, error $ "return from " ++ descr, Nothing, M.empty)]
                      , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
@@ -242,13 +240,12 @@ mkCond descr e extra =
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA False stat I.cfaInitLoc
                                                ctxPause aft I.true) ctx
-
         trans = locTrans (ctxCFA ctx') I.cfaInitLoc
         -- precondition
-    in case trans of
-            [t] -> let res = foldl' tranAppend t (map I.SAssume extra)
-                   in I.cfaTraceFile (I.tranCFA t) descr $ res
-            _   -> error $ "mkCond " ++ show e ++ ": Invalid condition"
+    return $ case trans of
+                  [t] -> let res = foldl' tranAppend t (map I.SAssume extra)
+                         in I.cfaTraceFile (I.tranCFA t) descr $ res
+                  _   -> error $ "mkCond " ++ show e ++ ": Invalid condition"
 
 ----------------------------------------------------------------------
 -- Idle transition
@@ -269,12 +266,11 @@ mkIdleTran =
 contGuard = I.SAssume $ I.conj $ [mkMagicVar I.=== I.true, mkContVar I.=== I.true]
 
 mkCTran :: (?spec::Spec) => Method -> (I.Transition, [I.Var])
-mkCTran m = (I.Transition I.cfaInitLoc after ctxCFA ctx', ctxVar ctx')
+mkCTran m = (I.Transition I.cfaInitLoc after (ctxCFA ctx'), ctxVar ctx')
     where sc   = ScopeTemplate tmMain
           args = repeat $ ENonDet nopos
           stat = let ?scope = sc
-                     ?uniq  = error "?uniq is undefined in mkCTran"
-                 in statSimplify $ SInvoke nopos (MethodRef nopos [sname m]) args
+                 in evalState (statSimplify $ SInvoke nopos (MethodRef nopos [name m]) args) (0,[])
           ctx  = CFACtx { ctxPID     = []
                         , ctxStack   = [(sc, error "return from controllable transition", Nothing, M.empty)]
                         , ctxCFA     = I.newCFA sc (SSeq nopos []) I.true
@@ -282,8 +278,8 @@ mkCTran m = (I.Transition I.cfaInitLoc after ctxCFA ctx', ctxVar ctx')
                         , ctxGNMap   = globalNMap
                         , ctxLastVar = 0
                         , ctxVar     = []}
-          (after, ctx') = let ?procs =[] in runState (do aftguard <- ctxInsTrans' I.cfaInitLoc (I.TranStat contGuard)
-                                                         procStatToCFA True stat aftguard) ctx
+          (after, ctx') = let ?procs = [] in runState (do aftguard <- ctxInsTrans' I.cfaInitLoc (I.TranStat contGuard)
+                                                          procStatToCFA True stat aftguard) ctx
 
 mkMagicReturn :: (?spec::Spec) => I.Transition
 mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
@@ -549,9 +545,9 @@ cfaToIProcess pid cfa = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreacha
 locTrans :: I.CFA -> I.Loc -> [I.Transition]
 locTrans cfa loc =
     let -- compute all reachable locations before pause
-        r = cfaReachInst cfa loc
+        r = I.cfaReachInst cfa loc
         -- construct subgraph with only these nodes
-        cfa' = cfaPrune cfa (S.insert loc r)
+        cfa' = I.cfaPrune cfa (S.insert loc r)
         -- (This is a good place to check for loop freedom.)
         -- for each final location, compute a subgraph that connects the two
         dsts = filter (I.isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
