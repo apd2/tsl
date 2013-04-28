@@ -31,7 +31,7 @@ data SMT2Config = SMT2Config {
     s2Opts   :: [String] -- Arguments passed on every invocation of the solver
 }
 
-z3Config = SMT2Config {s2Solver = "z3", s2Opts = [""]}
+z3Config = SMT2Config {s2Solver = "z3", s2Opts = ["-smt2", "-in"]}
 
 newSMTLib2Solver :: Spec -> SMT2Config -> SMTSolver
 newSMTLib2Solver spec config = SMTSolver {smtGetModel = let ?spec = spec in getModel config}
@@ -110,7 +110,7 @@ mkTypeMap1 _ (SInt w)    = ( "(_ BitVec " ++ show w ++ ")"
 mkTypeMap1 _ (UInt w)    = ( "(_ BitVec " ++ show w ++ ")"
                            , empty)
 mkTypeMap1 _ (Enum n)    = ( n
-                           , parens $ text "declare-datatypes ()" <+> (parens $ parens $ hsep $ map text $ n:(enumEnums $ getEnumeration n)))
+                           , parens $ text "declare-datatypes ()" <+> (parens $ parens $ hsep $ map (text . mkIdent) $ n:(enumEnums $ getEnumeration n)))
 mkTypeMap1 m (Struct fs) = ( tname
                            , parens $ text "declare-datatypes ()" 
                                       <+> (parens $ parens $ text tname 
@@ -143,7 +143,7 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TSInt w v) |v>=0      = text $ "(_ bv" ++ show v ++ " " ++ show w ++ ")"
                       |otherwise = text $ "(bvneg (_ bv" ++ show (-v) ++ " " ++ show w ++ "))"
     smtpp (TUInt w v)            = text $ "(_ bv" ++ show v ++ " " ++ show w ++ ")"
-    smtpp (TEnum n)              = text n
+    smtpp (TEnum n)              = text $ mkIdent n
     smtpp TTrue                  = text "true"
     smtpp (TAddr t)              = text $ addrofVarName t
     smtpp (TField t f)           = parens $ text ((?typemap M.! typ t) ++ f) <+> smtpp t
@@ -195,13 +195,14 @@ instance SMTPP BoolBOp where
 -- * a map from constant names to the terms they represent
 mkPtrConstraints :: (?spec::Spec, ?typemap::M.Map Type String) => [Formula] -> (Doc, Doc, [(String, Term)])
 mkPtrConstraints fs =
-    (vcat $ map mkAddrofVar addrterms,
-     parens 
-     $ ((text "and") <+> )
-     $ hsep 
-     $ concatMap (map (smtpp . ptrEqConstr) . pairs)
-     $ sortAndGroup typ addrterms,
-     map (\t -> (addrofVarName t, t)) addrterms)
+    if' (null addrterms) (empty, empty, [])
+    $ (vcat $ map mkAddrofVar addrterms,
+       parens 
+       $ ((text "and") <+> )
+       $ hsep 
+       $ concatMap (map (smtpp . ptrEqConstr) . pairs)
+       $ sortAndGroup typ addrterms,
+       map (\t -> (addrofVarName t, t)) addrterms)
     where addrterms = nub $ concatMap faddrofTerms fs
           
 
@@ -244,9 +245,15 @@ runSolver cfg spec parser =
     let (retcode, out, err) = unsafePerformIO $ readProcessWithExitCode (s2Solver cfg) (s2Opts cfg) (show spec)
     in if retcode == ExitSuccess 
           then case P.parse parser "" out of
-                    Left e  -> error $ "Error parsing SMT solver output: " ++ show e
+                    Left e  -> error $ "Error parsing SMT solver output: " ++ 
+                                       "\nsolver input: " ++ show spec ++
+                                       "\nsolver output: " ++ out ++
+                                       "\nparser error: "++ show e
                     Right x -> x
-          else error $ "Error running SMT solver: " ++ err
+          else error $ "Error running SMT solver (" ++ show retcode ++ "): " ++ 
+                       "\ninput: " ++ show spec ++ 
+                       "\noutput: " ++ out ++ 
+                       "\nerror " ++ err
 
 checkSat :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe Bool
 checkSat cfg fs = runSolver cfg spec satresParser
@@ -276,6 +283,7 @@ getModel cfg fs =
               _          -> return Nothing
     where (spec0, ptrmap) = mkFormulas fs
           spec = text "(set-option :produce-unsat-cores true)"
+              $$ text "(set-option :produce-models true)"
               $$ spec0
               $$ text "(check-sat)"
               $$ text "(get-model)"

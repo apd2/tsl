@@ -65,8 +65,15 @@ modelParser ptrmap = storeFromModel ptrmap <$> model
 reservedNames   = ["model", "declare-fun", "define-fun", "forall", "BitVec", "true", "false"]
 reservedOpNames = ["_"]
 
-lexer  = T.makeTokenParser emptyDef { T.identStart      = letter <|> char '_'
-                                    , T.identLetter     = alphaNum <|> char '_' <|> char '-' <|> char '!'
+lexer  = T.makeTokenParser emptyDef { T.identStart      =  letter 
+                                                       <|> char '_' 
+                                                       <|> char '$'
+                                    , T.identLetter     =  alphaNum 
+                                                       <|> char '_' 
+                                                       <|> char '-' 
+                                                       <|> char '!' 
+                                                       <|> char '$' 
+                                                       <|> char '/'
                                     , T.commentLine     = ";;"
                                     , T.reservedNames   = reservedNames
                                     , T.reservedOpNames = reservedOpNames
