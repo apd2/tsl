@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams #-}
 
-module TSLAbsGame(tslAbsGame) where
+module TSLAbsGame(tslAbsGame,
+                  bexprToFormula) where
 
 import Prelude hiding (and)
 import Control.Monad.State
@@ -150,7 +151,7 @@ bexprAbstract e = do
 
 -- Convert boolean expression (possibly with pointers) to a formula without
 -- introducing new pointer predicates.
-bexprToFormula :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Expr -> Formula
+bexprToFormula :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Formula
 bexprToFormula e = fcasToFormula $ fmap bexprToFormula' $ exprExpandPtr e
 
 -- Convert boolean expression (possibly with pointers) to a formula, 

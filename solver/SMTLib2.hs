@@ -2,7 +2,9 @@
 
 -- Interface to SMT2 format
 
-module SMTLib2() where
+module SMTLib2(SMT2Config,
+               z3Config,
+               newSMTLib2Solver) where
 
 import qualified Text.Parsec as P
 import Text.PrettyPrint
@@ -22,11 +24,17 @@ import IVar
 import IType
 import SMTLib2Parse
 import Store
+import SMTSolver
 
 data SMT2Config = SMT2Config {
     s2Solver :: String,  -- Name of the solver executable
     s2Opts   :: [String] -- Arguments passed on every invocation of the solver
 }
+
+z3Config = SMT2Config {s2Solver = "z3", s2Opts = [""]}
+
+newSMTLib2Solver :: Spec -> SMT2Config -> SMTSolver
+newSMTLib2Solver spec config = SMTSolver {smtGetModel = let ?spec = spec in getModel config}
 
 ------------------------------------------------------
 -- Printing formulas in SMTLib2 format
@@ -111,7 +119,7 @@ mkTypeMap1 m (Struct fs) = ( tname
 mkTypeMap1 m (Ptr t)     = ( tname
                            , parens $ text "declare-sort" <+> text tname)
                            where tname = ptrTypeName m t
-mkTypeMap1 m (Array t s) = ( "(Array Int " ++ m M.! t ++ ")"
+mkTypeMap1 m (Array t _) = ( "(Array Int " ++ m M.! t ++ ")"
                            , empty)
 
 ptrTypeName :: (Typed a) => M.Map Type String -> a -> String
@@ -222,10 +230,10 @@ eq  t1 t2 = FPred $ PAtom REq t1 t2
 neq t1 t2 = FNot $ eq t1 t2
 
 ptrEqCond :: (?spec::Spec, ?typemap::M.Map Type String) => Term -> Term -> Formula
-ptrEqCond t1@(TField s1 f1) t2@(TField s2 f2) | f1 == f2 = ptrEqCond s1 s2
-ptrEqCond t1@(TIndex a1 i1) t2@(TIndex a2 i2)            = fconj [ptrEqCond a1 a2, eq i1 i2]
-ptrEqCond t1@(TSlice v1 s1) t2@(TSlice v2 s2) | s1 == s2 = ptrEqCond v1 v2
-ptrEqCond _                 _                            = FFalse
+ptrEqCond (TField s1 f1) (TField s2 f2) | f1 == f2 = ptrEqCond s1 s2
+ptrEqCond (TIndex a1 i1) (TIndex a2 i2)            = fconj [ptrEqCond a1 a2, eq i1 i2]
+ptrEqCond (TSlice v1 s1) (TSlice v2 s2) | s1 == s2 = ptrEqCond v1 v2
+ptrEqCond _              _                         = FFalse
 
 ------------------------------------------------------
 -- Running solver in different modes

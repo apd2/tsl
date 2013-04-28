@@ -23,6 +23,7 @@ import IExpr
 data Store = SStruct {storeFields :: M.Map String Store} -- name/value pairs (used for structs and for top-level store)
            | SArr    {storeArr    :: M.Map Int Store}    -- array assignment
            | SVal    {storeVal    :: Val}                -- scalar
+           deriving Eq
 
 instance Show Store where
     show (SStruct fs) = "{" ++
