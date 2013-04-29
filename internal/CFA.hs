@@ -4,6 +4,7 @@ module CFA(Statement(..),
            Frame(..),
            frameMethod,
            Stack,
+           showStack,
            (=:),
            Loc,
            LocAction(..),
@@ -90,12 +91,22 @@ data LocAction = ActStat F.Statement
 data Frame = FrameStatic      {fScope :: Scope, fLoc :: Loc}
            | FrameInteractive {fScope :: Scope, fLoc :: Loc, fCFA :: CFA}
 
+instance PP Frame where
+    pp (FrameStatic      sc loc  ) =                         text (show sc) <> char ':' <+> pp loc
+    pp (FrameInteractive sc loc _) = text "interactive:" <+> text (show sc) <> char ':' <+> pp loc
+
 frameMethod :: Frame -> Maybe F.Method
 frameMethod f = case fScope f of
                      ScopeMethod _ m -> Just m
                      _               -> Nothing
 
 type Stack = [Frame]
+
+instance PP Stack where
+    pp stack = vcat $ map pp stack
+
+showStack :: Stack -> String
+showStack = render . pp
 
 data LocLabel = LInst  {locAct :: LocAction}
               | LPause {locAct :: LocAction, locStack :: Stack, locExpr :: Expr}

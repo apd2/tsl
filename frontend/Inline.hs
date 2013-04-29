@@ -165,7 +165,11 @@ mkPC :: PID -> I.Loc -> I.Expr
 mkPC pid loc = I.EConst $ I.EnumVal $ mkPCEnum pid loc 
 
 pcEnumToLoc :: String -> I.Loc
-pcEnumToLoc str = read $ drop (length "$pc") str
+pcEnumToLoc str = read 
+                  $ drop (length "$pc") 
+                  $ fromJust $ find (isPrefixOf "$pc")
+                  $ reverse 
+                  $ tails str
 
 -- PID of the last process to make a transition
 mkPIDVarName :: String
