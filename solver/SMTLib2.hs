@@ -59,7 +59,7 @@ mkFormulas fs =
          $+$
          -- formulas
          (vcat $ mapIdx (\f i -> parens $ text "assert" 
-                                          <+> (parens $ char '!' <+> smtpp f <+> text ":named" <+> text "a" <> int i)) fs)
+                                          <+> (parens $ char '!' <+> smtpp f <+> text ":named" <+> text assertName <> int i)) fs)
          $+$
          -- pointer consistency constraints
          ptrconstr
@@ -249,7 +249,7 @@ runSolver cfg spec parser =
                                        "\nsolver input: " ++ show spec ++
                                        "\nsolver output: " ++ out ++
                                        "\nparser error: "++ show e
-                    Right x -> x
+                    Right x -> trace ("solver input: " ++ show spec ++ " solver output: " ++ out) x
           else error $ "Error running SMT solver (" ++ show retcode ++ "): " ++ 
                        "\ninput: " ++ show spec ++ 
                        "\noutput: " ++ out ++ 

@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams #-}
 
-module SMTLib2Parse (satresParser,
+module SMTLib2Parse (assertName,
+                     satresParser,
                      unsatcoreParser,
                      modelParser) where
 
@@ -21,6 +22,9 @@ import IVar
 import IExpr
 import Store
 import Predicate
+
+-- appended to each assertion name
+assertName = "__assert"
 
 data ModelDecl = DeclConst  {dconstName::String, dconstType::TypeSpec}
                | DeclVarAsn {dvarName::String, dvarVal::SMTExpr}
@@ -53,7 +57,7 @@ satresParser = ((Just False) <$ symbol "unsat") <|>
                ((Just True)  <$ symbol "sat")
 
 unsatcoreParser :: Parsec String () [Int]
-unsatcoreParser = option [] (parens $ many $ (char 'a' *> (fromInteger <$> decimal)))
+unsatcoreParser = option [] (parens $ many $ (string assertName *> (fromInteger <$> decimal)))
 
 modelParser :: (?spec::Spec) => [(String, Term)] -> Parsec String () Store
 modelParser ptrmap = storeFromModel ptrmap <$> model
@@ -99,7 +103,8 @@ model_decl =  try const_decl
           <|> try forall
 
 const_decl = parens $ (\n t -> Just $ DeclConst n t)    <$ reserved "declare-fun" <*> ident <* (parens spaces) <*> typespec
-var_asn    = parens $ (\n _ e -> Just $ DeclVarAsn n e) <$ reserved "define-fun"  <*> ident <* (parens spaces) <*> typespec <*> expr
+var_asn    = parens $ (\n _ e -> if' (isPrefixOf assertName n) Nothing (Just $ DeclVarAsn n e)) -- ignore assignments to assertions
+                                                        <$ reserved "define-fun"  <*> ident <* (parens spaces) <*> typespec <*> expr
 forall     = parens $ (\_ _ -> Nothing)                 <$ reserved "forall"      <*> args  <*> expr
 
 args = parens $ (,) <$> many arg
