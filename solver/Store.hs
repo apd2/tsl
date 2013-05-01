@@ -99,7 +99,8 @@ storeEvalScalar s e = case storeTryEvalScalar s e of
 
 storeEvalBool :: Store -> Expr -> Bool
 storeEvalBool store e = case storeTryEvalBool store e of
-                             Nothing -> error "storeEvalBool: invalid expression"
+                             Nothing -> error $ "storeEvalBool: invalid expression " ++ show e ++ 
+                                                "\nStore: " ++ show store
                              Just b  -> b
 
 storeEvalInt :: Store -> Expr -> Integer

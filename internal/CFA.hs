@@ -87,6 +87,11 @@ data LocAction = ActStat F.Statement
                | ActExpr F.Expr
                | ActNone
 
+instance PP LocAction where
+    pp (ActStat s) = pp s
+    pp (ActExpr e) = pp e
+    pp ActNone     = empty
+
 -- Stack frame
 data Frame = FrameStatic      {fScope :: Scope, fLoc :: Loc}
            | FrameInteractive {fScope :: Scope, fLoc :: Loc, fCFA :: CFA}
@@ -113,9 +118,9 @@ data LocLabel = LInst  {locAct :: LocAction}
               | LFinal {locAct :: LocAction, locStack :: Stack}
 
 instance PP LocLabel where
-    pp (LInst  _)     = empty
-    pp (LPause _ _ e) = pp e
-    pp (LFinal _ _)   = text "F"
+    pp (LInst  a)     = pp a
+    pp (LPause a _ e) = text "wait" <> (parens $ pp e) $$ pp a
+    pp (LFinal a _)   = text "F"                       $$ pp a
 
 instance Show LocLabel where
     show = render . pp
@@ -192,12 +197,15 @@ cfaSave cfa title tmp = do
 
 cfaToDot :: CFA -> String -> String
 cfaToDot cfa title = G.graphviz cfa' title (6.0, 11.0) (1,1) G.Portrait
-    where cfa' = G.emap (format . show) cfa
+    where cfa' = G.emap (eformat . show)
+                 $ G.gmap (\(inb, n, l, outb) -> (inb, n, show n ++ ": " ++ (nformat $ show l), outb)) cfa
           maxLabel = 64
-          format :: String -> String
-          format s | length s <= maxLabel = s
-                   | otherwise            =
-                       take maxLabel s ++ "\n" ++ format (drop maxLabel s)
+          nformat :: String -> String
+          nformat s = if' (length s <= maxLabel) s ((take maxLabel s) ++ "...") 
+          eformat :: String -> String
+          eformat s | length s <= maxLabel = s
+                    | otherwise            =
+                        (take maxLabel s) ++ "\n" ++ eformat (drop maxLabel s)
 
 isDelayLabel :: LocLabel -> Bool
 isDelayLabel (LPause _ _ _) = True
