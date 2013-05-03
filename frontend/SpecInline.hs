@@ -292,7 +292,7 @@ mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
 ----------------------------------------------------------------------
 
 mkVars :: (?spec::Spec) => ([I.Var], I.Enumeration)
-mkVars = (mkErrVarDecl : mkNullVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ ivars ++ fpvars ++ pvars), 
+mkVars = (mkErrVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ ivars ++ fpvars ++ pvars), 
           tenum)
     where
     -- tag: one enumerator per controllable task

@@ -385,5 +385,5 @@ procStatToCFA :: (?spec::Spec, ?procs::[I.Process]) => Bool -> Statement -> I.Lo
 procStatToCFA cont stat before = do
     let ?cont=cont
     after <- statToCFA before stat
-    modify (\ctx -> ctx {ctxCFA = I.cfaAddNullPtrTrans (ctxCFA ctx) mkNullVar})
+    modify (\ctx -> ctx {ctxCFA = I.cfaAddNullPtrTrans (ctxCFA ctx)})
     return after

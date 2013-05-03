@@ -234,15 +234,6 @@ mkMagicVarDecl = I.Var False I.VarState mkMagicVarName I.Bool
 mkMagicDoneCond :: I.Expr
 mkMagicDoneCond = mkMagicVar I.=== I.false
 
-mkNullVarName :: String
-mkNullVarName = "$null"
-
-mkNullVar :: I.Expr
-mkNullVar = I.EVar mkNullVarName
-
-mkNullVarDecl :: I.Var
-mkNullVarDecl = I.Var False I.VarState mkNullVarName (I.Ptr I.Bool)
-
 mkErrVarName :: String
 mkErrVarName = I.cfaErrVarName
 

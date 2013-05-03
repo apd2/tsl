@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances, ImplicitParams #-}
 
 module CFA(Statement(..),
            Frame(..),
@@ -53,10 +53,12 @@ import Data.String.Utils
 import Name
 import PP
 import Util hiding (name,trace)
-import NS
 import IExpr
+import IType
+import {-# SOURCE #-} ISpec 
 
 -- Frontend imports
+import qualified NS        as F
 import qualified Statement as F
 import qualified Expr      as F
 import qualified Method    as F
@@ -93,8 +95,8 @@ instance PP LocAction where
     pp ActNone     = empty
 
 -- Stack frame
-data Frame = FrameStatic      {fScope :: Scope, fLoc :: Loc}
-           | FrameInteractive {fScope :: Scope, fLoc :: Loc, fCFA :: CFA}
+data Frame = FrameStatic      {fScope :: F.Scope, fLoc :: Loc}
+           | FrameInteractive {fScope :: F.Scope, fLoc :: Loc, fCFA :: CFA}
 
 instance PP Frame where
     pp (FrameStatic      sc loc  ) =                         text (show sc) <> char ':' <+> pp loc
@@ -102,8 +104,8 @@ instance PP Frame where
 
 frameMethod :: Frame -> Maybe F.Method
 frameMethod f = case fScope f of
-                     ScopeMethod _ m -> Just m
-                     _               -> Nothing
+                     F.ScopeMethod _ m -> Just m
+                     _                 -> Nothing
 
 type Stack = [Frame]
 
@@ -214,7 +216,7 @@ isDelayLabel (LInst _)      = False
 
 
 
-newCFA :: Scope -> F.Statement -> Expr -> CFA 
+newCFA :: F.Scope -> F.Statement -> Expr -> CFA 
 newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [FrameStatic sc cfaInitLoc] initcond) 
                         $ G.insNode (cfaErrLoc,LPause ActNone [FrameStatic sc cfaErrLoc] false) G.empty
 
@@ -278,20 +280,20 @@ cfaFinal cfa = map fst $ filter (\n -> case snd n of
                                             _          -> False) $ G.labNodes cfa
 
 -- Add error transitions for all potential null-pointer dereferences
-cfaAddNullPtrTrans :: CFA -> Expr -> CFA
-cfaAddNullPtrTrans cfa nul = foldl' (addNullPtrTrans1 nul) cfa (G.labEdges cfa)
+cfaAddNullPtrTrans :: CFA -> CFA
+cfaAddNullPtrTrans cfa = foldl' addNullPtrTrans1 cfa (G.labEdges cfa)
 
-addNullPtrTrans1 :: Expr -> CFA -> (Loc,Loc,TranLabel) -> CFA
-addNullPtrTrans1 nul cfa (from , to, l@(TranStat (SAssign e1 e2))) = 
+addNullPtrTrans1 :: CFA -> (Loc,Loc,TranLabel) -> CFA
+addNullPtrTrans1 cfa (from , to, l@(TranStat (SAssign e1 e2))) = 
     case cond of
          EConst (BoolVal False) -> cfa
          _ -> let (cfa1, from') = cfaInsLoc (LInst ActNone) cfa
                   cfa2 = cfaInsTrans from' to l $ G.delLEdge (from, to, l) cfa1
                   cfa3 = cfaInsTrans from from' (TranStat $ SAssume $ neg cond) cfa2
               in cfaErrTrans from (TranStat $ SAssume cond) cfa3
-    where cond = disj $ map (=== nul) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)
+    where cond = disj $ map (\e -> e === (EConst NullVal)) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)
     
-addNullPtrTrans1 _   cfa (_    , _, _)                        = cfa
+addNullPtrTrans1 cfa (_    , _, _)                             = cfa
 
 
 cfaPruneUnreachable :: CFA -> [Loc] -> CFA

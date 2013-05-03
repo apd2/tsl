@@ -5,6 +5,7 @@ module IExpr(LVal(..),
              Expr(..),
              lvalToExpr,
              valSlice,
+             valDefault,
              parseVal,
              exprSlice,
              exprScalars,
@@ -65,6 +66,7 @@ data Val = BoolVal   Bool
          | UIntVal   {ivalWidth::Int, ivalVal::Integer}
          | EnumVal   String
          | PtrVal    LVal
+         | NullVal   Type
          deriving (Eq)
 
 ivalIsSigned :: Val -> Bool
@@ -77,6 +79,7 @@ instance (?spec::Spec) => Typed Val where
     typ (UIntVal w _) = UInt w
     typ (EnumVal n)   = Enum $ enumName $ getEnumerator n
     typ (PtrVal a)    = Ptr $ typ a
+    typ (NullVal t)   = t
 
 instance PP Val where
     pp (BoolVal True)  = text "true"
@@ -85,6 +88,7 @@ instance PP Val where
     pp (UIntVal _ v)   = text $ show v
     pp (EnumVal n)     = text n
     pp (PtrVal a)      = char '&' <> pp a
+    pp (NullVal _)     = text "NULL"
 
 instance Show Val where
     show = render . pp
@@ -93,6 +97,18 @@ type Slice = (Int, Int)
 
 instance PP Slice where
     pp (l,h) = brackets $ pp l <> colon <> pp h
+
+-- Default value of a type
+valDefault :: (?spec::Spec, Typed a) => a -> Val
+valDefault x = case typ x of
+                    Bool      -> BoolVal False
+                    SInt w    -> SIntVal w 0
+                    UInt w    -> UIntVal w 0  
+                    Enum n    -> EnumVal $ head $ enumEnums $ getEnumeration n
+                    Struct _  -> error "valDefault Struct"
+                    Ptr t     -> NullVal t
+                    Array _ _ -> error "valDefault Array"
+
 
 valSlice :: Val -> Slice -> Val
 valSlice v (l,h) = UIntVal (h - l + 1)

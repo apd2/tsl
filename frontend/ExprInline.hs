@@ -15,7 +15,6 @@ import qualified Data.Map as M
 import qualified IExpr as I
 import qualified IType as I
 import qualified IVar  as I
-import TSLUtil
 import Util hiding (name)
 import NS
 import Pos
@@ -34,10 +33,10 @@ type NameGen a = State (Int, [Var]) a
 
 tmpVar :: Pos -> Bool -> TypeSpec -> NameGen Var
 tmpVar p mem t = do
-    (last,vars) <- get
-    let nam = Ident p $ "$" ++ show last
+    (lst,vars) <- get
+    let nam = Ident p $ "$" ++ show lst
         var = Var p mem t nam Nothing
-    put (last + 1, vars++[var])
+    put (lst + 1, vars++[var])
     return var
 
 -- Extract all function calls from expression to a list of temporary
@@ -68,7 +67,7 @@ exprSimplify' (EBinOp p op a1 a2)       = do (ss1,a1') <- exprSimplify a1
                                              return ((ss1++ss2), EBinOp p op a1' a2')
 exprSimplify' e@(ETernOp p a1 a2 a3)    = condSimplify p (Left $ tspec e) [(a1,a2)] (Just a3)
 exprSimplify' e@(ECase p c cs md)       = do (ss, c') <- exprSimplify c
-                                             let cs' = map (mapFst $ (\e -> EBinOp (pos e) Eq c' e)) cs
+                                             let cs' = map (mapFst $ (\e' -> EBinOp (pos e') Eq c' e')) cs
                                              liftM (mapFst (ss++)) $ condSimplify p (Left $ tspec e) cs' md
 exprSimplify' e@(ECond p cs md)         = condSimplify p (Left $ tspec e) cs md
 exprSimplify' (ESlice p e (l,h))        = do (ss, e') <- exprSimplify e
@@ -79,7 +78,7 @@ exprSimplify' (EStruct p n (Left fs))   = do (ss,fs') <- liftM unzip $ mapM expr
                                              return (concat ss, EStruct p n (Left $ zip (fst $ unzip fs) fs'))
 exprSimplify' (EStruct p n (Right fs))  = do (ss,fs') <- liftM unzip $ mapM exprSimplify fs
                                              return (concat ss, EStruct p n (Right fs'))
-exprSimplify' e@(ETerm p t)             = case getTerm ?scope t of
+exprSimplify' e@(ETerm _ t)             = case getTerm ?scope t of
                                                ObjConst _ c -> return ([],constVal c)
                                                _            -> return ([],e)
 exprSimplify' e                         = return ([], e)
@@ -110,9 +109,9 @@ condSimplify p mlhs cs mdef = do
         conds' = (map (\(c,n) -> eAnd (pos c) (c:n)) (zip conds negations)) ++ [eAnd nopos $ last negations]
         assumes = map (SAssume p) conds'
     stats <- mapM (\me -> case me of
-                               Just e  -> do (ss, e') <- exprSimplify e
+                               Just e  -> do (ss', e') <- exprSimplify e
                                              let asn = SAssign (pos e) lhs e'
-                                             return $ ss ++ [asn]
+                                             return $ ss' ++ [asn]
                                Nothing -> return[SAssert p (EBool p False)])
                   ((map Just $ snd $ unzip cs) ++ [mdef])
     let choices = map (\(a,s) -> sSeq (pos a) (a:s)) (zip assumes stats)
@@ -125,8 +124,8 @@ exprFlattenStruct :: (?spec::Spec, ?scope::Scope) => Expr -> Expr
 exprFlattenStruct = mapExpr exprFlattenStruct' ?scope 
 
 exprFlattenStruct' :: (?spec::Spec) => Scope -> Expr -> Expr
-exprFlattenStruct' _ (EField _ (EStruct _ n (Left fs)) f)    = snd $ fromJust $ find ((==f) . fst) fs
-exprFlattenStruct' s (EField _ e@(EStruct _ n (Right fs)) f) = fs !! idx
+exprFlattenStruct' _ (EField _ (EStruct _ _ (Left fs)) f)    = snd $ fromJust $ find ((==f) . fst) fs
+exprFlattenStruct' s (EField _ e@(EStruct _ _ (Right fs)) f) = fs !! idx
     where StructSpec _ fs' = let ?scope = s in tspec $ typ' e
           idx = fromJust $ findIndex ((==f) . name) fs' 
 exprFlattenStruct' _ e                                       = e
@@ -139,39 +138,39 @@ exprToIExprDet :: (?spec::Spec) => Expr -> State CFACtx I.Expr
 exprToIExprDet e = exprToIExpr e $ error "exprToIExprDet applied to non-deterministic expression"
 
 exprToIExpr :: (?spec::Spec) => Expr -> TypeSpec -> State CFACtx I.Expr
-exprToIExpr e t = do scope <- gets ctxScope
-                     exprToIExpr' e (typ' $ Type scope t)
+exprToIExpr e t = do sc <- gets ctxScope
+                     exprToIExpr' e (typ' $ Type sc t)
 
 -- Like exprToIExpr, but expand top-level EStruct into a list of fields
 exprToIExprs :: (?spec::Spec) => Expr -> TypeSpec -> State CFACtx [(I.Expr,I.Type)]
-exprToIExprs e@(EStruct _ tname (Left fs)) _ = do 
-    scope <- gets ctxScope
-    let ?scope = scope
-    let Type sscope (StructSpec _ sfs) = typ' e
-    fs' <- mapM (\f -> do let v = snd $ fromJust $ (\f -> find ((==f) . fst) fs) $ name f
+exprToIExprs e@(EStruct _ _ (Left fs)) _ = do 
+    sc <- gets ctxScope
+    let ?scope = sc
+    let Type _ (StructSpec _ sfs) = typ' e
+    fs' <- mapM (\f -> do let v = snd $ fromJust $ (\n -> find ((==n) . fst) fs) $ name f
                           exprToIExprs v (tspec f)) sfs
     return $ concat fs'
-exprToIExprs e@(EStruct _ tname (Right fs)) _ = do 
-    scope <- gets ctxScope
-    let ?scope = scope
-    let Type sscope (StructSpec _ sfs) = typ' e
+exprToIExprs e@(EStruct _ _ (Right fs)) _ = do 
+    sc <- gets ctxScope
+    let ?scope = sc
+    let Type _ (StructSpec _ sfs) = typ' e
     fs' <- mapM (\(f,v) -> exprToIExprs v (tspec f)) $ zip sfs fs
     return $ concat fs'
 exprToIExprs e t                              = do 
-    scope <- gets ctxScope
-    let ?scope = scope
+    sc <- gets ctxScope
+    let ?scope = sc
     e' <- exprToIExpr e t
     let t' = case e of
-                  ENonDet _ -> mkType $ Type scope t
+                  ENonDet _ -> mkType $ Type sc t
                   _         -> mkType $ typ e
     return [(e', t')]
 
 exprToIExpr' :: (?spec::Spec) => Expr -> Type -> State CFACtx I.Expr
-exprToIExpr' e@(ETerm _ ssym) _ = do
-    scope <- gets ctxScope
+exprToIExpr' (ETerm _ ssym) _ = do
+    sc    <- gets ctxScope
     lmap  <- gets ctxLNMap
     gmap  <- gets ctxGNMap
-    let n = case getTerm scope ssym of
+    let n = case getTerm sc ssym of
                  ObjVar      _ v -> name v
                  ObjGVar     _ v -> name v
                  ObjWire     _ w -> name w
@@ -199,8 +198,8 @@ exprToIExpr' (EUnOp _ op e) _               = do e' <- exprToIExprDet e
 exprToIExpr' (EBinOp _ op e1 e2) _          = do e1' <- exprToIExprDet e1
                                                  e2' <- exprToIExprDet e2
                                                  return $ I.EBinOp op e1' e2'
-exprToIExpr' (ESlice _ e (l,h)) _           = do scope <- gets ctxScope
-                                                 let ?scope = scope
+exprToIExpr' (ESlice _ e (l,h)) _           = do sc <- gets ctxScope
+                                                 let ?scope = sc
                                                  e' <- exprToIExprDet e
                                                  let l' = fromInteger $ evalInt l
                                                      h' = fromInteger $ evalInt h
