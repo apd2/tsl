@@ -29,6 +29,7 @@ module CFA(Statement(..),
            cfaSuc,
            cfaFinal,
            cfaAddNullPtrTrans,
+           cfaAddNullTypes,
            cfaPruneUnreachable,
            cfaReachInst,
            cfaPrune,
@@ -52,10 +53,11 @@ import Data.String.Utils
 
 import Name
 import PP
+import Ops
 import Util hiding (name,trace)
 import IExpr
 import IType
-import {-# SOURCE #-} ISpec 
+import {-# SOURCE #-} ISpec
 
 -- Frontend imports
 import qualified NS        as F
@@ -291,9 +293,24 @@ addNullPtrTrans1 cfa (from , to, l@(TranStat (SAssign e1 e2))) =
                   cfa2 = cfaInsTrans from' to l $ G.delLEdge (from, to, l) cfa1
                   cfa3 = cfaInsTrans from from' (TranStat $ SAssume $ neg cond) cfa2
               in cfaErrTrans from (TranStat $ SAssume cond) cfa3
-    where cond = disj $ map (\e -> e === (EConst NullVal)) (exprPtrSubexpr e1 ++ exprPtrSubexpr e2)
+    where cond = -- We don't have access to ?spec here, hence cannot determine type of
+                 -- NullVal.  Keep it undefined until a separate pass.
+                 disj 
+                 $ map (\e -> e === (EConst $ NullVal $ error "NullVal type undefined")) 
+                 $ exprPtrSubexpr e1 ++ exprPtrSubexpr e2
     
 addNullPtrTrans1 cfa (_    , _, _)                             = cfa
+
+-- Add types to NullVal expressions introduced by cfaAddNullPtrTrans
+cfaAddNullTypes :: Spec -> CFA -> CFA
+cfaAddNullTypes spec cfa = G.emap (\l -> case l of 
+                                              TranStat st -> TranStat $ (statAddNullTypes spec) st
+                                              _           -> l) cfa
+
+statAddNullTypes :: Spec -> Statement -> Statement
+statAddNullTypes spec (SAssume (EBinOp Eq e (EConst (NullVal _)))) = let ?spec = spec in
+                                                                     SAssume (EBinOp Eq e (EConst $ NullVal $ typ e))
+statAddNullTypes _    s = s
 
 
 cfaPruneUnreachable :: CFA -> [Loc] -> CFA

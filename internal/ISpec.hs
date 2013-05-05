@@ -8,6 +8,7 @@ module ISpec(Spec(..),
              specGetProcess,
              specAllProcs,
              specGetCFA,
+             specMapCFA,
              specInlineWireAlways,
              lookupVar,
              getVar,
@@ -113,22 +114,24 @@ procAllProcs parpid Process{..} = (pid, procCFA) :
                                   map (\Task{..} -> (parpid++[taskName], taskCFA)) procTask
     where pid = parpid ++ [procName]
 
+-- Apply transformation to all task and process CFA's in the spec
+specMapCFA :: (CFA -> CFA) -> Spec -> Spec
+specMapCFA f spec = 
+   spec { specProc  = map (procMapCFA f) $ specProc  spec
+        , specCTask = map (taskMapCFA f) $ specCTask spec}
+
+procMapCFA :: (CFA -> CFA) -> Process -> Process
+procMapCFA f proc = 
+    proc { procCFA      = f $ procCFA proc
+         , procChildren = map (procMapCFA f) $ procChildren proc
+         , procTask     = map (taskMapCFA f) $ procTask     proc
+         }
+
+taskMapCFA :: (CFA -> CFA) -> Task -> Task
+taskMapCFA f task = task {taskCFA = f $ taskCFA task}
+
 specInlineWireAlways :: Spec -> Spec
-specInlineWireAlways spec = 
-    spec { specProc  = map (procInlineWireAlways spec) $ specProc spec
-         , specCTask = map (taskInlineWireAlways spec) $ specCTask spec
-         }
-
-procInlineWireAlways :: Spec -> Process -> Process
-procInlineWireAlways spec proc = 
-    proc { procCFA      = cfaInlineWireAlways spec $ procCFA proc
-         , procChildren = map (procInlineWireAlways spec) $ procChildren proc
-         , procTask     = map (taskInlineWireAlways spec) $ procTask proc
-         }
-
-taskInlineWireAlways :: Spec -> Task -> Task
-taskInlineWireAlways spec task = 
-    task { taskCFA = cfaInlineWireAlways spec $ taskCFA task}
+specInlineWireAlways spec = specMapCFA (cfaInlineWireAlways spec) spec
 
 cfaInlineWireAlways :: Spec -> CFA -> CFA
 cfaInlineWireAlways spec cfa = foldl' (\cfa0 loc -> let cfa1 = inlineLoc cfa0 loc (specAlways spec)

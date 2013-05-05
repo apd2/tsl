@@ -52,24 +52,7 @@ spec2Internal s =
         (pidvar, pidenum)  = mkPIDVarDecl $ map fst procs
         (vars, tagenum)    = mkVars
  
-        -- Controllable transitions
-        (ctran, cvars) = unzip $ map mkCTran $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain
-        -- Uncontrollable processes
-        trprocs = map (\(pid, cfa) -> cfaToIProcess pid cfa) $ I.specAllProcs spec
-        -- Uncontrollable transitions
-        utran = concatMap pBody trprocs
-        -- initialise PC variables.
-        pcinit = map (\p -> (mkPCVar $ pPID p) I.=== mkPC (pPID p) I.cfaInitLoc) trprocs
-        -- initialise $en vars to false
-        teninit = concatMap (mapPTreeTask (\pid m -> mkEnVar pid (Just m) I.=== I.false)) $ tmProcess tmMain
-        peninit = concatMap (mapPTreeFProc (\pid _ -> mkEnVar pid Nothing  I.=== I.false)) $ tmProcess tmMain
-        -- Initialise $tag, $magic, $cont
-        taginit  = mkTagVar   I.=== tagIdle
-        maginit  = mkMagicVar I.=== I.false
-        continit = mkContVar  I.=== I.false
-        pidinit  = mkPIDVar   I.=== mkPIDEnum pidIdle
-        errinit  = mkErrVar   I.=== I.false
- 
+
         ((specWire, specAlways, inittran, goals), (_, extratmvars)) = 
             runState (do wire      <- mkWires
                          always    <- mkAlways
@@ -87,16 +70,36 @@ spec2Internal s =
                              $ tmMethod tmMain
         specEnum           = choiceenum ++ (pidenum : tagenum : (senum ++ pcenums))
         specVar            = concat cvars ++ [pidvar] ++ pcvars ++ vars ++ concat (tmppvs ++ tmpcvs) ++ extraivars
-        specTran           = I.TranSpec { I.tsCTran  = mkMagicReturn : ctran
-                                        , I.tsUTran  = mkIdleTran : utran
-                                        , I.tsWire   = cfaToITransition (I.specWire spec) "wires"
-                                        , I.tsAlways = cfaToITransition (I.specAlways spec) "always"
-                                        , I.tsInit   = (inittran, I.conj $ (pcinit ++ teninit ++ peninit ++ [errinit, taginit, maginit, continit, pidinit]))
-                                        , I.tsGoal   = goals
-                                        , I.tsFair   = mkFair trprocs
-                                        }
-        spec               = I.Spec {..} in
-        spec
+        specTran           = error "specTran undefined"
+        spec               = I.Spec {..}
+        spec'              = I.specMapCFA (I.cfaAddNullTypes spec) spec
+
+        -- Controllable transitions
+        (ctran, cvars) = unzip $ map mkCTran $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain
+        -- Uncontrollable processes
+        trprocs = map (\(pid, cfa) -> cfaToIProcess pid cfa) $ I.specAllProcs spec'
+        -- Uncontrollable transitions
+        utran = concatMap pBody trprocs
+        -- initialise PC variables.
+        pcinit = map (\p -> (mkPCVar $ pPID p) I.=== mkPC (pPID p) I.cfaInitLoc) trprocs
+        -- initialise $en vars to false
+        teninit = concatMap (mapPTreeTask (\pid m -> mkEnVar pid (Just m) I.=== I.false)) $ tmProcess tmMain
+        peninit = concatMap (mapPTreeFProc (\pid _ -> mkEnVar pid Nothing  I.=== I.false)) $ tmProcess tmMain
+        -- Initialise $tag, $magic, $cont
+        taginit  = mkTagVar   I.=== tagIdle
+        maginit  = mkMagicVar I.=== I.false
+        continit = mkContVar  I.=== I.false
+        pidinit  = mkPIDVar   I.=== mkPIDEnum pidIdle
+        errinit  = mkErrVar   I.=== I.false in
+
+        spec' {I.specTran = I.TranSpec { I.tsCTran  = mkMagicReturn : ctran
+                                       , I.tsUTran  = mkIdleTran : utran
+                                       , I.tsWire   = cfaToITransition (I.specWire spec') "wires"
+                                       , I.tsAlways = cfaToITransition (I.specAlways spec') "always"
+                                       , I.tsInit   = (inittran, I.conj $ (pcinit ++ teninit ++ peninit ++ [errinit, taginit, maginit, continit, pidinit]))
+                                       , I.tsGoal   = goals
+                                       , I.tsFair   = mkFair trprocs
+                                       }}
 
 
 ------------------------------------------------------------------------------
