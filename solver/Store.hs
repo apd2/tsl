@@ -89,13 +89,13 @@ storeTryEvalArr s e = fmap storeArr $ storeTryEval s e
 
 storeEval :: Store -> Expr -> Store
 storeEval store e = case storeTryEval store e of
-                         Nothing -> error "storeEval: invalid expression"
+                         Nothing -> error $ "storeEval: invalid expression " ++ show e
                          Just s  -> s
 
 storeEvalScalar :: Store -> Expr -> Val
 storeEvalScalar s e = case storeTryEvalScalar s e of
                            Just v -> v
-                           _      -> error "storeEvalScalar: invalid expression"
+                           _      -> error $ "storeEvalScalar: invalid expression " ++ show e
 
 storeEvalBool :: Store -> Expr -> Bool
 storeEvalBool store e = case storeTryEvalBool store e of

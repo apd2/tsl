@@ -145,7 +145,7 @@ inlineLoc :: CFA -> Loc -> CFA -> CFA
 inlineLoc cfa loc inscfa = inlineBetween cfa2 loc loc' inscfa
     -- Replicate location.  The new location is not a delay location
     -- and contains all outgoing transitions of the original location
-    where (cfa1, loc') = cfaInsLoc (LInst ActNone) cfa
+    where (cfa1, loc') = cfaInsLoc (LInst $ locAct $ cfaLocLabel loc cfa) cfa
           cfa2 = foldl' (\cfa' (toloc, lab) -> G.delLEdge (loc, toloc, lab) 
                                                $ cfaInsTrans loc' toloc lab cfa')
                         cfa1 (G.lsuc cfa loc)
@@ -155,8 +155,8 @@ inlineBetween cfa0 bef aft inscfa =
     let -- for each node in inscfa, create a replica in CFA and store
         -- correspondence in a table
         (cfa1, locs1) = foldl' (\(cfa,locs) loc -> let lab = cfaLocLabel loc inscfa
-                                                       (cfa', loc') = cfaInsLoc lab cfa
-                                                   in if' (loc == cfaInitLoc)                     (cfa, locs ++ [bef]) $
+                                                       (cfa', loc') = cfaInsLoc (LInst $ locAct lab) cfa
+                                                   in if' (loc == cfaInitLoc)                     (cfaInsTrans bef loc' TranNop cfa', locs ++ [loc']) $
                                                       if' (loc == cfaErrLoc)                      (cfa, locs ++ [loc]) $
                                                       if' (isDelayLabel $ cfaLocLabel loc inscfa) (cfa, locs ++ [aft]) $
                                                       (cfa', locs++[loc']))

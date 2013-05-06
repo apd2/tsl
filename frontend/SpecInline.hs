@@ -137,7 +137,7 @@ mkWires = do
     let wires = orderWires
         -- Generate assignment statement for each wire
     stat <- let ?scope = ScopeTemplate tmMain
-            in statSimplify $ SSeq nopos $ map (\w -> SAssign nopos (ETerm nopos [name w]) (fromJust $ wireRHS w)) wires
+            in statSimplify $ SSeq nopos $ map (\w -> SAssign (pos w) (ETerm nopos [name w]) (fromJust $ wireRHS w)) wires
     let ctx = CFACtx { ctxPID     = []
                      , ctxStack   = [(ScopeTemplate tmMain, error "return from a wire assignment", Nothing, M.empty)]
                      , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true

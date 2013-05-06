@@ -3,6 +3,7 @@
 module Parse(SpecItem(..),
              Import(..),
              litParser, 
+             boolParser,
              grammar,
              detexpr,
              statement,
@@ -40,7 +41,7 @@ import Const
 
 -- exports
 litParser = (\(ELit _ w s r v) -> (w,s,r,v)) <$> elit True
-
+boolParser = ((True <$ reserved "true") <|> (False <$ reserved "false"))
 
 reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "...", "::", "->"]
 reservedNames = ["after",
@@ -417,7 +418,7 @@ estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left
 eapply  det = EApply nopos <$ isapply <*> methname <*> (parens $ commaSep (expr' det))
     where isapply = try $ lookAhead $ methname *> symbol "("
 eterm   det = ETerm nopos <$> staticsym
-ebool   det = EBool nopos <$> ((True <$ reserved "true") <|> (False <$ reserved "false"))
+ebool   det = EBool nopos <$> boolParser
 elit    det = lexeme elit'
 etern   det = ETernOp nopos <$ reserved "if" <*> (expr' det) <*> (expr' det) <* reserved "else" <*> (expr' det)
 ecase   det = (fmap uncurry (ECase nopos <$ reserved "case" <*> (parens detexpr))) 
@@ -469,7 +470,7 @@ mkLit (Just w) True  Rad10 v | w < 2               = fail "Signed literals must 
                              | (msb $ abs v) < w-1 = return $ ELit nopos w True Rad10 v
                              | otherwise           = fail "Value exceeds specified width"
 mkLit (Just w) True  r     v | w < 2               = fail "Signed literals must have width >1"
-                             | msb v == w - 1      = do let v' = (foldl' (\v i -> complementBit v i) v [0..w-1]) + 1
+                             | msb v == w - 1      = do let v' = (foldl' (\_v i -> complementBit _v i) v [0..w-1]) + 1
                                                         return $ ELit nopos w True r (-v')
                              | msb v < w - 1       = return $ ELit nopos w True r v
                              | otherwise           = fail "Value exceeds specified width"
@@ -513,5 +514,5 @@ postIndex  = (\i end e -> EIndex (fst $ pos e, end) e i) <$> index <*> getPositi
 postField  = (\f end e -> EField (fst $ pos e, end) e f) <$> field <*> getPosition
 postPField = (\f end e -> EPField (fst $ pos e, end) e f) <$> ptrfield <*> getPosition
 
-prefix name fun = (\start e -> EUnOp (start, snd $ pos e) fun e) <$> getPosition <* reservedOp name
-binary name fun = Infix $ (\le re -> EBinOp (fst $ pos le, snd $ pos re) fun le re) <$ reservedOp name
+prefix n fun = (\start e -> EUnOp (start, snd $ pos e) fun e) <$> getPosition <* reservedOp n
+binary n fun = Infix $ (\le re -> EBinOp (fst $ pos le, snd $ pos re) fun le re) <$ reservedOp n

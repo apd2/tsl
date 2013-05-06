@@ -30,6 +30,7 @@ import Text.PrettyPrint
 import Control.Monad.Error
 import qualified Text.Parsec as P
 
+import Util
 import Parse
 import PP
 import TSLUtil
@@ -117,7 +118,7 @@ valSlice v (l,h) = UIntVal (h - l + 1)
                                             False -> a)
                    0 [l..h]
 
-parseVal :: (MonadError String me) => Type -> String -> me Val
+parseVal :: (MonadError String me, ?spec::Spec) => Type -> String -> me Val
 parseVal (SInt w) str = do
     (w',_,_,v) <- case P.parse litParser "" str of
                        Left e  -> throwError $ show e
@@ -131,6 +132,15 @@ parseVal (UInt w) str = do
     when (w' > w) $ throwError $ "Width mismatch"
     when s $ throwError $ "Sign mismatch"
     return $ UIntVal w v 
+parseVal Bool str =
+    case P.parse boolParser "" str of
+         Left e  -> throwError $ show e
+         Right b -> return $ BoolVal b
+parseVal (Enum n) str = 
+    case lookupEnumerator str of
+         Nothing    -> throwError $ "Invalid enumerator: " ++ str
+         Just enum  -> if' (enumName enum == n) (return $ EnumVal str)
+                       $ throwError $ "Enumerator type mismatch" 
 
 data Expr = EVar    String
           | EConst  Val
