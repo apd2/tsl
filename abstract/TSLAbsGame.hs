@@ -24,8 +24,9 @@ import Cascade
 import Predicate
 import BFormula
 import FCompile
-import qualified Interface       as Abs
-import qualified RefineReachFair as Abs
+import Inline
+import qualified Interface   as Abs
+import qualified TermiteGame as Abs
 
 -----------------------------------------------------------------------
 -- Interface
@@ -35,6 +36,7 @@ tslAbsGame :: Spec -> C.STDdManager s u -> Abs.Abstractor s u AbsVar AbsVar
 tslAbsGame spec m = Abs.Abstractor { Abs.goalAbs   = tslGoalAbs   spec m
                                    , Abs.fairAbs   = tslFairAbs   spec m
                                    , Abs.initAbs   = tslInitAbs   spec m
+                                   , Abs.contAbs   = tslContAbs   spec m
                                    --, gameConsistent  = tslGameConsistent  spec
                                    , Abs.updateAbs = tslUpdateAbs spec m
                                    }
@@ -50,12 +52,12 @@ tslGoalAbs spec m ops = do
                      return (goalName g, c))
            $ tsGoal $ specTran spec
 
-tslFairAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslFairAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslFairAbs spec m ops = do
     let ?spec = spec
         ?ops  = ops
         ?m    = m
-    liftM head $ mapM bexprAbstract $ tsFair $ specTran spec
+    mapM bexprAbstract $ tsFair $ specTran spec
 
 tslInitAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
 tslInitAbs spec m ops = do 
@@ -86,6 +88,12 @@ tslInitAbs spec m ops = do
 --    lift $ mapM (C.deref m) constr
 --    return res
 
+tslContAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslContAbs spec m ops = do 
+    let ?spec = spec
+        ?ops  = ops
+        ?m    = m
+    bexprAbstract $ mkContVar === true
 
 tslUpdateAbs :: Spec -> C.STDdManager s u -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbs spec m avars ops = do
@@ -109,9 +117,10 @@ tslUpdateAbs spec m avars ops = do
                 ucont <- lift $ C.conj m pervarfs
                 _ <- lift $ mapM (C.deref m) pervarfs
                 return ucont
-
-    return cont
-    --return (cont, ucont)
+    update <- lift $ C.disj m [cont,ucont]
+    lift $ C.deref m cont
+    lift $ C.deref m ucont
+    return update
 
 ----------------------------------------------------------------------------
 -- PDB operations
