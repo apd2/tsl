@@ -13,6 +13,7 @@ module CFA(Statement(..),
            CFA,
            isDelayLabel,
            newCFA,
+           cfaNop,
            cfaErrLoc,
            cfaErrVarName,
            cfaInitLoc,
@@ -230,6 +231,11 @@ cfaErrVarName = "$err"
 
 cfaInitLoc :: Loc
 cfaInitLoc = 1
+
+cfaNop :: CFA
+cfaNop = cfaInsTrans cfaInitLoc fin TranNop cfa
+    where (cfa, fin) = cfaInsLoc (LFinal ActNone [])
+                       $ G.insNode (cfaInitLoc,LInst ActNone) G.empty
 
 cfaDelayLocs :: CFA -> [Loc]
 cfaDelayLocs = map fst . filter (isDelayLabel . snd) . G.labNodes

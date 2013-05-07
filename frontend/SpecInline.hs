@@ -94,8 +94,8 @@ spec2Internal s =
 
         spec' {I.specTran = I.TranSpec { I.tsCTran  = mkMagicReturn : ctran
                                        , I.tsUTran  = mkIdleTran : utran
-                                       , I.tsWire   = cfaToITransition (I.specWire spec') "wires"
-                                       , I.tsAlways = cfaToITransition (I.specAlways spec') "always"
+                                       , I.tsWire   = cfaToITransition (fromMaybe I.cfaNop (I.specWire spec'))   "wires"
+                                       , I.tsAlways = cfaToITransition (fromMaybe I.cfaNop (I.specAlways spec')) "always"
                                        , I.tsInit   = (inittran, I.conj $ (pcinit ++ teninit ++ peninit ++ [errinit, taginit, maginit, continit, pidinit]))
                                        , I.tsGoal   = goals
                                        , I.tsFair   = mkFair trprocs
@@ -132,8 +132,9 @@ methSimplify tm m = let ?scope = ScopeMethod tm m
 
 -- Generate transition that assigns all wire variables.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkWires :: (?spec::Spec) => NameGen I.CFA
-mkWires = do
+mkWires :: (?spec::Spec) => NameGen (Maybe I.CFA)
+mkWires | (null $ tmWire tmMain) = return Nothing
+        | otherwise              = do
     let wires = orderWires
         -- Generate assignment statement for each wire
     stat <- let ?scope = ScopeTemplate tmMain
@@ -147,7 +148,7 @@ mkWires = do
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA False stat I.cfaInitLoc
                                                ctxPause aft I.true) ctx
-    return $ I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ ctxCFA ctx'
+    return $ Just $ I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ ctxCFA ctx'
 
 
 -- Build total order of wires so that for each wire, all wires that
@@ -171,8 +172,9 @@ orderWires' g | G.noNodes g == 0  = []
 
 -- Generate transition that performs all always-actions.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkAlways :: (?spec::Spec) => NameGen I.CFA
-mkAlways = do
+mkAlways :: (?spec::Spec) => NameGen (Maybe I.CFA)
+mkAlways | (null $ tmAlways tmMain) = return Nothing
+         | otherwise                = do
     stat <- let ?scope = ScopeTemplate tmMain
             in statSimplify $ SSeq nopos $ map alwBody $ tmAlways tmMain
     let ctx = CFACtx { ctxPID     = []
@@ -184,7 +186,7 @@ mkAlways = do
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA False stat I.cfaInitLoc
                                                ctxPause aft I.true) ctx
-    return $ I.cfaTraceFile (ctxCFA ctx') "always_cfa" $ ctxCFA ctx'
+    return $ Just $ I.cfaTraceFile (ctxCFA ctx') "always_cfa" $ ctxCFA ctx'
 
 ----------------------------------------------------------------------
 -- Fair sets

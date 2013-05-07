@@ -46,8 +46,8 @@ data Process = Process {
 data Spec = Spec {
     specEnum   :: [Enumeration],
     specVar    :: [Var],
-    specWire   :: CFA,         -- wire assignment
-    specAlways :: CFA,         -- always blocks
+    specWire   :: Maybe CFA,   -- wire assignment
+    specAlways :: Maybe CFA,   -- always blocks
     specProc   :: [Process],   -- processes
     specCTask  :: [Task],      -- controllable tasks
     specTran   :: TranSpec     -- info required for variable update
@@ -134,8 +134,12 @@ specInlineWireAlways :: Spec -> Spec
 specInlineWireAlways spec = specMapCFA (cfaInlineWireAlways spec) spec
 
 cfaInlineWireAlways :: Spec -> CFA -> CFA
-cfaInlineWireAlways spec cfa = foldl' (\cfa0 loc -> let cfa1 = inlineLoc cfa0 loc (specAlways spec)
-                                                    in inlineLoc cfa1 loc (specWire spec)) 
+cfaInlineWireAlways spec cfa = foldl' (\cfa0 loc -> let cfa1 = case specAlways spec of
+                                                                    Nothing -> cfa0
+                                                                    Just a  -> inlineLoc cfa0 loc a
+                                                    in case specWire spec of
+                                                            Nothing -> cfa1
+                                                            Just w  -> inlineLoc cfa1 loc w) 
                                       cfa locs
     -- Find delay locations with outgoing transitions
     where locs = filter (\loc -> (isDelayLabel $ cfaLocLabel loc cfa) && (G.suc cfa loc /= []))
