@@ -8,6 +8,7 @@ module CFA(Statement(..),
            (=:),
            Loc,
            LocAction(..),
+           isActNone,
            LocLabel(..),
            TranLabel(..),
            CFA,
@@ -91,6 +92,10 @@ type Loc = G.Node
 data LocAction = ActStat F.Statement
                | ActExpr F.Expr
                | ActNone
+
+isActNone :: LocAction -> Bool
+isActNone ActNone = True
+isActNone _       = False
 
 instance PP LocAction where
     pp (ActStat s) = pp s
