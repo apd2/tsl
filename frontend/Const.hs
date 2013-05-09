@@ -16,7 +16,7 @@ data Const = Const { cpos     :: Pos
                    , constVal :: ConstExpr}
 
 instance PP Const where
-    pp (Const _ t n e) = text "const" <+> pp t <+> pp n <+> char '=' <+> pp e
+    pp (Const _ t n e) = text "const" <+> pp t <+> pp n <+> char '=' <+> pp e <> semi
 
 instance WithPos Const where
     pos       = cpos

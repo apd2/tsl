@@ -108,7 +108,7 @@ data TypeDecl = TypeDecl { dpos  :: Pos
                          , dname :: Ident}
 
 instance PP TypeDecl where
-    pp (TypeDecl _ t n) = text "typedef" <+> pp t <+> pp n
+    pp (TypeDecl _ t n) = text "typedef" <+> pp t <+> pp n <> semi
 
 instance WithPos TypeDecl where
     pos       = dpos
