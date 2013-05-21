@@ -273,7 +273,7 @@ contGuard = I.SAssume $ I.conj $ [mkMagicVar I.=== I.true, mkContVar I.=== I.tru
 mkCTran :: (?spec::Spec) => Method -> (I.Transition, [I.Var])
 mkCTran m = (I.Transition I.cfaInitLoc after (ctxCFA ctx'), ctxVar ctx')
     where sc   = ScopeTemplate tmMain
-          args = repeat $ ENonDet nopos
+          args = replicate (length $ methArg m) (ENonDet nopos)
           stat = let ?scope = sc
                  in evalState (statSimplify $ SInvoke nopos (MethodRef nopos [name m]) args) (0,[])
           ctx  = CFACtx { ctxPID     = []
