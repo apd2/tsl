@@ -41,16 +41,13 @@ tslAbsGame spec m = Abs.Abstractor { Abs.goalAbs   = tslGoalAbs   spec m
                                    , Abs.updateAbs = tslUpdateAbs spec m
                                    }
 
-tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslGoalAbs spec m ops = do
-    -- remove the next line to enable multiple goals
-    liftM (snd . head)
-    $ mapM (\g -> do let ?spec = spec
-                         ?ops  = ops
-                         ?m    = m
-                     c <- tranPrecondition (goalCond g)
-                     return (goalName g, c))
-           $ tsGoal $ specTran spec
+    mapM (\g -> do let ?spec = spec
+                       ?ops  = ops
+                       ?m    = m
+                   tranPrecondition (goalCond g))
+         $ tsGoal $ specTran spec
 
 tslFairAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslFairAbs spec m ops = do

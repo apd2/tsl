@@ -109,9 +109,9 @@ mkTypeMap1 _ (SInt w)    = ( "(_ BitVec " ++ show w ++ ")"
                            , empty)
 mkTypeMap1 _ (UInt w)    = ( "(_ BitVec " ++ show w ++ ")"
                            , empty)
-mkTypeMap1 _ (Enum n)    = ( n
+mkTypeMap1 _ (Enum n)    = ( mkIdent n
                            , parens $ text "declare-datatypes ()" <+> (parens $ parens $ hsep $ map (text . mkIdent) $ n:(enumEnums $ getEnumeration n)))
-mkTypeMap1 m (Struct fs) = ( tname
+mkTypeMap1 m (Struct fs) = ( mkIdent tname
                            , parens $ text "declare-datatypes ()" 
                                       <+> (parens $ parens $ text tname 
                                            <+> parens (text ("mk-" ++ tname) <+> (hsep $ map (\(Field n t) -> parens $ text (tname ++ n) <+> text (m M.! t)) fs))))
