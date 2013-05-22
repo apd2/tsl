@@ -111,7 +111,7 @@ specAllProcs Spec{..} = concatMap (\p -> procAllProcs [] p) specProc ++
 procAllProcs :: PID -> Process -> [(PID, CFA)]
 procAllProcs parpid Process{..} = (pid, procCFA) :
                                   concatMap (procAllProcs pid) procChildren ++
-                                  map (\Task{..} -> (parpid++[taskName], taskCFA)) procTask
+                                  map (\Task{..} -> (pid++[taskName], taskCFA)) procTask
     where pid = parpid ++ [procName]
 
 -- Apply transformation to all task and process CFA's in the spec

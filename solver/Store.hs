@@ -110,7 +110,8 @@ storeEvalInt store e = case storeTryEvalInt store e of
 
 storeEvalEnum :: Store -> Expr -> String
 storeEvalEnum store e = case storeTryEvalEnum store e of
-                             Nothing -> error "storeEvalEnum: invalid expression"
+                             Nothing -> error $ "storeEvalEnum: invalid expression " ++ show e ++
+                                                "\nStore: " ++ show store
                              Just s  -> s
 
 storeSet :: Store -> Expr -> Maybe Store -> Store
