@@ -13,6 +13,7 @@ import System.Process
 import System.Exit
 import Control.Monad.Error
 import Data.List
+import Data.String.Utils
 import qualified Data.Set             as S
 import qualified Data.Map             as M
 
@@ -74,7 +75,7 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Var where
 -- convert string into a valid smtlib identifier by
 -- bracketing it with '|' if necessary
 mkIdent :: String -> String
-mkIdent str = if valid then str else "|" ++ str ++ "|"
+mkIdent str = if valid then str else "|" ++ (replace  "|" "_" str) ++ "|"
     where valid = all (\c -> elem c ("_"++['a'..'z']++['A'..'Z']++['0'..'9'])) str
                   && notElem (head str) ['0'..'9']
 

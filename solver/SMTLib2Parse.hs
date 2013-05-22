@@ -78,6 +78,7 @@ lexer  = T.makeTokenParser emptyDef { T.identStart      =  letter
                                                        <|> char '!' 
                                                        <|> char '$' 
                                                        <|> char '/'
+                                                       <|> char ':'
                                     , T.commentLine     = ";;"
                                     , T.reservedNames   = reservedNames
                                     , T.reservedOpNames = reservedOpNames
@@ -93,7 +94,7 @@ reservedOp = T.reservedOp lexer
 lexeme     = T.lexeme     lexer
 
 ident =  identifier 
-     <|> char '|' *> (many $ noneOf ['|']) <* char '|'
+     <|> char '|' *> (many $ noneOf ['|']) <* char '|' <* spaces
 
 model = catMaybes <$> (parens $ reserved "model" *> many model_decl)
 
