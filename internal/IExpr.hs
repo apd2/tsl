@@ -273,6 +273,9 @@ evalConstExpr (EBinOp op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] =
                                                                           And -> BoolVal $ b1 && b2
                                                                           Or  -> BoolVal $ b1 || b2
                                                                           Imp -> BoolVal $ (not b1) || b2
+                                                        EnumVal _ -> case op of
+                                                                          Eq  -> BoolVal $ en1 == en2
+                                                                          Neq -> BoolVal $ en1 /= en2
                                                         _         -> case op of
                                                                           Eq  -> BoolVal $ i1 == i2
                                                                           Neq -> BoolVal $ i1 /= i2
@@ -282,8 +285,10 @@ evalConstExpr (EBinOp op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] =
                                                                           Gte -> BoolVal $ i1 >= i2
                                                    where v1 = evalConstExpr e1
                                                          v2 = evalConstExpr e2
-                                                         BoolVal b1 = v1
-                                                         BoolVal b2 = v2
+                                                         BoolVal b1  = v1
+                                                         BoolVal b2  = v2
+                                                         EnumVal en1 = v1
+                                                         EnumVal en2 = v2
                                                          i1 = ivalVal v1
                                                          i2 = ivalVal v2
 evalConstExpr (ESlice e s)     = valSlice (evalConstExpr e) s
