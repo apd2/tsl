@@ -421,14 +421,14 @@ ctxFrames loc = do
     return $ map (uncurry I.FrameStatic) $ zip scopes locs
 
 
-ctxPause :: I.Loc -> I.Expr -> State CFACtx I.Loc
-ctxPause loc cond = do after <- ctxInsLocLab (I.LPause I.ActNone [] cond)
-                       stack <- ctxFrames after
-                       ctxLocSetStack after stack
-                       ctxInsTrans loc after I.TranNop
-                       case cond of
-                            (I.EConst (I.BoolVal True)) -> return after
-                            _                           -> ctxInsTrans' after (I.TranStat $ I.SAssume cond)
+ctxPause :: I.Loc -> I.Expr -> I.LocAction -> State CFACtx I.Loc
+ctxPause loc cond act = do after <- ctxInsLocLab (I.LPause act [] cond)
+                           stack <- ctxFrames after
+                           ctxLocSetStack after stack
+                           ctxInsTrans loc after I.TranNop
+                           case cond of
+                                (I.EConst (I.BoolVal True)) -> return after
+                                _                           -> ctxInsTrans' after (I.TranStat $ I.SAssume cond)
 
 ctxFinal :: I.Loc -> State CFACtx I.Loc
 ctxFinal loc = do after <- ctxInsLocLab (I.LFinal I.ActNone [])

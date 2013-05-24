@@ -147,7 +147,7 @@ mkWires | (null $ tmWire tmMain) = return Nothing
                      , ctxLastVar = 0
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA False stat I.cfaInitLoc
-                                               ctxPause aft I.true) ctx
+                                               ctxPause aft I.true I.ActNone) ctx
     return $ Just $ I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ ctxCFA ctx'
 
 
@@ -185,7 +185,7 @@ mkAlways | (null $ tmAlways tmMain) = return Nothing
                      , ctxLastVar = 0
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA False stat I.cfaInitLoc
-                                               ctxPause aft I.true) ctx
+                                               ctxPause aft I.true I.ActNone) ctx
     return $ Just $ I.cfaTraceFile (ctxCFA ctx') "always_cfa" $ ctxCFA ctx'
 
 ----------------------------------------------------------------------
@@ -210,12 +210,13 @@ mkFair procs = fsched : fproc
 mkInit :: (?spec::Spec) => NameGen I.Transition
 mkInit = do 
     -- conjunction of initial variable assignments
-    let ass = mapMaybe (\v -> case varInit $ gvarVar v of
-                               Nothing -> Nothing
-                               Just e  -> Just (EBinOp (pos v) Eq (ETerm nopos $ [name v]) e)) (tmVar tmMain)
+    let ass = SSeq nopos
+              $ mapMaybe (\v -> case varInit $ gvarVar v of
+                                     Nothing -> Nothing
+                                     Just e  -> Just $ SAssign (pos v) (ETerm nopos $ [name v]) e) (tmVar tmMain)
         -- add init blocks
-        cond = eAnd nopos (ass ++ map initBody (tmInit tmMain))
-    mkCond "$init" cond []
+        cond = SAssume nopos $ eAnd nopos $ map initBody (tmInit tmMain)
+    mkCond "$init" (SSeq nopos [ass, cond]) []
 
 -- $err == false
 noerror :: I.Expr
@@ -223,20 +224,19 @@ noerror = I.EUnOp Not mkErrVar
 
 mkGoal :: (?spec::Spec) => Goal -> NameGen I.Goal
 mkGoal g = -- Add $err==false to the goal condition
-           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (goalCond g) [noerror]
+           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos $ goalCond g) [noerror]
 
 -- In addition to regular goals, we are required to be outside a magic block
 -- infinitely often
 mkMagicGoal :: (?spec::Spec) => NameGen I.Goal
-mkMagicGoal = (liftM $ I.Goal "$magic_goal") $ mkCond "$magic_goal" (EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
+mkMagicGoal = (liftM $ I.Goal "$magic_goal") $ mkCond "$magic_goal" (SAssume nopos $ EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
 
-mkCond :: (?spec::Spec) => String -> Expr -> [I.Expr] -> NameGen I.Transition
-mkCond descr e extra = do
+mkCond :: (?spec::Spec) => String -> Statement -> [I.Expr] -> NameGen I.Transition
+mkCond descr s extra = do
     -- simplify and convert into a statement
-    (ss, cond') <- let ?scope = ScopeTemplate tmMain 
-                   in exprSimplify e
-    let stat = SSeq nopos (ss ++ [SAssume nopos cond'])
-        ctx = CFACtx { ctxPID     = []
+    stat <- let ?scope = ScopeTemplate tmMain 
+            in statSimplify s
+    let ctx = CFACtx { ctxPID     = []
                      , ctxStack   = [(ScopeTemplate tmMain, error $ "return from " ++ descr, Nothing, M.empty)]
                      , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
                      , ctxBrkLocs = error "break outside a loop"
@@ -244,13 +244,13 @@ mkCond descr e extra = do
                      , ctxLastVar = 0
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA False stat I.cfaInitLoc
-                                               ctxPause aft I.true) ctx
+                                               ctxPause aft I.true I.ActNone) ctx
         trans = locTrans (ctxCFA ctx') I.cfaInitLoc
         -- precondition
     return $ case trans of
                   [t] -> let res = foldl' tranAppend t (map I.SAssume extra)
                          in I.cfaTraceFile (I.tranCFA t) descr $ res
-                  _   -> error $ "mkCond " ++ show e ++ ": Invalid condition"
+                  _   -> error $ "mkCond " ++ show s ++ ": Invalid condition"
 
 ----------------------------------------------------------------------
 -- Idle transition

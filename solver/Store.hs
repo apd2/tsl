@@ -14,6 +14,7 @@ module Store (Store(..),
 import Data.List
 import Control.Monad
 import qualified Data.Map as M
+import Debug.Trace
 
 import Ops
 import IExpr

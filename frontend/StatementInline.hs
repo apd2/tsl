@@ -65,7 +65,9 @@ statSimplify' (SInvoke p mref as)   = -- Order of argument evaluation is undefin
                                       do (ss, as') <- liftM unzip $ mapM exprSimplify as
                                          return $ (concat ss) ++ [SInvoke p mref as']
 statSimplify' (SWait p c)           = do (ss,c') <- exprSimplify c
-                                         return $ (SPause p) : (ss ++ [SAssume p c'])
+                                         return $ case ss of
+                                                       [] -> [SWait p c']
+                                                       _  -> (SPause p) : (ss ++ [SAssume p c'])
 statSimplify' (SAssert p c)         = do (ss,c') <- exprSimplify c
                                          return $ ss ++ [SAssert p c']
 statSimplify' (SAssume p c)         = do (ss,c') <- exprSimplify c
@@ -97,10 +99,10 @@ statSimplify' st                    = return [st]
 statToCFA :: (?cont::Bool, ?spec::Spec, ?procs::[I.Process]) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA before   (SSeq _ ss)    = foldM statToCFA before ss
 statToCFA before s@(SPause _)     = do ctxLocSetAct before (I.ActStat s)
-                                       ctxPause before I.true
+                                       ctxPause before I.true (I.ActStat s)
 statToCFA before s@(SWait _ c)    = do ctxLocSetAct before (I.ActStat s)
                                        ci <- exprToIExprDet c
-                                       ctxPause before ci
+                                       ctxPause before ci (I.ActStat s)
 statToCFA before s@(SStop _)      = do ctxLocSetAct before (I.ActStat s)
                                        ctxFinal before
 statToCFA before   (SVarDecl _ _) = return before
@@ -128,7 +130,7 @@ statToCFA' before _ (SReturn _ rval) = do
                                         aftargs <- ctxInsTransMany' before asns
                                         ctxInsTrans aftargs ret I.TranReturn
 
-statToCFA' before after (SPar _ ps) = do
+statToCFA' before after s@(SPar _ ps) = do
     pid <- gets ctxPID
     -- child process pids
     let pids  = map (childPID pid . fst) ps
@@ -139,7 +141,7 @@ statToCFA' before after (SPar _ ps) = do
                                    p = fromJustMsg ("mkFinalCheck: process " ++ pidToName pid' ++ " unknown") 
                                        $ find ((== sname n) . I.procName) ?procs
     -- pause and wait for all of them to reach final states
-    aftwait <- ctxPause aften $ I.conj $ map mkFinalCheck ps
+    aftwait <- ctxPause aften (I.conj $ map mkFinalCheck ps) (I.ActStat s)
     -- Disable forked processes and bring them back to initial states
     aftreset <- ctxInsTransMany' aftwait $ map (\pid' -> I.TranStat $ mkPCVar pid' I.=: mkPC pid' I.cfaInitLoc) pids
     aftdisable <- ctxInsTransMany' aftreset $ map  (\pid' -> I.TranStat $ mkEnVar pid' Nothing I.=: I.false) pids
@@ -213,12 +215,12 @@ statToCFA' before _ (SBreak _) = do
     brkLoc <- gets ctxBrkLoc
     ctxInsTrans before brkLoc I.TranNop
 
-statToCFA' before after (SInvoke _ mref as) = do
+statToCFA' before after s@(SInvoke _ mref as) = do
     sc <- gets ctxScope
     let meth = snd $ getMethod sc mref
     case methCat meth of
-         Task Controllable   -> taskCall before after meth as Nothing
-         Task Uncontrollable -> taskCall before after meth as Nothing
+         Task Controllable   -> taskCall before after meth as Nothing s
+         Task Uncontrollable -> taskCall before after meth as Nothing s
          _                   -> methInline before after meth as Nothing
 
 statToCFA' before after (SAssert _ cond) = do
@@ -230,12 +232,12 @@ statToCFA' before after (SAssume _ cond) = do
     cond' <- exprToIExprDet cond
     ctxInsTrans before after (I.TranStat $ I.SAssume cond')
 
-statToCFA' before after (SAssign _ lhs (EApply _ mref args)) = do
+statToCFA' before after s@(SAssign _ lhs (EApply _ mref args)) = do
     sc <- gets ctxScope
     let meth = snd $ getMethod sc mref
     case methCat meth of
-         Task Controllable   -> taskCall before after meth args (Just lhs)
-         Task Uncontrollable -> taskCall before after meth args (Just lhs)
+         Task Controllable   -> taskCall before after meth args (Just lhs) s
+         Task Uncontrollable -> taskCall before after meth args (Just lhs) s
          _                   -> methInline before after meth args (Just lhs)
 
 statToCFA' before after (SAssign _ lhs rhs) = do
@@ -274,12 +276,12 @@ statToCFA' before after (SCase _ e cs mdef) = do
     return ()
 
 
-statToCFA' before after (SMagic _ _) = do
+statToCFA' before after s@(SMagic _ _) = do
     -- magic block flag
     aftcheck <- ctxInsTrans' before $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.false
     aftmag <- ctxInsTrans' aftcheck $ I.TranStat $ mkMagicVar I.=: I.true
     -- wait for magic flag to be false
-    aftwait <- ctxPause aftmag mkMagicDoneCond
+    aftwait <- ctxPause aftmag mkMagicDoneCond (I.ActStat s)
     ctxInsTrans aftwait after I.TranNop
 
 methInline :: (?cont::Bool, ?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
@@ -318,9 +320,9 @@ methInline before after meth args mlhs = do
     ctxPopBrkLoc
 
 
-taskCall :: (?cont::Bool, ?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
-taskCall before after meth args mlhs | ?cont     = contTaskCall  before after meth args
-                                     | otherwise = ucontTaskCall before after meth args mlhs
+taskCall :: (?cont::Bool, ?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
+taskCall before after meth args mlhs st | ?cont     = contTaskCall  before after meth args
+                                        | otherwise = ucontTaskCall before after meth args mlhs st
 
 contTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> State CFACtx ()
 contTaskCall before after meth args = do
@@ -333,8 +335,8 @@ contTaskCall before after meth args = do
     -- $pid = $pidcont
     ctxInsTrans aftcont after $ I.TranStat $ mkPIDVar I.=: mkPIDEnum pidCont
 
-ucontTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
-ucontTaskCall before after meth args mlhs = do
+ucontTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
+ucontTaskCall before after meth args mlhs st = do
     pid <- gets ctxPID
     let envar = mkEnVar pid (Just meth)
     -- set input arguments
@@ -342,7 +344,7 @@ ucontTaskCall before after meth args mlhs = do
     -- trigger task
     afttag <- ctxInsTrans' aftarg $ I.TranStat $ envar I.=: I.true
     -- pause and wait for task to complete
-    aftwait <- ctxPause afttag $ mkWaitForTask pid meth
+    aftwait <- ctxPause afttag (mkWaitForTask pid meth) (I.ActStat st)
     -- copy out arguments and retval
     aftout <- copyOutArgs aftwait meth args
     case (mlhs, mkRetVar (Just pid) meth) of
