@@ -7,7 +7,8 @@ module Parse(SpecItem(..),
              grammar,
              detexpr,
              statement,
-             statements) where
+             statements,
+             statements1) where
 
 import qualified Data.Map as M
 import Control.Monad
@@ -353,7 +354,8 @@ statement =  withPos $
          <|> sassign
          <?> "statement")
 
-statements = many $ statement <* semi
+statements  = many  $ statement <* semi
+statements1 = many1 $ statement <* semi
 
 svarDecl = SVarDecl nopos <$> varDecl
 sreturn  = SReturn nopos <$ reserved "return" <*> (optionMaybe expr)
