@@ -294,9 +294,6 @@ methInline before after meth args mlhs = do
                 Just lhs -> (liftM Just) $ exprToIExprDet lhs
     -- set input arguments
     aftarg <- setArgs before meth args
---    aftpause1 <- case methCat meth of
---                      Task _ -> ctxPause aftarg I.true
---                      _      -> return aftarg
     -- set return location
     retloc <- ctxInsLoc
     aftret <- ctxInsTrans' retloc I.TranReturn
@@ -305,16 +302,13 @@ methInline before after meth args mlhs = do
     -- change syntactic scope
     ctxPushScope sc aftret lhs (methodLMap pid meth)
     -- build CFA of the method
-    aftcall <- ctxInsTrans' aftarg (I.TranCall meth)
+    aftcall <- ctxInsTrans' aftarg (I.TranCall meth (Just aftret))
     aftbody <- statToCFA aftcall (fromRight $ methBody meth)
     ctxInsTrans aftbody retloc I.TranNop
     -- restore syntactic scope
     ctxPopScope
     -- copy out arguments
     aftout <- copyOutArgs aftret meth args
---    aftpause2 <- case methCat meth of
---                      Task _ -> ctxPause aftout I.true
---                      _      -> return aftout
     -- nop-transition to after
     ctxInsTrans aftout after I.TranNop
     -- restore context

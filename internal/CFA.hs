@@ -135,23 +135,23 @@ instance PP LocLabel where
 instance Show LocLabel where
     show = render . pp
 
-data TranLabel = TranCall F.Method
+data TranLabel = TranCall F.Method (Maybe Loc) -- method and return location
                | TranReturn
                | TranNop
                | TranStat Statement
 
 instance Eq TranLabel where
-    (==) (TranCall m1) (TranCall m2) = sname m1 == sname m2
-    (==) TranReturn    TranReturn    = True
-    (==) TranNop       TranNop       = True
-    (==) (TranStat s1) (TranStat s2) = s1 == s2
-    (==) _             _             =  False
+    (==) (TranCall m1 l1) (TranCall m2 l2) = sname m1 == sname m2 && l1 == l2
+    (==) TranReturn       TranReturn       = True
+    (==) TranNop          TranNop          = True
+    (==) (TranStat s1)    (TranStat s2)    = s1 == s2
+    (==) _                _                = False
 
 instance PP TranLabel where
-    pp (TranCall m)  = text "call" <+> text (sname m)
-    pp TranReturn    = text "return"
-    pp TranNop       = text ""
-    pp (TranStat st) = pp st
+    pp (TranCall m l) = text "call" <+> text (sname m) <+> text "retloc=" <> pp l
+    pp TranReturn     = text "return"
+    pp TranNop        = text ""
+    pp (TranStat st)  = pp st
 
 instance Show TranLabel where
     show = render . pp
