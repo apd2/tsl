@@ -588,7 +588,7 @@ utranSuffix pid updatepc updatecont (I.Transition from to cfa) =
         -- non-deterministically reset cont to true if inside a magic block
         (cfa7,aftcont) = if updatecont 
                             then let (cfa5, loc3)     = I.cfaInsTrans' aftucont (I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true) cfa4
-                                     (cfa6, aftreset) = I.cfaInsTrans' loc3 (I.TranStat $ mkContVar I.=: I.false) cfa5
+                                     (cfa6, aftreset) = I.cfaInsTrans' loc3 (I.TranStat $ mkContVar I.=: I.true) cfa5
                                  in (I.cfaInsTrans aftucont aftreset I.TranNop cfa6, aftreset)
                             else (cfa4, aftucont)
         -- set $pid
