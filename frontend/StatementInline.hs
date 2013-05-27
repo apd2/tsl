@@ -118,9 +118,9 @@ statToCFA' before _ (SReturn _ rval) = do
     mlhs  <- gets ctxLHS
     ret   <- gets ctxRetLoc
     case rval of 
-         Nothing -> ctxInsTrans before ret I.TranReturn
+         Nothing -> ctxInsTrans before ret I.TranNop
          Just v  -> case mlhs of
-                         Nothing  -> ctxInsTrans before ret I.TranReturn
+                         Nothing  -> ctxInsTrans before ret I.TranNop
                          Just lhs -> do sc@(ScopeMethod _ m) <- gets ctxScope
                                         let t = fromJust $ methRettyp m
                                         vi <- exprToIExprs v t
@@ -128,7 +128,7 @@ statToCFA' before _ (SReturn _ rval) = do
                                                    $ zipWith I.SAssign (I.exprScalars lhs (mkType $ Type sc t))
                                                                        (concatMap (uncurry I.exprScalars) vi)
                                         aftargs <- ctxInsTransMany' before asns
-                                        ctxInsTrans aftargs ret I.TranReturn
+                                        ctxInsTrans aftargs ret I.TranNop
 
 statToCFA' before after s@(SPar _ ps) = do
     pid <- gets ctxPID
@@ -299,18 +299,19 @@ methInline before after meth args mlhs = do
 --                      _      -> return aftarg
     -- set return location
     retloc <- ctxInsLoc
+    aftret <- ctxInsTrans' retloc I.TranReturn
     -- clear break location
     ctxPushBrkLoc $ error "break outside a loop"
     -- change syntactic scope
-    ctxPushScope sc retloc lhs (methodLMap pid meth)
+    ctxPushScope sc aftret lhs (methodLMap pid meth)
     -- build CFA of the method
     aftcall <- ctxInsTrans' aftarg (I.TranCall meth)
     aftbody <- statToCFA aftcall (fromRight $ methBody meth)
-    ctxInsTrans aftbody retloc I.TranReturn
+    ctxInsTrans aftbody retloc I.TranNop
     -- restore syntactic scope
     ctxPopScope
     -- copy out arguments
-    aftout <- copyOutArgs retloc meth args
+    aftout <- copyOutArgs aftret meth args
 --    aftpause2 <- case methCat meth of
 --                      Task _ -> ctxPause aftout I.true
 --                      _      -> return aftout

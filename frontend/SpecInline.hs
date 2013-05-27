@@ -405,10 +405,11 @@ taskToCFA pid meth ctl = I.cfaTraceFile (ctxCFA ctx') (pidToName pid ++ "_" ++ s
           ctx' = execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume guard
                                aftcall <- ctxInsTrans' aftguard $ I.TranCall meth
                                retloc  <- ctxInsLoc
-                               ctxInsTrans retloc I.cfaInitLoc (I.TranStat reset)
+                               aftreset <- ctxInsTrans' retloc (I.TranStat reset)
+                               ctxInsTrans aftreset I.cfaInitLoc I.TranReturn
                                ctxPushScope sc retloc (mkRetVar (Just pid) meth) (methodLMap pid meth)
                                aftbody <- procStatToCFA False stat aftcall
-                               ctxInsTrans aftbody retloc I.TranReturn
+                               ctxInsTrans aftbody retloc I.TranNop
                                ctxPruneUnreachable) ctx
 
 -- Recursively construct CFA's for the process and its children
