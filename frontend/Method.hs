@@ -4,7 +4,7 @@ module Method(TaskCat(..),
               MethodCat(..), 
               ArgDir(..), 
               Arg(Arg,argDir,argType), 
-              Method(Method,methCat, methArg, methRettyp, methName),
+              Method(Method,methExport, methCat, methArg, methRettyp, methName),
               methVar,
               methBody) where
 

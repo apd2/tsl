@@ -3,6 +3,7 @@
 module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,ENonDet),
             ConstExpr, 
             LExpr,
+            Slice,
             MethodRef(MethodRef),
             Radix(..),
             UOp(..),
