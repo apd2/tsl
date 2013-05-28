@@ -2,7 +2,6 @@
 
 module ExprOps where
 
-import Control.Monad.Error
 import Spec
 import Expr
 import Template

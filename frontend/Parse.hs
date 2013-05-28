@@ -381,8 +381,8 @@ scase    = (fmap uncurry (SCase nopos <$ reserved "case" <*> (parens detexpr)))
            <*> (braces $ (,) <$> (many $ (,) <$> detexpr <* colon <*> statement <* semi) 
                              <*> optionMaybe (reserved "default" *> colon *> statement <* semi))
 smagic   = SMagic nopos <$ ismagic
-                        <*> ((braces $ reservedOp "...") 
-                         *> ((Left <$ reserved "using" <*> ident) <|> (Right <$ reserved "post" <*> detexpr)))
+                        <*> (braces $ withPos $ nopos <$ reservedOp "...") 
+                        <*> ((Left <$ reserved "using" <*> ident) <|> (Right <$ reserved "post" <*> detexpr))
     where ismagic = try $ lookAhead $ symbol "{" *> reservedOp "..."
 
 ------------------------------------------------------------------

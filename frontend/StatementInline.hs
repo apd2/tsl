@@ -87,9 +87,9 @@ statSimplify' (SCase p c cs md)     = -- Case labels must be side-effect-free, s
                                          cstats        <- mapM statSimplify (snd $ unzip cs)
                                          md'           <- Tr.sequence $ fmap statSimplify md
                                          return $ concat sscs ++ ssc ++ [SCase p c' (zip clabs' cstats) md']
-statSimplify' (SMagic p (Right e))  = do (ss,e') <- exprSimplify e
-                                         return $ (SMagic p (Right $ EBool (pos e) True)):(ss ++ [SAssert (pos e) e'])
-statSimplify' st                    = return [st]
+statSimplify' (SMagic p p2 (Right e)) = do (ss,e') <- exprSimplify e
+                                           return $ (SMagic p p2 (Right $ EBool (pos e) True)):(ss ++ [SAssert (pos e) e'])
+statSimplify' st                      = return [st]
 
 
 
@@ -276,12 +276,15 @@ statToCFA' before after (SCase _ e cs mdef) = do
     return ()
 
 
-statToCFA' before after s@(SMagic _ _) = do
+statToCFA' before after s@(SMagic _ _ constr) = do
     -- magic block flag
     aftcheck <- ctxInsTrans' before $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.false
     aftmag <- ctxInsTrans' aftcheck $ I.TranStat $ mkMagicVar I.=: I.true
     -- wait for magic flag to be false
-    aftwait <- ctxPause aftmag mkMagicDoneCond (I.ActStat s)
+    let p = case constr of
+                 Left  i -> pos i
+                 Right c -> pos c
+    aftwait <- ctxPause aftmag mkMagicDoneCond (I.ActStat $ atPos s p)
     ctxInsTrans aftwait after I.TranNop
 
 methInline :: (?cont::Bool, ?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()

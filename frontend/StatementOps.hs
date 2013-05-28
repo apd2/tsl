@@ -85,20 +85,20 @@ statMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Statement ->
 statMapExpr f s st = mapStat (statMapExpr' f) s st
 
 statMapExpr' :: (?spec::Spec) =>  (Scope -> Expr -> Expr) -> Scope -> Statement -> Statement
-statMapExpr' f s (SVarDecl p v)         = SVarDecl p (varMapExpr f s v)
-statMapExpr' f s (SReturn  p mr)        = SReturn  p (fmap (mapExpr f s) mr)
-statMapExpr' f s (SDo      p b c)       = SDo      p b (mapExpr f s c)
-statMapExpr' f s (SWhile   p c b)       = SWhile   p (mapExpr f s c) b
-statMapExpr' f s (SFor     p (i,c,u) b) = SFor     p (i, mapExpr f s c, u) b
-statMapExpr' f s (SInvoke  p m as)      = SInvoke  p m (map (mapExpr f s) as)
-statMapExpr' f s (SWait    p e)         = SWait    p (mapExpr f s e)
-statMapExpr' f s (SAssert  p e)         = SAssert  p (mapExpr f s e)
-statMapExpr' f s (SAssume  p e)         = SAssume  p (mapExpr f s e)
-statMapExpr' f s (SAssign  p l r)       = SAssign  p (mapExpr f s l) (mapExpr f s r)
-statMapExpr' f s (SITE     p c t me)    = SITE     p (mapExpr f s c) t me
-statMapExpr' f s (SCase    p c cs md)   = SCase    p (mapExpr f s c) (map (mapFst $ mapExpr f s) cs) md
-statMapExpr' f s (SMagic   p (Right e)) = SMagic   p (Right $ mapExpr f s e)
-statMapExpr' f s st                     = st
+statMapExpr' f s (SVarDecl p v)            = SVarDecl p (varMapExpr f s v)
+statMapExpr' f s (SReturn  p mr)           = SReturn  p (fmap (mapExpr f s) mr)
+statMapExpr' f s (SDo      p b c)          = SDo      p b (mapExpr f s c)
+statMapExpr' f s (SWhile   p c b)          = SWhile   p (mapExpr f s c) b
+statMapExpr' f s (SFor     p (i,c,u) b)    = SFor     p (i, mapExpr f s c, u) b
+statMapExpr' f s (SInvoke  p m as)         = SInvoke  p m (map (mapExpr f s) as)
+statMapExpr' f s (SWait    p e)            = SWait    p (mapExpr f s e)
+statMapExpr' f s (SAssert  p e)            = SAssert  p (mapExpr f s e)
+statMapExpr' f s (SAssume  p e)            = SAssume  p (mapExpr f s e)
+statMapExpr' f s (SAssign  p l r)          = SAssign  p (mapExpr f s l) (mapExpr f s r)
+statMapExpr' f s (SITE     p c t me)       = SITE     p (mapExpr f s c) t me
+statMapExpr' f s (SCase    p c cs md)      = SCase    p (mapExpr f s c) (map (mapFst $ mapExpr f s) cs) md
+statMapExpr' f s (SMagic   p p2 (Right e)) = SMagic   p p2 (Right $ mapExpr f s e)
+statMapExpr' f s st                        = st
 
 -- Find all methods invoked by the statement
 statCallees :: (?spec::Spec) => Scope -> Statement -> [(Pos, (Template, Method))]
@@ -144,8 +144,8 @@ statObjs (SITE     _ c t me)        = exprObjs c ++ statObjs t ++ (concatMap sta
 statObjs (SCase    _ c cs md)       = exprObjs c ++
                                       concatMap (\(e,s) -> exprObjs e ++ statObjs s) cs ++
                                       concatMap statObjs (maybeToList md)
-statObjs (SMagic   _ (Left g))      = [ObjGoal (scopeTm ?scope) (getGoal ?scope g)]
-statObjs (SMagic   _ (Right e))     = exprObjs e
+statObjs (SMagic   _ _ (Left g))    = [ObjGoal (scopeTm ?scope) (getGoal ?scope g)]
+statObjs (SMagic   _ _ (Right e))   = exprObjs e
 statObjs _                          = []
 
 -- recursive version
@@ -200,7 +200,7 @@ statFlatten iid s st = mapStat (statFlatten' iid) s $ statMapExpr (exprFlatten' 
 statFlatten' :: (?spec::Spec) => IID -> Scope -> Statement -> Statement
 statFlatten' iid s (SPar p ps)                     = SPar p $ map (\(n,s) -> (itreeFlattenName iid n,s)) ps
 statFlatten' iid s (SInvoke p (MethodRef p' n) as) = SInvoke p (MethodRef p' [itreeFlattenName (itreeRelToAbsPath iid (init n)) (last n)]) as
-statFlatten' iid s (SMagic p (Left g))             = SMagic p $ Left $ itreeFlattenName iid g
+statFlatten' iid s (SMagic p p2 (Left g))          = SMagic p p2 $ Left $ itreeFlattenName iid g
 statFlatten' _   _ st                              = st
 
 -- True if the statement returns a value on all execution paths.
@@ -360,7 +360,7 @@ validateStat' l (SCase p c cs md) = do
     mapM (\(e1,_) -> checkTypeMatch c e1) cs
     return ()
 
-validateStat' l (SMagic p g) = do
+validateStat' l (SMagic p _ g) = do
     case ?scope of
          ScopeMethod t m -> assert (methCat m == Task Uncontrollable) p "Magic blocks only allowed in uncontrollable tasks"
          _               -> err p "Magic blocks only allowed in uncontrollable tasks"
@@ -421,7 +421,7 @@ findInstPath b     s@(SITE _ c t e)    = if not $ isInstExpr c
                                                       Nothing -> Just [Right c]
                                                       Just st -> shortest $ catMaybes $ map (findInstPath b) $ [t,st]
 findInstPath b     s@(SCase _ _ cs md) = shortest $ catMaybes $ map (findInstPath b) $ (map snd cs) ++ maybeToList md
-findInstPath _       (SMagic _ _)      = Nothing
+findInstPath _       (SMagic _ _ _)    = Nothing
 
 
 isBreak :: Either Statement Expr -> Bool

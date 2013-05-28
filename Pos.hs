@@ -14,8 +14,8 @@ class WithPos a where
     atPos :: a -> Pos -> a
 
 instance WithPos Pos where
-    pos   = id
-    atPos = error "Not implemented: atPos Pos"   
+    pos       = id
+    atPos _ p = p
 
 spos :: (WithPos a) => a -> String
 spos x = let p = fst $ pos x
