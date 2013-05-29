@@ -46,7 +46,7 @@ import IVar
 import IType
 import Interface hiding(getVar)
 import Control.Monad.State
-import Control.Monad.ST.Lazy
+import Control.Monad.ST
 
 type PVarOps pdb s u = VarOps pdb (BAVar AbsVar AbsVar) s u
 type PDB pdb s u     = StateT pdb (ST s)

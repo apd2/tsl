@@ -10,7 +10,7 @@ module FCompile (formAbsVars,
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.State
-import Control.Monad.ST.Lazy
+import Control.Monad.ST
 
 import qualified CuddExplicitDeref as C
 import qualified BDDHelpers        as C

@@ -4,7 +4,7 @@ module BDDHelpers(disj,
                   eqVars,
                   bimp) where
 
-import Control.Monad.ST.Lazy
+import Control.Monad.ST
 import Control.Monad
 import Data.Bits
 
