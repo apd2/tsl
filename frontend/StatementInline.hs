@@ -221,7 +221,7 @@ statToCFA' before after s@(SInvoke _ mref as) = do
     case methCat meth of
          Task Controllable   -> taskCall before after meth as Nothing s
          Task Uncontrollable -> taskCall before after meth as Nothing s
-         _                   -> methInline before after meth as Nothing
+         _                   -> methInline before after meth as Nothing (I.ActStat s)
 
 statToCFA' before after (SAssert _ cond) = do
     cond' <- exprToIExprDet cond
@@ -232,13 +232,13 @@ statToCFA' before after (SAssume _ cond) = do
     cond' <- exprToIExprDet cond
     ctxInsTrans before after (I.TranStat $ I.SAssume cond')
 
-statToCFA' before after s@(SAssign _ lhs (EApply _ mref args)) = do
+statToCFA' before after s@(SAssign _ lhs e@(EApply _ mref args)) = do
     sc <- gets ctxScope
     let meth = snd $ getMethod sc mref
     case methCat meth of
          Task Controllable   -> taskCall before after meth args (Just lhs) s
          Task Uncontrollable -> taskCall before after meth args (Just lhs) s
-         _                   -> methInline before after meth args (Just lhs)
+         _                   -> methInline before after meth args (Just lhs) (I.ActExpr e)
 
 statToCFA' before after (SAssign _ lhs rhs) = do
     sc <- gets ctxScope
@@ -287,8 +287,8 @@ statToCFA' before after s@(SMagic _ _ constr) = do
     aftwait <- ctxPause aftmag mkMagicDoneCond (I.ActStat $ atPos s p)
     ctxInsTrans aftwait after I.TranNop
 
-methInline :: (?cont::Bool, ?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> State CFACtx ()
-methInline before after meth args mlhs = do
+methInline :: (?cont::Bool, ?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
+methInline before after meth args mlhs act = do
     -- save current context
     pid <- gets ctxPID
     let sc = ScopeMethod tmMain meth
@@ -300,6 +300,7 @@ methInline before after meth args mlhs = do
     -- set return location
     retloc <- ctxInsLoc
     aftret <- ctxInsTrans' retloc I.TranReturn
+    ctxLocSetAct aftret act
     -- clear break location
     ctxPushBrkLoc $ error "break outside a loop"
     -- change syntactic scope
