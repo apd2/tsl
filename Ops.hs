@@ -90,13 +90,12 @@ instance Show BOp where
 -- Determine type of result of arith expression.
 -- Type of each operand and the result is described as (signed?, width)
 arithBOpType :: BOp -> (Bool,Int) -> (Bool,Int) -> (Bool,Int)
-arithBOpType op       (s1,w1) (s2,w2) | elem op [BAnd,BOr,BXor] = (s1,w1)
-arithBOpType BConcat  (s1,w1) (s2,w2)                           = (False, w1 + w2)
-arithBOpType op       (s1,w1) (s2,w2) | elem op [Plus,Mul]      = case (s1, s2) of
-                                                                       (False, False) -> (False, max w1 w2)
-                                                                       _              -> (True,  max w1 w2)
-arithBOpType BinMinus (s1,w1) (s2,w2)                           = (True, max w1 w2)
-arithBOpType Mod      (s1,w1) (s2,w2)                           = (s1,w1)
+arithBOpType op       (s1,w1) (s2,w2) | elem op [BAnd,BOr,BXor]     = (s1,w1)
+arithBOpType BConcat  (s1,w1) (s2,w2)                               = (False, w1 + w2)
+arithBOpType op       (s1,w1) (s2,w2) | elem op [Plus,Mul,BinMinus] = case (s1, s2) of
+                                                                           (False, False) -> (False, max w1 w2)
+                                                                           _              -> (True,  max w1 w2)
+arithBOpType Mod      (s1,w1) (s2,w2)                               = (s1,w1)
 
 arithUOpType :: UOp -> (Bool,Int) -> (Bool,Int)
 arithUOpType BNeg   (s,w) = (s,w)
@@ -122,7 +121,7 @@ arithBOp BConcat (i1,s1,w1) (i2,s2,w2)  = (i,s,w)
           i2' = abs i2
           i = i1' + (i2' `shiftL` w1)
 
-arithBOp op (i1,s1,w1) (i2,s2,w2)   | elem op [Plus,BinMinus,Mod,Mul] = (i,s,w)
+arithBOp op (i1,s1,w1) (i2,s2,w2)   | elem op [Plus,BinMinus,Mod,Mul] = (i',s,w)
     where (s,w) = arithBOpType op (s1,w1) (s2,w2)
           i = case op of
                    Plus     -> i1 + i2
@@ -131,7 +130,9 @@ arithBOp op (i1,s1,w1) (i2,s2,w2)   | elem op [Plus,BinMinus,Mod,Mul] = (i,s,w)
                    Mul      -> i1 * i2
               .&.
               (sum $ map bit [0..w - 1])
-
+          i' = if s && testBit i (w-1)
+                  then - ((foldl' (\x idx -> complementBit x idx) i [0..w-1]) + 1)
+                  else i
 -- Perform unary arithmetic operation
 -- Takes integer argument and width
 arithUOp :: UOp -> (Integer, Bool, Int) -> (Integer, Bool, Int)
