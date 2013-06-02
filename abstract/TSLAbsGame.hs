@@ -94,7 +94,7 @@ tslContAbs spec m ops = do
 
 tslUpdateAbs :: Spec -> C.STDdManager s u -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbs spec m avars ops = do
-    --trace "!!!!!!tslGameVarUpdateC" $ return ()
+    trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?spec = spec
         ?ops  = ops
         ?m    = m
@@ -108,7 +108,7 @@ tslUpdateAbs spec m avars ops = do
                return cont
 
     -- uncontrollable
-    ucont <- do updatefs <- mapM (varUpdateTrans avars) $ tsCTran $ specTran spec
+    ucont <- do updatefs <- mapM (varUpdateTrans avars) $ tsUTran $ specTran spec
                 pervarfs <- lift $ mapM (C.disj m) $ transpose updatefs
                 _ <- lift $ mapM (mapM (C.deref m)) updatefs
                 ucont <- lift $ C.conj m pervarfs
