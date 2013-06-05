@@ -6,15 +6,17 @@ module Store (Store(..),
               storeProject,
               storeTryEval,
               storeEval,
+              storeTryEvalScalar,
               storeEvalScalar,
+              storeTryEvalEnum,
               storeEvalEnum,
+              storeTryEvalBool,
               storeEvalBool,
               storeSet) where
 
 import Data.List
 import Control.Monad
 import qualified Data.Map as M
-import Debug.Trace
 
 import Ops
 import IExpr
