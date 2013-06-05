@@ -9,6 +9,7 @@ module Predicate(PVarOps,
                  avarCategory,
                  avarVar,
                  avarAsnToPred,
+                 avarToExpr,
                  ArithUOp(..),
                  uopToArithOp,
                  arithOpToUOp,
@@ -86,6 +87,10 @@ avarAsnToPred (AVarTerm t)                i =
          Enum n -> PAtom REq t $ TEnum $ (enumEnums $ getEnumeration n) !! (fromInteger i)
          SInt w -> PAtom REq t $ TSInt w i
          UInt w -> PAtom REq t $ TUInt w i
+
+avarToExpr :: (?spec::Spec) => AbsVar -> Expr
+avarToExpr (AVarPred p) = predToExpr p
+avarToExpr (AVarTerm t) = termToExpr t
 
 instance Show AbsVar where
     show (AVarPred p) = show p
