@@ -56,4 +56,4 @@ grCycle g = case mapMaybe nodeCycle (nodes g) of
 
 -- The number of bits required to encode range [0..i]
 bitWidth :: (Integral a) => a -> Int
-bitWidth i = log2 (fromIntegral $ i+1)
+bitWidth i = 1 + log2 (fromIntegral i)

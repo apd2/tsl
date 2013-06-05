@@ -155,10 +155,12 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
 
 instance SMTPP RelOp where
     smtpp REq  = text "="
+    smtpp RNeq = text "distinct"
     smtpp RLt  = text "bvslt"
     smtpp RGt  = text "bvsgt"
     smtpp RLte = text "bvsle"
     smtpp RGte = text "bvsge"
+    
 
 instance SMTPP ArithUOp where
     smtpp AUMinus = text "bvneg"

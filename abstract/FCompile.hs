@@ -161,7 +161,13 @@ formSubst rel av f =
                  res  <- lift $ C.bexists ?m con cube
                  lift $ C.deref ?m cube
                  lift $ C.deref ?m con
-                 return res)
+                 -- check that res does not depend on v'
+                 support <- lift $ C.supportIndices ?m res
+                 supcubes <- lift $ mapM (\i -> C.indicesToCube ?m [i]) support
+                 if any (== v') supcubes
+                    then error $ "formSubst: tmp variable in result"
+                    else do _ <- lift $ mapM (C.deref ?m) supcubes
+                            return res)
 
 -- Substitute variable av with cascade cas in relation rel.
 -- Computed as follows:
@@ -182,7 +188,13 @@ tcasSubst rel av cas =
                  res  <- lift $ C.bexists ?m con cube
                  lift $ C.deref ?m cube
                  lift $ C.deref ?m con
-                 return res)
+                 -- check that res does not depend on v'
+                 support <- lift $ C.supportIndices ?m res
+                 supcubes <- lift $ mapM (\i -> C.indicesToCube ?m [i]) support
+                 if any (\d -> elem d v') supcubes
+                    then error $ "tcasSubst: tmp variable in result"
+                    else do _ <- lift $ mapM (C.deref ?m) supcubes
+                            return res)
 
 
 withTmpMany :: Abs.VarOps pdb v s u -> Int -> ([C.DDNode s u] -> StateT pdb (ST s) a) -> StateT pdb (ST s) a
