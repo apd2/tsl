@@ -213,7 +213,7 @@ mkInit = do
     let ass = SSeq nopos
               $ mapMaybe (\v -> case varInit $ gvarVar v of
                                      Nothing -> Nothing
-                                     Just e  -> Just $ SAssign (pos v) (ETerm nopos $ [name v]) e) (tmVar tmMain)
+                                     Just e  -> Just $ SAssume (pos v) $ EBinOp (pos v) Eq (ETerm nopos $ [name v]) e) (tmVar tmMain)
         -- add init blocks
         cond = SAssume nopos $ eAnd nopos $ map initBody (tmInit tmMain)
     mkCond "$init" (SSeq nopos [ass, cond]) []
