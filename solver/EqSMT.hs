@@ -116,6 +116,8 @@ mkVar n = {-trace ("mkVar " ++ n ++ ", type " ++ show t) -} DP.Var [(varName v,N
 mkType :: (?spec::Spec) => Type -> DP.TypeDef
 mkType (UInt w)    = DP.Int w
 mkType (Struct fs) = DP.Struct $ map (\(Field n t) -> DP.Named n (mkType t)) fs
+mkType (Enum n)    = DP.Enum $ zip (enumEnums $ getEnumeration n) $ map Just [0..]
+mkType Bool        = DP.Bool
 mkType t           = error $ "EqSMT.mkType " ++ show t
 
 dnfToForm :: (?spec::Spec) => DP.DNF -> Formula

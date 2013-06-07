@@ -10,8 +10,9 @@ import Data.Maybe
 import Data.List hiding (and)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Debug.Trace
 
-import Util
+import Util hiding (trace)
 import Ops
 import qualified CuddExplicitDeref as C
 import qualified BDDHelpers        as C

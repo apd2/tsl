@@ -151,7 +151,7 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TIndex a i)           = parens $ text "select" <+> smtpp a <+> smtpp i
     smtpp (TUnOp op t)           = parens $ smtpp op <+> smtpp t
     smtpp (TBinOp op t1 t2)      = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
-    smtpp (TSlice t (l,h))       = parens $ (parens $ char '_' <+> text "extract" <+> int l <+> int h) <+> smtpp t
+    smtpp (TSlice t (l,h))       = parens $ (parens $ char '_' <+> text "extract" <+> int h <+> int l) <+> smtpp t
 
 instance SMTPP RelOp where
     smtpp REq  = text "="
