@@ -50,6 +50,7 @@ data Spec = Spec {
     specAlways :: Maybe CFA,   -- always blocks
     specProc   :: [Process],   -- processes
     specCTask  :: [Task],      -- controllable tasks
+    specCAct   :: CFA,         -- controllable transitions
     specTran   :: TranSpec     -- info required for variable update
                                -- computation
 }

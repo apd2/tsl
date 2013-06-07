@@ -69,13 +69,14 @@ spec2Internal s =
                              $ filter ((== Task Controllable) . methCat)
                              $ tmMethod tmMain
         specEnum           = choiceenum ++ (pidenum : tagenum : (senum ++ pcenums))
-        specVar            = concat cvars ++ [pidvar] ++ pcvars ++ vars ++ concat (tmppvs ++ tmpcvs) ++ extraivars
+        specVar            = cvars ++ [pidvar] ++ pcvars ++ vars ++ concat (tmppvs ++ tmpcvs) ++ extraivars
+        specCAct           = ctran
         specTran           = error "specTran undefined"
         spec               = I.Spec {..}
         spec'              = I.specMapCFA (I.cfaAddNullTypes spec) spec
 
         -- Controllable transitions
-        (ctran, cvars) = unzip $ map mkCTran $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain
+        (ctran, cvars) = mkCTran 
         -- Uncontrollable processes
         trprocs = map (\(pid, cfa) -> cfaToIProcess pid cfa) $ I.specAllProcs spec'
         -- Uncontrollable transitions
@@ -92,7 +93,7 @@ spec2Internal s =
         pidinit  = mkPIDVar   I.=== mkPIDEnum pidIdle
         errinit  = mkErrVar   I.=== I.false in
 
-        spec' {I.specTran = I.TranSpec { I.tsCTran  = mkMagicReturn : ctran
+        spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransition ctran "ctran"
                                        , I.tsUTran  = mkIdleTran : utran
                                        , I.tsWire   = cfaToITransition (fromMaybe I.cfaNop (I.specWire spec'))   "wires"
                                        , I.tsAlways = cfaToITransition (fromMaybe I.cfaNop (I.specAlways spec')) "always"
@@ -270,12 +271,16 @@ mkIdleTran =
 -- a controllable state
 contGuard = I.SAssume $ I.conj $ [mkMagicVar I.=== I.true, mkContVar I.=== I.true]
 
-mkCTran :: (?spec::Spec) => Method -> (I.Transition, [I.Var])
-mkCTran m = (I.Transition I.cfaInitLoc after (ctxCFA ctx'), ctxVar ctx')
+-- generate CFA that represents all possible controllable transitions
+mkCTran :: (?spec::Spec) => (I.CFA, [I.Var])
+mkCTran = I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
     where sc   = ScopeTemplate tmMain
-          args = replicate (length $ methArg m) (ENonDet nopos)
-          stat = let ?scope = sc
-                 in evalState (statSimplify $ SInvoke nopos (MethodRef nopos [name m]) args) (0,[])
+          stat = SChoice nopos 
+                 $ SMagExit nopos : 
+                   (map (\m -> SInvoke nopos (MethodRef nopos [name m]) 
+                               $ replicate (length $ methArg m) (ENonDet nopos))
+                    $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain)
+          stat' = let ?scope = sc in evalState (statSimplify stat) (0,[])
           ctx  = CFACtx { ctxPID     = []
                         , ctxStack   = [(sc, error "return from controllable transition", Nothing, M.empty)]
                         , ctxCFA     = I.newCFA sc (SSeq nopos []) I.true
@@ -283,14 +288,9 @@ mkCTran m = (I.Transition I.cfaInitLoc after (ctxCFA ctx'), ctxVar ctx')
                         , ctxGNMap   = globalNMap
                         , ctxLastVar = 0
                         , ctxVar     = []}
-          (after, ctx') = let ?procs = [] in runState (do aftguard <- ctxInsTrans' I.cfaInitLoc (I.TranStat contGuard)
-                                                          procStatToCFA True stat aftguard) ctx
-
-mkMagicReturn :: (?spec::Spec) => I.Transition
-mkMagicReturn = I.Transition I.cfaInitLoc after cfa2
-    where (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc (I.TranStat contGuard) (I.newCFA (ScopeTemplate tmMain) (SSeq nopos []) I.true)
-          (cfa1, aftmagic) = I.cfaInsTrans' aftguard (I.TranStat $ mkMagicVar I.=: I.false) cfa0
-          (cfa2, after)    = I.cfaInsTrans' aftmagic (I.TranStat $ mkContVar I.=: I.false)  cfa1
+          ctx' = let ?procs = [] in execState (do aftguard <- ctxInsTrans' I.cfaInitLoc (I.TranStat contGuard)
+                                                  aftcall  <- procStatToCFA True stat' aftguard
+                                                  ctxFinal aftcall) ctx
 
 ----------------------------------------------------------------------
 -- Variables

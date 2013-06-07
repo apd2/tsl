@@ -100,9 +100,7 @@ tslUpdateAbs spec m avars ops = do
         ?m    = m
 
     -- controllable
-    cont <- do updatefs <- mapM (varUpdateTrans avars) $ tsCTran $ specTran spec
-               pervarfs <- lift $ mapM (C.disj m) $ transpose updatefs
-               _ <- lift $ mapM (mapM (C.deref m)) updatefs
+    cont <- do pervarfs <- varUpdateTrans avars $ tsCTran $ specTran spec
                cont <- lift $ C.conj m pervarfs
                _ <- lift $ mapM (C.deref m) pervarfs
                return cont

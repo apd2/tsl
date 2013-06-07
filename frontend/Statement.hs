@@ -1,6 +1,6 @@
 module Statement(Statement(SVarDecl,SReturn,SSeq,SPar,SForever,SDo,
                            SWhile,SFor,SChoice,SPause,SWait,SStop,SBreak,SInvoke,
-                           SAssert,SAssume,SAssign,SITE,SCase,SMagic),
+                           SAssert,SAssume,SAssign,SITE,SCase,SMagic,SMagExit),
                  stmtVar,
                  sSeq) where
 
@@ -34,6 +34,7 @@ data Statement = SVarDecl {stpos::Pos, svar::Var}
                | SITE     {stpos::Pos, cond::Expr, sthen::Statement, selse::(Maybe Statement)}     -- if () then {..} [else {..}]
                | SCase    {stpos::Pos, caseexpr::Expr, cases::[(Expr, Statement)], def::(Maybe Statement)}
                | SMagic   {stpos::Pos, magpos::Pos, magiccond::(Either Ident Expr)}
+               | SMagExit {stpos::Pos}
 instance PP Statement where
     pp (SVarDecl _ d)               = pp d
     pp (SReturn _ e)                = text "return" <+> pp e
@@ -63,6 +64,7 @@ instance PP Statement where
                                                               Just s  -> text "default" <> colon <+> pp s <> semi
     pp (SMagic _ _ (Left g))        = (braces $ text "...") <+> text "using" <+> pp g
     pp (SMagic _ _ (Right c))       = (braces $ text "...") <+> text "post" <+> pp c
+    pp (SMagExit _)                 = text "exit"
 
 instance WithPos Statement where
     pos       = stpos

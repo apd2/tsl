@@ -34,7 +34,7 @@ instance PP Goal where
     pp (Goal n c) = text "goal" <+> pp n <+> char '=' <+> pp c
 
 
-data TranSpec = TranSpec { tsCTran  :: [Transition]
+data TranSpec = TranSpec { tsCTran  :: Transition
                          , tsUTran  :: [Transition]
                          , tsWire   :: Transition
                          , tsInit   :: (Transition, Expr) -- initial state constraint (constraint_on_spec_variables,constraints_on_aux_variables)
@@ -44,7 +44,7 @@ data TranSpec = TranSpec { tsCTran  :: [Transition]
                          }
 
 instance PP TranSpec where
-    pp s = (vcat $ map (($+$ text "") . pp) (tsCTran s))
+    pp s = (text "controllable: " <+> (pp $ tsCTran s))
            $+$
            (vcat $ map (($+$ text "") . pp) (tsUTran s))
            $+$
