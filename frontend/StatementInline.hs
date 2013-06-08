@@ -287,9 +287,10 @@ statToCFA' before after s@(SMagic _ _ constr) = do
     aftwait <- ctxPause aftmag mkMagicDoneCond (I.ActStat $ atPos s p)
     ctxInsTrans aftwait after I.TranNop
 
-statToCFA' before after s@(SMagExit _) = do
-    aftcont <- ctxInsTrans' before $ I.TranStat $ mkContVar I.=: I.false
-    ctxInsTrans aftcont after      $ I.TranStat $ mkMagicVar I.=: I.false
+statToCFA' before after (SMagExit _) = do
+    aftcont <- ctxInsTrans' before  $ I.TranStat $ mkContVar  I.=: I.false
+    aftpid  <- ctxInsTrans' aftcont $ I.TranStat $ mkPIDVar   I.=: mkPIDEnum pidCont
+    ctxInsTrans aftpid after        $ I.TranStat $ mkMagicVar I.=: I.false
 
 methInline :: (?cont::Bool, ?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
 methInline before after meth args mlhs act = do
