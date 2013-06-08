@@ -10,8 +10,8 @@ import qualified Text.Parsec as P
 import Text.PrettyPrint
 import System.IO.Unsafe
 import System.Process
-import System.Exit
 import Control.Monad.Error
+import Control.Applicative hiding (empty)
 import Data.List
 import Data.String.Utils
 import qualified Data.Set             as S
@@ -245,18 +245,16 @@ ptrEqCond _              _                         = FFalse
 
 runSolver :: SMT2Config -> Doc -> P.Parsec String () a -> a
 runSolver cfg spec parser = 
-    let (retcode, out, err) = unsafePerformIO $ readProcessWithExitCode (s2Solver cfg) (s2Opts cfg) (show spec)
-    in if retcode == ExitSuccess 
-          then case P.parse parser "" out of
-                    Left e  -> error $ "Error parsing SMT solver output: " ++ 
-                                       "\nsolver input: " ++ show spec ++
-                                       "\nsolver output: " ++ out ++
-                                       "\nparser error: "++ show e
-                    Right x -> trace ("solver input: " ++ show spec ++ " solver output: " ++ out) x
-          else error $ "Error running SMT solver (" ++ show retcode ++ "): " ++ 
-                       "\ninput: " ++ show spec ++ 
-                       "\noutput: " ++ out ++ 
-                       "\nerror " ++ err
+    let (_, out, err) = unsafePerformIO $ readProcessWithExitCode (s2Solver cfg) (s2Opts cfg) (show spec)
+    in -- Don't check error code, as solvers can return error even if some of the commands
+       -- completed successfully.
+       case P.parse parser "" out of
+            Left e  -> error $ "Error parsing SMT solver output: " ++ 
+                               "\nsolver input: " ++ show spec ++
+                               "\nsolver stdout: " ++ out ++
+                               "\nsolver stderr: " ++ err ++
+                               "\nparser error: "++ show e
+            Right x -> trace ("solver input: " ++ show spec ++ " solver output: " ++ out) x
 
 checkSat :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe Bool
 checkSat cfg fs = runSolver cfg spec satresParser
@@ -282,7 +280,7 @@ getModel cfg fs =
     $ do res <- satresParser
          case res of 
               Just True  -> liftM (Just . Right) $ modelParser ptrmap
-              Just False -> liftM (Just . Left)  $ unsatcoreParser
+              Just False -> liftM (Just . Left)  $ errorParser *> unsatcoreParser
               _          -> return Nothing
     where (spec0, ptrmap) = mkFormulas fs
           spec = text "(set-option :produce-unsat-cores true)"
@@ -290,3 +288,4 @@ getModel cfg fs =
               $$ spec0
               $$ text "(check-sat)"
               $$ text "(get-model)"
+              $$ text "(get-unsat-core)"              

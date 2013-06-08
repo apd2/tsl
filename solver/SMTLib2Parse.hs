@@ -3,7 +3,8 @@
 module SMTLib2Parse (assertName,
                      satresParser,
                      unsatcoreParser,
-                     modelParser) where
+                     modelParser,
+                     errorParser) where
 
 import Data.Maybe
 import Data.List
@@ -57,11 +58,12 @@ satresParser = ((Just False) <$ symbol "unsat") <|>
                ((Just True)  <$ symbol "sat")
 
 unsatcoreParser :: Parsec String () [Int]
-unsatcoreParser = option [] (parens $ many $ (string assertName *> (fromInteger <$> decimal)))
+unsatcoreParser = option [] (parens $ many $ (string assertName *> (fromInteger <$> decimal)) <* spaces)
 
 modelParser :: (?spec::Spec) => [(String, Term)] -> Parsec String () Store
 modelParser ptrmap = storeFromModel ptrmap <$> model
 
+errorParser = char '(' *> symbol "error" *> (many $ noneOf ['(',')']) <* char ')' <* spaces
 ------------------------------------------------------
 -- Parsing solver output
 ------------------------------------------------------
