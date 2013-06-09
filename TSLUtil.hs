@@ -6,7 +6,8 @@ module TSLUtil(fromLeft,
                assert,
                uniqNames,
                grCycle,
-               bitWidth) where
+               bitWidth,
+               readBin) where
 
 import Control.Monad.Error
 import Data.List
@@ -16,6 +17,7 @@ import Data.Graph.Inductive.Query.BFS
 import Data.Graph.Inductive.Query.DFS
 import System.IO.Unsafe
 import Data.IORef
+import Data.Bits
 
 import Util hiding (name)
 import Pos
@@ -57,3 +59,10 @@ grCycle g = case mapMaybe nodeCycle (nodes g) of
 -- The number of bits required to encode range [0..i]
 bitWidth :: (Integral a) => a -> Int
 bitWidth i = 1 + log2 (fromIntegral i)
+
+-- parse binary number
+readBin :: String -> Integer
+readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
+                              case c of
+                                   '0' -> 0
+                                   '1' -> 1) 0 s

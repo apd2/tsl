@@ -12,7 +12,8 @@ module Store (Store(..),
               storeEvalEnum,
               storeTryEvalBool,
               storeEvalBool,
-              storeSet) where
+              storeSet,
+              storeExtendDefault) where
 
 import Data.List
 import Control.Monad
@@ -20,7 +21,9 @@ import qualified Data.Map as M
 
 import Ops
 import IExpr
-
+import ISpec
+import IVar
+import IType
 
 -- Variable assignments
 data Store = SStruct {storeFields :: M.Map String Store} -- name/value pairs (used for structs and for top-level store)
@@ -144,3 +147,14 @@ storeSet' s            (EIndex a i) val      = storeSet' s a $ case (storeTryEva
 storeSet' s            (EUnOp Deref e) val   = storeSet' s (lvalToExpr l) val
                                                where PtrVal l = storeEvalScalar ?store e
 storeSet' _            e               _     = error $ "storeSet': " ++ show e
+
+-- Assign all unassigned state variables to their default values
+storeExtendDefault :: (?spec::Spec) => Store -> Store
+storeExtendDefault store = foldl' (\st v -> let evar = EVar $ varName v in
+                                            foldl' extendScalar st (exprScalars evar (typ evar)))
+                                  store (specVar ?spec)
+
+extendScalar :: (?spec::Spec) => Store -> Expr -> Store
+extendScalar store e = case storeTryEval store e of
+                            Nothing -> storeSet store e (Just $ SVal $ valDefault e)
+                            _       -> store

@@ -17,6 +17,7 @@ import Control.Applicative hiding (many)
 import Numeric
 
 import Util
+import TSLUtil
 import ISpec
 import IType
 import IVar
@@ -129,7 +130,8 @@ bvtype = parens $ (TypeBV . fromInteger) <$> (reservedOp "_" *> reserved "BitVec
 literal =  (ExpInt <$> decimal)
        <|> (ExpBool True <$ reserved "true")
        <|> (ExpBool False <$ reserved "false")
-       <|> ((ExpInt . fst . head . readHex) <$> lexeme (char '#' *> char 'x' *> many1 hexDigit))
+       <|> (try $ lexeme $ string "#x" *> ((ExpInt . fst . head . readHex) <$> many1 hexDigit))
+       <|> (try $ lexeme $ string "#b" *> ((ExpInt . readBin)              <$> (many1 $ char '0' <|> char '1')))
 
 ------------------------------------------------------
 -- Compiling parsed data

@@ -28,6 +28,7 @@ import Data.Bits
 import Debug.Trace
 
 import Util hiding (slice,index)
+import TSLUtil
 import PP
 import Pos
 import Name
@@ -455,11 +456,6 @@ parseSDec = (\m v -> m * v)
             <*> ((fst . head . readDec) <$> many1 digit)
 parseHex :: Stream s m Char => ParsecT s u m Integer
 parseHex = (fst . head . readHex) <$> many1 hexDigit
-readBin :: String -> Integer
-readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
-                              case c of
-                                   '0' -> 0
-                                   '1' -> 1) 0 s
 
 mkLit :: Maybe Int -> Bool -> Radix -> Integer -> ParsecT s u m Expr
 mkLit Nothing  False Rad10 v                       = return $ ELit nopos (msb v + 1) False Rad10 v
