@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams #-}
 
 module TranSpec(Goal(..),
+                FairRegion(..),
                 Transition(..),
                 TranSpec(..)) where
 
@@ -33,6 +34,12 @@ data Goal = Goal { goalName :: String
 instance PP Goal where
     pp (Goal n c) = text "goal" <+> pp n <+> char '=' <+> pp c
 
+data FairRegion = FairRegion { fairName :: String
+                             , fairCond :: Expr
+                             }
+
+instance PP FairRegion where
+    pp (FairRegion n c) = text "fair" <+> pp n <+> char '=' <+> pp c
 
 data TranSpec = TranSpec { tsCTran  :: Transition
                          , tsUTran  :: [Transition]
@@ -40,7 +47,7 @@ data TranSpec = TranSpec { tsCTran  :: Transition
                          , tsInit   :: (Transition, Expr) -- initial state constraint (constraint_on_spec_variables,constraints_on_aux_variables)
                          , tsAlways :: Transition
                          , tsGoal   :: [Goal] 
-                         , tsFair   :: [Expr]             -- sets of states f s.t. GF(-f)
+                         , tsFair   :: [FairRegion]       -- sets of states f s.t. GF(-f)
                          }
 
 instance PP TranSpec where

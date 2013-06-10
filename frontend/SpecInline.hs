@@ -193,14 +193,14 @@ mkAlways | (null $ tmAlways tmMain) = return Nothing
 -- Fair sets
 ----------------------------------------------------------------------
 
-mkFair :: (?spec::Spec) => [ProcTrans] -> [I.Expr]
+mkFair :: (?spec::Spec) => [ProcTrans] -> [I.FairRegion]
 mkFair procs = fsched : fproc
     where -- Fair scheduling:  GF (not ($magic==true && $cont == false))
-          fsched = I.conj [mkMagicVar I.=== I.true, mkContVar I.=== I.false]
+          fsched = I.FairRegion "fair_scheduler" $ I.conj [mkMagicVar I.=== I.true, mkContVar I.=== I.false]
           -- For each state s of uncontrollable process pid with wait condition cond:
           -- GF (not (pc=s && cond && lastpid == pid)) 
           fproc = concatMap (\p -> let pid = pPID p
-                                   in map (\(loc,cond) -> I.conj [mkPCVar pid I.=== mkPC pid loc, cond, mkPIDVar I.=== mkPIDEnum pid]) 
+                                   in map (\(loc,cond) -> I.FairRegion ("fair_" ++ (show $ pPID p) ++ show loc) $ I.conj [mkPCVar pid I.=== mkPC pid loc, cond, mkPIDVar I.=== mkPIDEnum pid]) 
                                           $ pPauses p) 
                             procs 
 

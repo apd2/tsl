@@ -55,7 +55,7 @@ tslFairAbs spec m ops = do
     let ?spec = spec
         ?ops  = ops
         ?m    = m
-    mapM bexprAbstract $ tsFair $ specTran spec
+    mapM (bexprAbstract . fairCond) $ tsFair $ specTran spec
 
 tslInitAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
 tslInitAbs spec m ops = do 
