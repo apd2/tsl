@@ -200,7 +200,7 @@ mkFair procs = fsched : fproc
           -- For each state s of uncontrollable process pid with wait condition cond:
           -- GF (not (pc=s && cond && lastpid == pid)) 
           fproc = concatMap (\p -> let pid = pPID p
-                                   in map (\(loc,cond) -> I.FairRegion ("fair_" ++ (show $ pPID p) ++ show loc) $ I.conj [mkPCVar pid I.=== mkPC pid loc, cond, mkPIDVar I.=== mkPIDEnum pid]) 
+                                   in map (\(loc,cond) -> I.FairRegion ("fair_" ++ (pidToName $ pPID p) ++ show loc) $ I.conj [mkPCVar pid I.=== mkPC pid loc, cond, mkPIDVar I.=== mkPIDEnum pid]) 
                                           $ pPauses p) 
                             procs 
 
