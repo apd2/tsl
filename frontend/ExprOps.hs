@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
+{-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections, ScopedTypeVariables #-}
 
 module ExprOps(mapExpr,
                exprCallees,
@@ -12,7 +12,8 @@ module ExprOps(mapExpr,
                exprNoSideEffects,
                applyNoSideEffects,
                exprObjs,
-               exprObjsRec) where
+               exprObjsRec,
+               exprScalars) where
 
 import Control.Monad.Error
 import Data.Maybe
@@ -366,3 +367,16 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
 
 instance (?spec::Spec,?scope::Scope) => WithTypeSpec Expr where
     tspec = tspec . typ
+
+exprScalars :: (?spec::Spec,?scope::Scope) => Expr -> [Expr]
+exprScalars e = exprScalars' e (tspec $ typ' e)
+
+exprScalars' :: (?spec::Spec,?scope::Scope) => Expr -> TypeSpec -> [Expr]
+exprScalars' e (BoolSpec _)      = [e]
+exprScalars' e (UIntSpec _ _)    = [e]
+exprScalars' e (SIntSpec _ _)    = [e]
+exprScalars' e (StructSpec _ fs) = concatMap (\f -> exprScalars $ EField nopos e (name f)) fs
+exprScalars' e (EnumSpec _ _)    = [e]
+exprScalars' e (PtrSpec _ _)     = [e]
+exprScalars' e (ArraySpec _ _ l) = map (\idx -> EIndex nopos e (ELit nopos 32 False Rad10 (fromIntegral idx))) [0..len-1]
+                                   where (len::Int) = fromInteger $ evalInt l

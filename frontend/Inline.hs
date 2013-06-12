@@ -326,6 +326,7 @@ getEnumName n =
 -----------------------------------------------------------
 
 data CFACtx = CFACtx { ctxPID     :: PID                                     -- PID of the process being constructed
+                     , ctxCont    :: Bool                                    -- True iff controllable transitions are being generated
                      , ctxStack   :: [(Scope, I.Loc, Maybe I.Expr, NameMap)] -- stack of syntactic scopes: (scope, return location, LHS, local namemap)
                      , ctxCFA     :: I.CFA                                   -- CFA constructed so far
                      , ctxBrkLocs :: [I.Loc]                                 -- stack break location
@@ -422,20 +423,25 @@ ctxFrames loc = do
 
 
 ctxPause :: I.Loc -> I.Expr -> I.LocAction -> State CFACtx I.Loc
-ctxPause loc cond act = do after <- ctxInsLocLab (I.LPause act [] cond)
+ctxPause loc cond act = ctxDelay loc (I.LPause act [] cond) cond 
+
+ctxFinal :: I.Loc -> State CFACtx I.Loc
+ctxFinal loc = ctxDelay loc (I.LFinal I.ActNone []) I.true
+
+-- common code of ctxPause and ctxFinal
+ctxDelay :: I.Loc -> I.LocLabel -> I.Expr -> State CFACtx I.Loc
+ctxDelay loc lab cond = do pid  <- gets ctxPID
+                           cont <- gets ctxCont
+                           let pid' = if' cont pidCont pid
+                           after <- ctxInsLocLab lab
                            stack <- ctxFrames after
                            ctxLocSetStack after stack
-                           ctxInsTrans loc after I.TranNop
+                           if pid' == []
+                              then ctxInsTrans loc after $ I.TranNop
+                              else ctxInsTrans loc after $ I.TranStat $ mkPIDVar I.=: mkPIDEnum pid'
                            case cond of
                                 (I.EConst (I.BoolVal True)) -> return after
                                 _                           -> ctxInsTrans' after (I.TranStat $ I.SAssume cond)
-
-ctxFinal :: I.Loc -> State CFACtx I.Loc
-ctxFinal loc = do after <- ctxInsLocLab (I.LFinal I.ActNone [])
-                  stack <- ctxFrames after
-                  ctxLocSetStack after stack
-                  ctxInsTrans loc after I.TranNop
-                  return after
 
 ctxErrTrans :: I.Loc -> I.TranLabel -> State CFACtx ()
 ctxErrTrans loc t = modify $ (\ctx -> ctx {ctxCFA = I.cfaErrTrans loc t $ ctxCFA ctx})

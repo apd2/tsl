@@ -21,6 +21,8 @@ import Expr
 import TVar
 import Method
 import Type
+import TypeOps
+import ExprOps
 import ExprInline
 
 import qualified IExpr as I
@@ -32,12 +34,11 @@ statSimplify :: (?spec::Spec, ?scope::Scope) => Statement -> NameGen Statement
 statSimplify s = (liftM $ sSeq (pos s)) $ statSimplify' s
 
 statSimplify' :: (?spec::Spec, ?scope::Scope) => Statement -> NameGen [Statement]
-statSimplify' (SVarDecl p v) = 
+statSimplify' s@(SVarDecl p v) = 
     case varInit v of
-         Just e  -> do asn <- (statSimplify' $ SAssign p (ETerm (pos $ varName v) [varName v]) e)
-                       return $ SVarDecl p v{varInit = Nothing} : asn
-         Nothing -> do asn <- statSimplify' $ SAssign p (ETerm (pos $ varName v) [varName v]) (ENonDet nopos)
-                       return $ SVarDecl p v{varInit = Nothing} : asn
+         Just e  -> do asn <- statSimplify' $ SAssign p (ETerm (pos $ varName v) [varName v]) e
+                       return $ s {-SVarDecl p v{varInit = Nothing}-} : asn
+         Nothing -> return [s]
 
 statSimplify' (SReturn p (Just e)) = do
     (ss,e') <- exprSimplify e
@@ -96,7 +97,7 @@ statSimplify' st                      = return [st]
 ----------------------------------------------------------
 -- Convert statement to CFA
 ----------------------------------------------------------
-statToCFA :: (?cont::Bool, ?spec::Spec, ?procs::[I.Process]) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA :: (?spec::Spec, ?procs::[I.Process]) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA before   (SSeq _ ss)    = foldM statToCFA before ss
 statToCFA before s@(SPause _)     = do ctxLocSetAct before (I.ActStat s)
                                        ctxPause before I.true (I.ActStat s)
@@ -105,14 +106,27 @@ statToCFA before s@(SWait _ c)    = do ctxLocSetAct before (I.ActStat s)
                                        ctxPause before ci (I.ActStat s)
 statToCFA before s@(SStop _)      = do ctxLocSetAct before (I.ActStat s)
                                        ctxFinal before
-statToCFA before   (SVarDecl _ _) = return before
+statToCFA before   (SVarDecl _ v) | isJust (varInit v) = return before
+statToCFA before   (SVarDecl _ v) | otherwise = do 
+                                       sc <- gets ctxScope
+                                       let ?scope = sc
+                                       let scalars = exprScalars $ ETerm nopos [name v]
+                                       foldM (\loc e -> do e' <- exprToIExprDet e
+                                                           let val = case tspec $ typ' e of
+                                                                          BoolSpec _    -> I.BoolVal False
+                                                                          UIntSpec _ w  -> I.UIntVal w 0
+                                                                          SIntSpec _ w  -> I.SIntVal w 0
+                                                                          EnumSpec _ es -> I.EnumVal $ sname $ head es
+                                                                          PtrSpec  _ t  -> I.NullVal $ mkType $ Type sc t
+                                                           ctxInsTrans' loc $ I.TranStat $ e' I.=: I.EConst val)
+                                             before scalars
 statToCFA before s@stat           = do ctxLocSetAct before (I.ActStat s)
                                        after <- ctxInsLoc
                                        statToCFA' before after stat
                                        return after
 
 -- Only safe to call from statToCFA.  Do not call this function directly!
-statToCFA' :: (?cont::Bool, ?spec::Spec, ?procs::[I.Process]) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
+statToCFA' :: (?spec::Spec, ?procs::[I.Process]) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
 statToCFA' before _ (SReturn _ rval) = do
     -- add transition before before to return location
     mlhs  <- gets ctxLHS
@@ -289,10 +303,10 @@ statToCFA' before after s@(SMagic _ _ constr) = do
 
 statToCFA' before after (SMagExit _) = do
     aftcont <- ctxInsTrans' before  $ I.TranStat $ mkContVar  I.=: I.false
-    aftpid  <- ctxInsTrans' aftcont $ I.TranStat $ mkPIDVar   I.=: mkPIDEnum pidCont
-    ctxInsTrans aftpid after        $ I.TranStat $ mkMagicVar I.=: I.false
+--    aftpid  <- ctxInsTrans' aftcont $ I.TranStat $ mkPIDVar   I.=: mkPIDEnum pidCont
+    ctxInsTrans aftcont after       $ I.TranStat $ mkMagicVar I.=: I.false
 
-methInline :: (?cont::Bool, ?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
+methInline :: (?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
 methInline before after meth args mlhs act = do
     -- save current context
     pid <- gets ctxPID
@@ -324,9 +338,11 @@ methInline before after meth args mlhs act = do
     ctxPopBrkLoc
 
 
-taskCall :: (?cont::Bool, ?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
-taskCall before after meth args mlhs st | ?cont     = contTaskCall  before after meth args
-                                        | otherwise = ucontTaskCall before after meth args mlhs st
+taskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
+taskCall before after meth args mlhs st = do
+    cont <- gets ctxCont
+    if' cont (contTaskCall  before after meth args) 
+             (ucontTaskCall before after meth args mlhs st)
 
 contTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> State CFACtx ()
 contTaskCall before after meth args = do
@@ -335,9 +351,9 @@ contTaskCall before after meth args = do
     -- set input arguments
     aftarg <- setArgs afttag meth args
     -- switch to uncontrollable state
-    aftcont <- ctxInsTrans' aftarg $ I.TranStat $ mkContVar I.=: I.false
+    ctxInsTrans aftarg after $ I.TranStat $ mkContVar I.=: I.false
     -- $pid = $pidcont
-    ctxInsTrans aftcont after $ I.TranStat $ mkPIDVar I.=: mkPIDEnum pidCont
+    --ctxInsTrans aftcont after $ I.TranStat $ mkPIDVar I.=: mkPIDEnum pidCont
 
 ucontTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
 ucontTaskCall before after meth args mlhs st = do
@@ -364,11 +380,12 @@ ucontTaskCall before after meth args mlhs st = do
 -- assign input arguments to a method
 setArgs :: (?spec::Spec) => I.Loc -> Method -> [Expr] -> State CFACtx I.Loc 
 setArgs before meth args = do
-    pid   <- gets ctxPID
+    pid  <- gets ctxPID
+    cont <- gets ctxCont
     foldM (\bef (farg,aarg) -> do aarg' <- exprToIExprs aarg (tspec farg)
                                   let t = mkType $ Type (ScopeTemplate tmMain) (tspec farg)
                                   ctxInsTransMany' bef $ map I.TranStat
-                                                       $ zipWith I.SAssign (I.exprScalars (mkVar (Just pid) (Just meth) farg) t) 
+                                                       $ zipWith I.SAssign (I.exprScalars (mkVar (if' cont Nothing (Just pid)) (Just meth) farg) t) 
                                                                            (concatMap (uncurry I.exprScalars) aarg'))
           before $ filter (\(a,_) -> argDir a == ArgIn) $ zip (methArg meth) args
 
@@ -387,9 +404,8 @@ copyOutArgs loc meth args = do
 -- Top-level function: convert process statement to CFA
 ----------------------------------------------------------
 
-procStatToCFA :: (?spec::Spec, ?procs::[I.Process]) => Bool -> Statement -> I.Loc -> State CFACtx I.Loc
-procStatToCFA cont stat before = do
-    let ?cont=cont
+procStatToCFA :: (?spec::Spec, ?procs::[I.Process]) => Statement -> I.Loc -> State CFACtx I.Loc
+procStatToCFA stat before = do
     after <- statToCFA before stat
     modify (\ctx -> ctx {ctxCFA = I.cfaAddNullPtrTrans (ctxCFA ctx)})
     return after
