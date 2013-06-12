@@ -30,7 +30,7 @@ formAbsVars (FNot f)                  = formAbsVars f
 formAbsVars (FPred p@(PAtom _ t1 t2)) = case typ t1 of
                                              Bool   -> termAbsVars t1 ++ termAbsVars t2
                                              Enum _ -> termAbsVars t1 ++ termAbsVars t2
-                                             UInt 1 -> termAbsVars t1 ++ termAbsVars t2
+--                                             UInt 1 -> termAbsVars t1 ++ termAbsVars t2
                                              _      -> [AVarPred p]
 
 tcasAbsVars :: (?spec::Spec) => TCascade -> [AbsVar]
@@ -122,28 +122,28 @@ compileFormula (FPred p@(PAtom op t1 t2)) =
                                                    return $ case op of 
                                                                  REq  -> r
                                                                  RNeq -> C.bnot r
-         UInt 1 -> case (t1,t2) of
-                        (TUInt _ n1, TUInt _ n2) -> do let res = if (n1 == n2) 
-                                                                    then C.bone ?m 
-                                                                    else C.bzero ?m
-                                                       lift $ C.ref res
-                                                       return res
-                        (TUInt _ n1, _)          -> do v2 <- mkTermVar t2
-                                                       r <- lift $ C.eqConst ?m v2 n1 
-                                                       return $ case op of
-                                                                     REq  -> r
-                                                                     RNeq -> C.bnot r
-                        (_, TUInt _ n2)        -> do v1 <- mkTermVar t1
-                                                     r <- lift $ C.eqConst ?m v1 n2
-                                                     return $ case op of
-                                                                   REq  -> r
-                                                                   RNeq -> C.bnot r
-                        (_,_)                -> do v1 <- mkTermVar t1
-                                                   v2 <- mkTermVar t2
-                                                   r <- lift $ C.eqVars ?m v1 v2
-                                                   return $ case op of 
-                                                                 REq  -> r
-                                                                 RNeq -> C.bnot r
+--         UInt 1 -> case (t1,t2) of
+--                        (TUInt _ n1, TUInt _ n2) -> do let res = if (n1 == n2) 
+--                                                                    then C.bone ?m 
+--                                                                    else C.bzero ?m
+--                                                       lift $ C.ref res
+--                                                       return res
+--                        (TUInt _ n1, _)          -> do v2 <- mkTermVar t2
+--                                                       r <- lift $ C.eqConst ?m v2 n1 
+--                                                       return $ case op of
+--                                                                     REq  -> r
+--                                                                     RNeq -> C.bnot r
+--                        (_, TUInt _ n2)        -> do v1 <- mkTermVar t1
+--                                                     r <- lift $ C.eqConst ?m v1 n2
+--                                                     return $ case op of
+--                                                                   REq  -> r
+--                                                                   RNeq -> C.bnot r
+--                        (_,_)                -> do v1 <- mkTermVar t1
+--                                                   v2 <- mkTermVar t2
+--                                                   r <- lift $ C.eqVars ?m v1 v2
+--                                                   return $ case op of 
+--                                                                 REq  -> r
+--                                                                 RNeq -> C.bnot r
          _      -> do v <- mkPredVar p
                       lift $ C.ref v
                       return v
