@@ -10,6 +10,7 @@ module ISpec(Spec(..),
              specGetCFA,
              specMapCFA,
              specInlineWireAlways,
+             cfaLocInlineWireAlways,
              lookupVar,
              getVar,
              lookupEnumerator,
@@ -137,35 +138,20 @@ specInlineWireAlways spec = specMapCFA (cfaInlineWireAlways spec) spec
 cfaInlineWireAlways :: Spec -> CFA -> CFA
 cfaInlineWireAlways spec cfa = foldl' (\cfa0 loc -> let cfa1 = case specAlways spec of
                                                                     Nothing -> cfa0
-                                                                    Just a  -> inlineLoc cfa0 loc a
+                                                                    Just a  -> cfaLocInline cfa0 loc a
                                                     in case specWire spec of
                                                             Nothing -> cfa1
-                                                            Just w  -> inlineLoc cfa1 loc w) 
+                                                            Just w  -> cfaLocInline cfa1 loc w) 
                                       cfa locs
     -- Find delay locations with outgoing transitions
     where locs = filter (\loc -> (isDelayLabel $ cfaLocLabel loc cfa) && (G.suc cfa loc /= []))
                         $ G.nodes cfa
 
-inlineLoc :: CFA -> Loc -> CFA -> CFA
-inlineLoc cfa loc inscfa = inlineBetween cfa2 loc loc' inscfa
-    -- Replicate location.  The new location is not a delay location
-    -- and contains all outgoing transitions of the original location
-    where (cfa1, loc') = cfaInsLoc (LInst $ locAct $ cfaLocLabel loc cfa) cfa
-          cfa2 = foldl' (\cfa' (toloc, lab) -> G.delLEdge (loc, toloc, lab) 
-                                               $ cfaInsTrans loc' toloc lab cfa')
-                        cfa1 (G.lsuc cfa loc)
-
-inlineBetween :: CFA -> Loc -> Loc -> CFA -> CFA
-inlineBetween cfa0 bef aft inscfa = 
-    let -- for each node in inscfa, create a replica in CFA and store
-        -- correspondence in a table
-        (cfa1, locs1) = foldl' (\(cfa,locs) loc -> let lab = cfaLocLabel loc inscfa
-                                                       (cfa', loc') = cfaInsLoc (LInst $ locAct lab) cfa
-                                                   in if' (loc == cfaInitLoc)                     (cfaInsTrans bef loc' TranNop cfa', locs ++ [loc']) $
-                                                      if' (loc == cfaErrLoc)                      (cfa, locs ++ [loc]) $
-                                                      if' (isDelayLabel $ cfaLocLabel loc inscfa) (cfa, locs ++ [aft]) $
-                                                      (cfa', locs++[loc']))
-                               (cfa0,[]) (G.nodes inscfa)
-        match = M.fromList $ zip (G.nodes inscfa) locs1
-    in -- copy transitions over
-       foldl' (\cfa (from, to, l) -> cfaInsTrans (match M.! from) (match M.! to) l cfa) cfa1 (G.labEdges inscfa)
+cfaLocInlineWireAlways :: Spec -> CFA -> Loc -> CFA
+cfaLocInlineWireAlways spec cfa loc =
+    let cfa1 = case specAlways spec of
+                    Nothing -> cfa
+                    Just a  -> cfaLocInline cfa loc a
+               in case specWire spec of
+                       Nothing -> cfa1
+                       Just w  -> cfaLocInline cfa1 loc w    

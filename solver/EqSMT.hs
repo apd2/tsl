@@ -20,9 +20,10 @@ import IVar
 import IType
 import EUF
 import Predicate
-import FCompile
 import BFormula
+import ACFACompile
 import RefineCommon
+import qualified HAST.HAST as H
 
 --eqSolver :: Spec -> Solver Predicate s u
 --eqSolver spec = TheorySolver { checkSat  = eqCheckSat  spec
