@@ -1,15 +1,24 @@
 {-# LANGUAGE ImplicitParams, TupleSections #-}
 
-module ACFA(tranCFAToACFA) where
+module ACFA(tranCFAToACFA,
+            bexprToFormula,
+            bexprToFormulaPlus) where
 
 import qualified Data.Graph.Inductive as G
 import Data.List
+import Data.Maybe
+import Data.Functor
+import Control.Applicative
 
+import Util
 import Cascade
 import Predicate
 import BFormula
 import ISpec
+import IExpr
+import IType
 import CFA
+import Ops
 import ACFACompile
 
 -- Compute ACFA for a list of abstract variables for a location inside
@@ -17,14 +26,14 @@ import ACFACompile
 tranCFAToACFA :: (?spec::Spec, ?pred::[Predicate]) => [AbsVar] -> Loc -> CFA -> ACFA
 tranCFAToACFA vs loc cfa = 
     let ?initloc = loc 
-        ?cfa = cfaPruneUnreachable cfa loc in 
+        ?cfa = cfaPruneUnreachable cfa [loc] in 
     let -- prefill cache for final states
         acfa0 = foldl' (\g l -> G.insNode (l,vs) g) G.empty
                 $ filter ((==0) . G.outdeg cfa)
                 $ G.nodes cfa
     in mkACFA acfa0
 
-mkACFA :: (?initloc::Loc, ?pred::[Predicate], ?cfa::CFA) => ACFA -> ACFA
+mkACFA :: (?spec::Spec, ?initloc::Loc, ?pred::[Predicate], ?cfa::CFA) => ACFA -> ACFA
 mkACFA acfa = 
     let -- select a location not from the cache with all successors in the cache,
         loc = head
@@ -32,11 +41,11 @@ mkACFA acfa =
               $ filter (\n -> notElem n $ G.nodes acfa)
               $ G.nodes ?cfa
         -- compute variable updates along all outgoing transitions
-        updates = map (\(loc', tran) -> map ((loc', ) . varUpdateTran tran) $ G.lab acfa loc') $ G.lsuc ?cfa loc
+        updates = map (\(loc', tran) -> (loc', map (varUpdateTran tran) $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
         -- extract the list of abstract variables from transitions
         vs = nub 
-             $ concatMap (acasAbsVars . snd) 
-             $ concat updates
+             $ concatMap acasAbsVars
+             $ concatMap snd updates
         acfa' = foldIdx (\gr (l, upds) i -> G.insEdge (loc, l, (i,upds)) gr)
                 (G.insNode (loc, vs) acfa) updates
     in if loc == ?initloc
@@ -45,10 +54,10 @@ mkACFA acfa =
 
 -- Compute variable updates for an individual CFA edge
 varUpdateTran :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> AbsVar -> ACascade
-varUpdateTran (TranStat (SAssume e))     (AVarPred p) = Right $ CasTree [bexprToFormulaPlus e, CasLeaf $ bexprToFormula $ predToExpr p] 
-varUpdateTran (TranStat (SAssume e))     (AVarTerm t) = Left  $ CasTree [bexprToFormulaPlus e, CasLeaf t] 
+varUpdateTran (TranStat (SAssume e))     (AVarPred p) = Right $ CasTree [(bexprToFormulaPlus e, CasLeaf $ bexprToFormula $ predToExpr p)] 
+varUpdateTran (TranStat (SAssume e))     (AVarTerm t) = Left  $ CasTree [(bexprToFormulaPlus e, CasLeaf t)] 
 varUpdateTran (TranStat (SAssign e1 e2)) v            = varUpdateAsnStat1 e1 e2 v
-varUpdateTran _                          (AVarPred p) = Right $ CasLeaf $ bexprToFormula $ predToExpr v
+varUpdateTran _                          (AVarPred p) = Right $ CasLeaf $ bexprToFormula $ predToExpr p
 varUpdateTran _                          (AVarTerm t) = Left  $ CasLeaf t
 
 -- Individual variable update for an assignment statement
@@ -57,7 +66,7 @@ varUpdateAsnStat1 lhs rhs (AVarPred p) = Right $ CasLeaf $ updatePredAsn lhs rhs
 varUpdateAsnStat1 lhs rhs (AVarTerm t) = 
     let upd = casMap exprExpandPtr $ updateScalAsn lhs rhs t in
     case typ t of
-         Bool -> Right $ CasLeaf $ fcasToFormula $ fmap bexprToFormula' upd
+         Bool -> Right $ CasLeaf $ fcasToFormula $ fmap ptrFreeBExprToFormula upd
          _    -> Left  $ fmap exprToTerm upd
  
 -- Predicate update by assignment statement
@@ -70,11 +79,11 @@ updatePredAsn lhs rhs p = {-trace ("updatePredAsn (" ++ show lhs ++ ":=" ++ show
 -- Computes possible overlaps of the lhs with the term and
 -- corresponding next-state values of the term expressed as concatenation 
 -- of slices of the rhs and the original term.
-updateScalAsn :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Expr -> Expr -> Term -> ECascade
+updateScalAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Term -> ECascade
 updateScalAsn lhs rhs t = {-trace ("updateScalAsn(" ++ show t ++ ") " ++ show lhs ++ ":=" ++ show rhs ++ " = " ++ render (nest' $ pp res))-} res
     where res = updateScalAsn' lhs rhs t
 
-updateScalAsn' :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Expr -> Expr -> Term -> ECascade
+updateScalAsn' :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Term -> ECascade
 updateScalAsn' e                rhs (TSlice t s) = fmap (\e' -> exprSlice e' s) (updateScalAsn' e rhs t)
 updateScalAsn' (ESlice e (l,h)) rhs t            = 
     fmap (\b -> if b
@@ -91,7 +100,7 @@ updateScalAsn' lhs              rhs t            =
 
 -- Takes lhs expression and a term and computes the condition 
 -- when the expression is a synonym of the term.
-lhsTermEq :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Expr -> Term -> BCascade
+lhsTermEq :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Term -> BCascade
 lhsTermEq (EVar n1)       (TVar n2)        | n1 == n2 = CasLeaf True
 lhsTermEq (EField e f1)   (TField t f2)    | f1 == f2 = lhsTermEq e t
 lhsTermEq (EIndex ae ie)  (TIndex at it)              = 
@@ -134,7 +143,7 @@ tScalars   (TSlice t _)     = tScalars t
 
 -- Substitute all scalar terms in a predicate with cascades of scalar expressions.
 -- The order of cascades is assumed to be the same one returned by pScalars.
-pSubstScalCas :: (?spec::Spec, ?pred::[Predicate], ?m::C.STDdManager s u) => Predicate -> [ECascade] -> Formula
+pSubstScalCas :: (?spec::Spec, ?pred::[Predicate]) => Predicate -> [ECascade] -> Formula
 pSubstScalCas (PAtom op t1 t2) cas = fcasToFormula $ (\e1 e2 -> bexprToFormulaPlus $ EBinOp (relOpToBOp op) e1 e2) <$> t1' <*> t2'
     where (t1', cas') = tSubstCas t1 cas
           (t2', _   ) = tSubstCas t2 cas'
@@ -159,3 +168,66 @@ tSubstCas   (TBinOp op t1 t2)    cas = let (t1', cas1) = tSubstCas t1 cas
                                            (t2', cas2) = tSubstCas t2 cas1
                                        in ((\e1 e2 -> EBinOp (arithOpToBOp op) e1 e2) <$> t1' <*> t2', cas2)
 tSubstCas   (TSlice t s)         cas = mapFst (fmap (\e -> exprSlice e s)) $ tSubstCas t cas
+
+
+-- Convert boolean expression (possibly with pointers) to a formula without
+-- introducing new pointer predicates.
+bexprToFormula :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Formula
+bexprToFormula e = fcasToFormula $ fmap ptrFreeBExprToFormula $ exprExpandPtr e
+
+-- Convert boolean expression (possibly with pointers) to a formula, 
+-- introducing new pointer predicates if needed.
+bexprToFormulaPlus :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Formula
+bexprToFormulaPlus e@(EBinOp op e1 e2) | op == Eq || op == Neq = 
+    let f1 = case e1 of
+                  EUnOp Deref e1' -> fcasToFormula $ fcasPrune $ (addrPred op) <$> (exprExpandPtr e1') <*> (exprExpandPtr e2)
+                  _               -> FFalse
+        f2 = case e2 of
+                  EUnOp Deref e2' -> fcasToFormula $ fcasPrune $ (addrPred op) <$> (exprExpandPtr e2') <*> (exprExpandPtr e1)
+                  _               -> FFalse
+    in fdisj $ (bexprToFormula e):[f1,f2]
+
+bexprToFormulaPlus e = bexprToFormula e
+
+-- Check if predicate (x == addrof y) exists in the DB.  If yes,
+-- return false, else return (x == addrof y) or !(x == addrof y),
+-- depending on op.
+addrPred :: (?spec::Spec, ?pred::[Predicate]) => BOp -> Expr -> Expr -> Formula
+addrPred op x y =
+    let tx = exprToTerm x
+        ty = exprToTerm y
+        fp = fAtom REq tx (TAddr ty)
+    in if (not $ isMemTerm ty) || (any ((==ty) . snd) $ ptrPreds x)
+          then FFalse
+          else if op == Eq
+                  then fp 
+                  else fnot fp
+
+
+-- Expand each pointer dereference operation in the expression
+-- using predicates in the DB.
+exprExpandPtr :: (?pred::[Predicate]) => Expr -> ECascade
+exprExpandPtr e@(EVar _)          = CasLeaf e
+exprExpandPtr e@(EConst _)        = CasLeaf e
+exprExpandPtr   (EField e f)      = fmap (\e' -> EField e' f) $ exprExpandPtr e
+exprExpandPtr   (EIndex a i)      = EIndex <$> exprExpandPtr a <*> exprExpandPtr i
+exprExpandPtr   (EUnOp Deref e)   = casMap (CasTree . (map (\(p, t) -> (FPred p, CasLeaf $ termToExpr t))) . ptrPreds)
+                                           $ exprExpandPtr e
+exprExpandPtr   (EUnOp op e)      = fmap (EUnOp op) $ exprExpandPtr e
+exprExpandPtr   (EBinOp op e1 e2) = (EBinOp op) <$> exprExpandPtr e1 <*> exprExpandPtr e2
+exprExpandPtr   (ESlice e s)      = fmap (\e' -> ESlice e' s) $ exprExpandPtr e
+
+-- Find predicates of the form (e == AddrOf e')
+ptrPreds :: (?pred::[Predicate]) => Expr -> [(Predicate, Term)]
+ptrPreds e = 
+    mapMaybe (\p@(PAtom _ t1 t2) -> if t1 == t
+                                       then case t2 of
+                                                 TAddr t' -> Just (p,t')
+                                                 _        -> Nothing
+                                       else if t2 == t
+                                               then case t1 of
+                                                         TAddr t' -> Just (p,t')
+                                                         _        -> Nothing
+                                               else Nothing) 
+             ?pred
+    where t = exprToTerm e
