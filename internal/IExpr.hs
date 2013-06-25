@@ -11,6 +11,7 @@ module IExpr(LVal(..),
              exprScalars,
              exprVars,
              (===),
+             (/==),
              disj,
              conj,
              neg,
@@ -214,6 +215,9 @@ exprVars (ESlice e _)     = exprVars e
 
 (===) :: Expr -> Expr -> Expr
 e1 === e2 = EBinOp Eq e1 e2
+
+(/==) :: Expr -> Expr -> Expr
+e1 /== e2 = EBinOp Neq e1 e2
 
 disj :: [Expr] -> Expr
 disj [] = false

@@ -199,11 +199,12 @@ mkFair :: (?spec::Spec) => [ProcTrans] -> [I.FairRegion]
 mkFair procs = fsched : fproc
     where -- Fair scheduling:  GF (not ($magic==true && $cont == false))
           fsched = I.FairRegion "fair_scheduler" $ I.conj [mkMagicVar I.=== I.true, mkContVar I.=== I.false]
-          -- For each state s of uncontrollable process pid with wait condition cond:
-          -- GF (not (pc=s && cond && lastpid == pid)) 
-          fproc = concatMap (\p -> let pid = pPID p
-                                   in map (\(loc,cond) -> I.FairRegion ("fair_" ++ (pidToName $ pPID p) ++ show loc) $ I.conj [mkPCVar pid I.=== mkPC pid loc, cond, mkPIDVar I.=== mkPIDEnum pid]) 
-                                          $ pPauses p) 
+          -- For each uncontrollable process pid: GF (not ((\/i . pc=si && condi) && lastpid /= pid))
+          -- where si and condi are process pause locations and matching conditions
+          -- i.e, the process eventually either becomes disabled or makes a transition.
+          fproc = map (\p -> let pid = pPID p
+                             in I.FairRegion ("fair_" ++ (pidToName $ pPID p)) 
+                                $ I.conj [mkPIDVar I./== mkPIDEnum pid, I.disj $ map (\(loc,cond) -> I.conj [mkPCVar pid I.=== mkPC pid loc, cond]) $ pPauses p]) 
                             procs 
 
 ----------------------------------------------------------------------

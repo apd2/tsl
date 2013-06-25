@@ -78,13 +78,13 @@ mkAST' (vmap, tmap) ord =
     $ (\fl -> H.existsMany (replicate (length out) 1)
               $ (\fll -> if null fll
                             then (mkAST' (vmap, tmap) $ tail ord) `H.And`
-                                 (H.EqConst (H.EVar fl) 1)        `H.And` 
+                                 (H.Var (H.EVar fl))              `H.And` 
                                  mkFanin (vmap, tmap) fl 
                             else let tmap' = foldl' (\m (v, (_, (i,_))) -> M.insert (l,i) (H.EVar v) m) tmap $ zip fll out in
                                  H.existsMany (map avarWidth vs)
                                  $ (\xs -> let vmap' = foldl' (\m (v, av) -> M.insert (l,av) (H.EVar v) m) vmap $ zip xs vs
-                                           in (mkAST' (vmap', tmap') $ tail ord)                                                   `H.And` 
-                                              ((H.EqConst (H.EVar fl) 1) `H.XNor` (disj $ map (\x -> H.EqConst (H.EVar x) 1) fll)) `H.And`
+                                           in (mkAST' (vmap', tmap') $ tail ord)                               `H.And` 
+                                              ((H.Var (H.EVar fl)) `H.XNor` (disj $ map (H.Var . H.EVar) fll)) `H.And`
                                               mkFanin (vmap', tmap') fl)))
     where 
     l   = head ord
@@ -120,7 +120,7 @@ termAbsVars t           = [AVarTerm t]
 
 
 compileTransition :: (?spec::Spec, ?acfa::ACFA) => EMap f e -> Loc -> Loc -> (Int, [ACascade]) -> e -> TAST f e c
-compileTransition emap from to (idx, upd) tovar = trvar `H.XNor` (updast `H.And` (H.EqConst (H.EVar tovar) 1))
+compileTransition emap from to (idx, upd) tovar = trvar `H.XNor` (updast `H.And` (H.Var (H.EVar tovar)))
     where trvar  = H.EqConst ((snd emap) M.! (from, idx)) 1
           tovs   = fromJust $ G.lab ?acfa to
           updast = let ?emap = emap
@@ -137,7 +137,7 @@ compileTransition1 (cas, av) =
             Left  tcas -> compileTCas tcas astvar
 
 compileFCas :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e, ?loc::Loc) => FCascade -> TASTVar f e -> TAST f e c
-compileFCas (CasLeaf f)  av = (H.EqConst av 1) `H.XNor` compileFormula f
+compileFCas (CasLeaf f)  av = (H.Var av) `H.XNor` compileFormula f
 compileFCas (CasTree bs) av = disj $ map (\(f,cas) -> compileFormulaLoc f `H.And` compileFCas cas av) bs
 
 compileTCas :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e, ?loc::Loc) => TCascade -> TASTVar f e -> TAST f e c
@@ -208,13 +208,13 @@ compileFormulaLoc (FPred p@(PAtom op t1 t2)) =
 
 compileBoolTerm :: (?spec::Spec, ?emap::EMap f e, ?loc::Loc) => Term -> TAST f e c
 compileBoolTerm TTrue = H.T
-compileBoolTerm t     = H.EqConst (getTermVar t) 1
+compileBoolTerm t     = H.Var (getTermVar t)
 
 getTermVar :: (?emap::EMap f e, ?loc::Loc) => Term -> TASTVar f e
 getTermVar t = (fst ?emap) M.! (?loc, AVarTerm t)
 
 getPredVar :: (?emap::EMap f e, ?loc::Loc) => Predicate -> TAST f e c
-getPredVar p = H.EqConst ((fst ?emap) M.! (?loc, AVarPred p)) 1
+getPredVar p = H.Var ((fst ?emap) M.! (?loc, AVarPred p))
 
 compileFormula :: (?spec::Spec) => Formula -> TAST f e c
 compileFormula f = let ?loc  = cfaInitLoc 
