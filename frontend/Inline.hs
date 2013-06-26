@@ -222,6 +222,15 @@ mkContVar = I.EVar mkContVarName
 mkContVarDecl :: (?spec::Spec) => I.Var
 mkContVarDecl = I.Var False I.VarState mkContVarName I.Bool
 
+mkContLVarName :: String
+mkContLVarName = "$lcont"
+
+mkContLVar :: I.Expr
+mkContLVar = I.EVar mkContLVarName
+
+mkContLVarDecl :: (?spec::Spec) => I.Var
+mkContLVarDecl = I.Var False I.VarTmp mkContLVarName I.Bool
+
 mkMagicVarName :: String
 mkMagicVarName = "$magic"
 
@@ -436,9 +445,16 @@ ctxDelay loc lab cond = do pid  <- gets ctxPID
                            after <- ctxInsLocLab lab
                            stack <- ctxFrames after
                            ctxLocSetStack after stack
-                           if pid' == []
-                              then ctxInsTrans loc after $ I.TranNop
-                              else ctxInsTrans loc after $ I.TranStat $ mkPIDVar I.=: mkPIDEnum pid'
+                           -- set PID variable
+                           aftpid <- if pid' == []
+                                        then ctxInsTrans' loc $ I.TranNop
+                                        else ctxInsTrans' loc $ I.TranStat $ mkPIDVar I.=: mkPIDEnum pid'
+                           -- non-deterministically set $cont to true if inside a magic block
+                           if ((not cont) && pid /= []) 
+                              then do ifmagic <- ctxInsTrans' aftpid $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
+                                      ctxInsTrans ifmagic after $ I.TranStat $ mkContVar I.=: mkContLVar
+                                      ctxInsTrans aftpid after $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.false
+                              else ctxInsTrans aftpid after I.TranNop
                            case cond of
                                 (I.EConst (I.BoolVal True)) -> return after
                                 _                           -> ctxInsTrans' after (I.TranStat $ I.SAssume cond)

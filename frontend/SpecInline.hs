@@ -264,9 +264,16 @@ mkCond descr s extra = do
 
 mkIdleTran :: (?spec::Spec) => I.Transition
 mkIdleTran =
-    let (cfa0, aftguard) = I.cfaInsTrans' I.cfaInitLoc (I.TranStat $ I.SAssume $ mkContVar I.=== I.false) 
-                                          (I.newCFA (ScopeTemplate tmMain) (SSeq nopos []) I.true)
-    in utranSuffix pidIdle False True (I.Transition I.cfaInitLoc aftguard cfa0)
+    let ctx  = CFACtx { ctxPID     = pidIdle
+                      , ctxCont    = False
+                      , ctxStack   = [(ScopeTemplate tmMain, error "return from idle transition", Nothing, M.empty)]
+                      , ctxCFA     = I.newCFA (ScopeTemplate tmMain) (SSeq nopos []) I.true
+                      , ctxBrkLocs = []
+                      , ctxGNMap   = globalNMap
+                      , ctxLastVar = 0
+                      , ctxVar     = []}
+        ctx' = let ?procs = [] in execState (ctxFinal I.cfaInitLoc) ctx
+    in utranSuffix pidIdle False $ cfaToITransition (ctxCFA ctx') "tran_idle"
 
 ----------------------------------------------------------------------
 -- Controllable transitions
@@ -537,7 +544,7 @@ cfaToITransition cfa fname = case trans of
                                   _   -> error $ "cfaToITransition: Invalid CFA:\n" ++ (intercalate "\n\n"  $ map show trans)
       where trans = locTrans cfa I.cfaInitLoc
 
--- Convert CFA to a lits of transitions.
+-- Convert CFA to a list of transitions.
 -- Assume that unreachable states have already been pruned.
 cfaToIProcess :: PID -> I.CFA -> ProcTrans
 cfaToIProcess pid cfa = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreachable: " ++ (intercalate ", " $ map show r)) $
@@ -548,7 +555,7 @@ cfaToIProcess pid cfa = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreacha
     states = I.cfaDelayLocs cfa
     trans = concatMap (locTrans cfa) states
     -- filter out unreachable transitions
-    trans' = map (utranSuffix pid True False) trans
+    trans' = map (utranSuffix pid True) trans
     final = I.cfaFinal cfa
     --pcenum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) states
     wait   = map (\loc -> case I.cfaLocLabel loc cfa of
@@ -579,8 +586,8 @@ pruneTrans cfa from to = if G.noNodes cfa'' == G.noNodes cfa then cfa else prune
 
 -- Insert constraints over PC and cont variables after the last location of 
 -- the transition
-utranSuffix :: PID -> Bool -> Bool -> I.Transition -> I.Transition
-utranSuffix pid updatepc updatecont (I.Transition from to cfa) = 
+utranSuffix :: PID -> Bool -> I.Transition -> I.Transition
+utranSuffix pid updatepc (I.Transition from to cfa) = 
     let -- If this is a loop transition, split the initial node
         (linit, lfinal, cfa1) = if from == to
                                    then splitLoc from cfa
@@ -592,16 +599,15 @@ utranSuffix pid updatepc updatecont (I.Transition from to cfa) =
                            else (cfa1, lfinal)
         -- Transition only available in uncontrollable states
         (cfa4, aftucont) = I.cfaInsTrans' aftpc (I.TranStat $ I.SAssume $ mkContVar I.=== I.false) cfa3
-
         -- non-deterministically reset cont to true if inside a magic block
-        (cfa7,aftcont) = if updatecont 
-                            then let (cfa5, loc3)     = I.cfaInsTrans' aftucont (I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true) cfa4
-                                     (cfa6, aftreset) = I.cfaInsTrans' loc3 (I.TranStat $ mkContVar I.=: I.true) cfa5
-                                 in (I.cfaInsTrans aftucont aftreset I.TranNop cfa6, aftreset)
-                            else (cfa4, aftucont)
+--        (cfa7,aftcont) = if updatecont 
+--                            then let (cfa5, loc3)     = I.cfaInsTrans' aftucont (I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true) cfa4
+--                                     (cfa6, aftreset) = I.cfaInsTrans' loc3 (I.TranStat $ mkContVar I.=: I.true) cfa5
+--                                 in (I.cfaInsTrans aftucont aftreset I.TranNop cfa6, aftreset)
+--                            else (cfa4, aftucont)
         -- set $pid
         --(cfa8, after)   = I.cfaInsTrans' aftcont (I.TranStat $ mkPIDVar I.=: mkPIDEnum pid) cfa7
-    in I.Transition linit aftcont cfa7
+    in I.Transition linit aftucont cfa4
 
 tranAppend :: I.Transition -> I.Statement -> I.Transition
 tranAppend (I.Transition from to cfa) s = I.Transition from to' cfa'
