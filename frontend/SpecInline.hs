@@ -11,6 +11,7 @@ import Control.Monad.State hiding (guard)
 import qualified Data.Graph.Inductive.Graph as G
 
 import TSLUtil
+import Util hiding (name)
 import Spec
 import qualified ISpec    as I
 import qualified TranSpec as I
@@ -59,7 +60,7 @@ spec2Internal s =
                          inittr    <- mkInit
                          usergoals <- mapM mkGoal $ tmGoal tmMain
                          maggoal   <- mkMagicGoal
-                         return (wire, always, inittr, maggoal:usergoals))
+                         return (wire, always, inittr, if' (null usergoals) usergoals [maggoal]))
                      (0,[])
         extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) Nothing Nothing v) extratmvars
         (specProc, tmppvs) = unzip $ map procToCProc $ tmProcess tmMain
@@ -228,7 +229,7 @@ noerror = I.EUnOp Not mkErrVar
 
 mkGoal :: (?spec::Spec) => Goal -> NameGen I.Goal
 mkGoal g = -- Add $err==false to the goal condition
-           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos $ goalCond g) [noerror]
+           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos $ goalCond g) [I.EUnOp Not mkMagicVar, noerror]
 
 -- In addition to regular goals, we are required to be outside a magic block
 -- infinitely often
