@@ -42,15 +42,12 @@ type PID = [String]
 
 data ProcTrans = ProcTrans { pPID    :: PID
                            , pBody   :: [I.Transition]
-                           , pFinal  :: [I.Loc]            -- final locations
                            }
 
 instance PP ProcTrans where
     pp p = text "ProcTrans" <+> (text $ pidToName $ pPID p) <+>
            (braces' $
-           (vcat $ map (($+$ text "") . pp) (pBody p))
-           $+$
-           (text "final locations:" <+> (hsep $ punctuate comma $ map pp (pFinal p))))
+           (vcat $ map (($+$ text "") . pp) (pBody p)))
 
 instance Show ProcTrans where
     show = render . pp
@@ -175,6 +172,12 @@ mkPIDVarName = "$pid"
 mkPIDVar :: I.Expr
 mkPIDVar = I.EVar mkPIDVarName
 
+mkPIDLVarName :: String
+mkPIDLVarName = "$lpid"
+
+mkPIDLVar :: I.Expr
+mkPIDLVar = I.EVar mkPIDLVarName
+
 mkPIDEnumeratorName :: PID -> String
 mkPIDEnumeratorName pid = "$" ++ pidToName pid
 
@@ -187,6 +190,10 @@ mkPIDEnum = I.EConst . I.EnumVal . mkPIDEnumeratorName
 mkPIDVarDecl :: [PID] -> (I.Var, I.Enumeration)
 mkPIDVarDecl pids = (I.Var False I.VarState mkPIDVarName (I.Enum "$pidenum"), enum)
     where enum = I.Enumeration "$pidenum" $ map mkPIDEnumeratorName $ pidIdle:pidCont:pids
+
+mkPIDLVarDecl :: I.Var
+mkPIDLVarDecl = I.Var False I.VarTmp mkPIDLVarName (I.Enum "$pidenum")
+
 
 mkTagVarName :: String
 mkTagVarName = "$tag"
@@ -445,7 +452,8 @@ ctxDelay loc lab cond = do pid  <- gets ctxPID
                            -- set PID variable
                            aftpid <- if pid' == []
                                         then ctxInsTrans' loc $ I.TranNop
-                                        else ctxInsTrans' loc $ I.TranStat $ mkPIDVar I.=: mkPIDEnum pid'
+                                        else do befpid <- ctxInsTrans' loc $ I.TranStat $ I.SAssume $ mkPIDLVar I.=== mkPIDEnum pid'
+                                                ctxInsTrans' befpid $ I.TranStat $ mkPIDVar I.=: mkPIDLVar
                            -- non-deterministically set $cont to true if inside a magic block
                            if ((not cont) && pid /= []) 
                               then do ifmagic <- ctxInsTrans' aftpid $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true

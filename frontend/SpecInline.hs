@@ -53,7 +53,6 @@ spec2Internal s =
         (pidvar, pidenum)  = mkPIDVarDecl $ map fst procs
         (vars, tagenum)    = mkVars
  
-
         ((specWire, specAlways, inittran, goals), (_, extratmvars)) = 
             runState (do wire      <- mkWires
                          always    <- mkAlways
@@ -70,7 +69,7 @@ spec2Internal s =
                              $ filter ((== Task Controllable) . methCat)
                              $ tmMethod tmMain
         specEnum           = choiceenum ++ (pidenum : tagenum : (senum ++ pcenums))
-        specVar            = cvars ++ [pidvar] ++ pcvars ++ vars ++ concat (tmppvs ++ tmpcvs) ++ extraivars
+        specVar            = cvars ++ [pidvar, mkPIDLVarDecl] ++ pcvars ++ vars ++ concat (tmppvs ++ tmpcvs) ++ extraivars
         specCAct           = ctran
         specTran           = error "specTran undefined"
         spec               = I.Spec {..}
@@ -323,7 +322,7 @@ mkCTran = I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
 ----------------------------------------------------------------------
 
 mkVars :: (?spec::Spec) => ([I.Var], I.Enumeration)
-mkVars = (mkErrVarDecl : mkContVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ ivars ++ fpvars ++ pvars), 
+mkVars = (mkErrVarDecl : mkContVarDecl : mkContLVarDecl : mkMagicVarDecl : tvar : (wires ++ gvars ++ fvars ++ cvars ++ tvars ++ ivars ++ fpvars ++ pvars), 
           tenum)
     where
     -- tag: one enumerator per controllable task
@@ -562,14 +561,13 @@ cfaToITransition cfa fname = case trans of
 cfaToIProcess :: PID -> I.CFA -> ProcTrans
 cfaToIProcess pid cfa = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreachable: " ++ (intercalate ", " $ map show r)) $
                              I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ pidToName pid) $
-                             ProcTrans pid trans' final
+                             ProcTrans pid trans'
     where
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa
     trans = concatMap (locTrans cfa) states
     -- filter out unreachable transitions
     trans' = map (utranSuffix pid True) trans
-    final  = I.cfaFinal cfa
 
 
 locTrans :: I.CFA -> I.Loc -> [I.Transition]
