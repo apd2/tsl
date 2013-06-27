@@ -59,7 +59,9 @@ pidToName pid = intercalate "/" pid
 childPID :: PID -> Ident -> PID
 childPID pid pname = pid ++ [sname pname]
 
-pidIdle = ["$pididle"]
+procNameIdle = "$pididle"
+
+pidIdle = [procNameIdle]
 pidCont = ["$pidcont"]
 
 ----------------------------------------------------------------------

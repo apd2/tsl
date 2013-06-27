@@ -11,7 +11,7 @@ import Control.Monad.State hiding (guard)
 import qualified Data.Graph.Inductive.Graph as G
 
 import TSLUtil
-import Util hiding (name)
+import Util hiding (name, trace)
 import Spec
 import qualified ISpec    as I
 import qualified TranSpec as I
@@ -62,7 +62,7 @@ spec2Internal s =
                          return (wire, always, inittr, if' (null usergoals) usergoals [maggoal]))
                      (0,[])
         extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) Nothing Nothing v) extratmvars
-        (specProc, tmppvs) = unzip $ map procToCProc $ tmProcess tmMain
+        (specProc, tmppvs) = unzip $ (map procToCProc $ mkIdleProc : tmProcess tmMain) 
         (specCTask,tmpcvs) = unzip
                              $ map (\m -> let (cfa, vs) = let ?procs = [] in taskToCFA [] m True
                                           in (I.Task (sname m) cfa, vs))
@@ -94,7 +94,7 @@ spec2Internal s =
         errinit  = mkErrVar   I.=== I.false in
 
         spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransition ctran "ctran"
-                                       , I.tsUTran  = mkIdleTran : utran
+                                       , I.tsUTran  = utran
                                        , I.tsWire   = cfaToITransition (fromMaybe I.cfaNop (I.specWire spec'))   "wires"
                                        , I.tsAlways = cfaToITransition (fromMaybe I.cfaNop (I.specAlways spec')) "always"
                                        , I.tsInit   = (inittran, I.conj $ (pcinit ++ teninit ++ peninit ++ [errinit, taginit, maginit, continit, pidinit]))
@@ -274,18 +274,8 @@ mkCond descr s extra = do
 -- Idle transition
 ----------------------------------------------------------------------
 
-mkIdleTran :: (?spec::Spec) => I.Transition
-mkIdleTran =
-    let ctx  = CFACtx { ctxPID     = pidIdle
-                      , ctxCont    = False
-                      , ctxStack   = [(ScopeTemplate tmMain, error "return from idle transition", Nothing, M.empty)]
-                      , ctxCFA     = I.newCFA (ScopeTemplate tmMain) (SSeq nopos []) I.true
-                      , ctxBrkLocs = []
-                      , ctxGNMap   = globalNMap
-                      , ctxLastVar = 0
-                      , ctxVar     = []}
-        ctx' = let ?procs = [] in execState (ctxFinal I.cfaInitLoc) ctx
-    in utranSuffix pidIdle False $ cfaToITransition (ctxCFA ctx') "tran_idle"
+mkIdleProc :: (?spec::Spec) => Process
+mkIdleProc = Process nopos (Ident nopos procNameIdle) (SForever nopos $ SPause nopos)
 
 ----------------------------------------------------------------------
 -- Controllable transitions
@@ -559,9 +549,8 @@ cfaToITransition cfa fname = case trans of
 -- Convert CFA to a list of transitions.
 -- Assume that unreachable states have already been pruned.
 cfaToIProcess :: PID -> I.CFA -> ProcTrans
-cfaToIProcess pid cfa = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreachable: " ++ (intercalate ", " $ map show r)) $
-                             I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ pidToName pid) $
-                             ProcTrans pid trans'
+cfaToIProcess pid cfa = I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ pidToName pid) $
+                        ProcTrans pid trans'
     where
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa
@@ -579,15 +568,14 @@ locTrans cfa loc =
         -- (This is a good place to check for loop freedom.)
         -- for each final location, compute a subgraph that connects the two
         dsts = filter (I.isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
-    in --trace ("locTrans loc=" ++ show loc ++ " dst=" ++ show dst ++ " reach=" ++ show r) $
-       map (\dst -> I.Transition loc dst $ pruneTrans cfa' loc dst) dsts
+    in map (\dst -> I.Transition loc dst $ pruneTrans cfa' loc dst) dsts
 
 -- iteratively prune dead-end locations until only transitions connecting from and to remain
 pruneTrans :: I.CFA -> I.Loc -> I.Loc -> I.CFA
-pruneTrans cfa from to = if G.noNodes cfa'' == G.noNodes cfa then cfa else pruneTrans cfa'' from to
-    where -- eliminate from-->from loops, unless we are generating a loop transition
+pruneTrans cfa from to = if G.noNodes cfa'' == G.noNodes cfa then cfa'' else pruneTrans cfa'' from to
+    where -- eliminate from-->from loops and to-->... transitions, unless we are generating a loop transition
           cfa' = if from /= to
-                    then foldl' (\cfa0 (f,t,_) -> G.delEdge (f,t) cfa0) cfa (G.inn cfa from)
+                    then foldl' (\cfa0 (f,t,_) -> G.delEdge (f,t) cfa0) cfa $ G.inn cfa from ++ G.out cfa to
                     else cfa
           cfa'' = foldl' (\g loc -> if loc /= to && null (G.suc g loc) then G.delNode loc g else g) cfa' (G.nodes cfa') 
 
