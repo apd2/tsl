@@ -43,7 +43,6 @@ type PID = [String]
 data ProcTrans = ProcTrans { pPID    :: PID
                            , pBody   :: [I.Transition]
                            , pFinal  :: [I.Loc]            -- final locations
-                           , pPauses :: [(I.Loc, I.Expr)]  -- process locations and corresponding wait conditions
                            }
 
 instance PP ProcTrans where
@@ -51,9 +50,7 @@ instance PP ProcTrans where
            (braces' $
            (vcat $ map (($+$ text "") . pp) (pBody p))
            $+$
-           (text "final locations:" <+> (hsep $ punctuate comma $ map pp (pFinal p)))
-           $+$
-           (text "Pause conditions:" <+> (hsep $ punctuate comma $ map (\(l,c) -> parens $ pp l <> comma <> pp c) (pPauses p))))
+           (text "final locations:" <+> (hsep $ punctuate comma $ map pp (pFinal p))))
 
 instance Show ProcTrans where
     show = render . pp

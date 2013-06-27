@@ -39,7 +39,7 @@ spec2Internal :: Spec -> I.Spec
 spec2Internal s = 
     let -- preprocessing
         ?spec = specSimplify s in
-    let procs = I.specAllProcs spec
+    let procs = I.specAllCFAs spec
         -- PC variables and associated enums
         (pcvars, pcenums) = unzip 
                             $ map (\(pid,cfa) -> let enum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) $ I.cfaDelayLocs cfa
@@ -79,7 +79,7 @@ spec2Internal s =
         -- Controllable transitions
         (ctran, cvars) = mkCTran 
         -- Uncontrollable processes
-        trprocs = map (\(pid, cfa) -> cfaToIProcess pid cfa) $ I.specAllProcs spec'
+        trprocs = map (\(pid, cfa) -> cfaToIProcess pid cfa) $ I.specAllCFAs spec'
         -- Uncontrollable transitions
         utran = concatMap pBody trprocs
         -- initialise PC variables.
@@ -100,7 +100,7 @@ spec2Internal s =
                                        , I.tsAlways = cfaToITransition (fromMaybe I.cfaNop (I.specAlways spec')) "always"
                                        , I.tsInit   = (inittran, I.conj $ (pcinit ++ teninit ++ peninit ++ [errinit, taginit, maginit, continit, pidinit]))
                                        , I.tsGoal   = goals
-                                       , I.tsFair   = mkFair trprocs
+                                       , I.tsFair   = mkFair spec'
                                        }}
 
 
@@ -196,17 +196,30 @@ mkAlways | (null $ tmAlways tmMain) = return Nothing
 -- Fair sets
 ----------------------------------------------------------------------
 
-mkFair :: (?spec::Spec) => [ProcTrans] -> [I.FairRegion]
-mkFair procs = fsched : fproc
-    where -- Fair scheduling:  GF (not ($magic==true && $cont == false))
-          fsched = I.FairRegion "fair_scheduler" $ I.conj [mkMagicVar I.=== I.true, mkContVar I.=== I.false]
-          -- For each uncontrollable process pid: GF (not ((\/i . pc=si && condi) && lastpid /= pid))
-          -- where si and condi are process pause locations and matching conditions
-          -- i.e, the process eventually either becomes disabled or makes a transition.
-          fproc = map (\p -> let pid = pPID p
-                             in I.FairRegion ("fair_" ++ (pidToName $ pPID p)) 
-                                $ I.conj [mkPIDVar I./== mkPIDEnum pid, I.disj $ map (\(loc,cond) -> I.conj [mkPCVar pid I.=== mkPC pid loc, cond]) $ pPauses p]) 
-                            procs 
+mkFair :: (?spec::Spec) => I.Spec -> [I.FairRegion]
+mkFair ispec = mkFairSched : mkFairCont ++ (map mkFairProc $ I.specAllProcs ispec)
+    where 
+    -- Fair scheduling:  GF (not ($magic==true && $cont == false))
+    mkFairSched = I.FairRegion "fair_scheduler" $ (mkMagicVar I.=== I.true) `I.land` (mkContVar I.=== I.false)
+
+    mkFairCont | null (I.specCTask ispec) = []
+               | otherwise                = [I.FairRegion "fair_cont" $ I.disj $ map (\t -> mkFairCFA (I.taskCFA t) [I.taskName t]) $ I.specCTask ispec]
+
+    -- For each uncontrollable process: 
+    -- GF (not ((\/i . pc=si && condi) && lastpid /= pid))
+    -- where si and condi are process pause locations and matching conditions
+    -- i.e, the process eventually either becomes disabled or makes a transition.
+    mkFairProc :: (PID, I.Process) -> I.FairRegion
+    mkFairProc (pid,p) = I.FairRegion ("fair_" ++ pidToName pid)
+                         $ I.disj 
+                         $ mkFairCFA (I.procCFA p) pid : map (\t -> mkFairCFA (I.taskCFA t) (pid++[I.taskName t])) (I.procTask p)
+
+    mkFairCFA :: I.CFA -> PID -> I.Expr
+    mkFairCFA cfa pid = 
+        (mkPIDVar I./== mkPIDEnum pid) `I.land`
+        (I.disj $ map (\loc -> (mkPCVar pid I.=== mkPC pid loc) `I.land` (I.cfaLocWaitCond cfa loc)) 
+                $ filter (not . I.isDeadendLoc cfa) 
+                $ I.cfaDelayLocs cfa)
 
 ----------------------------------------------------------------------
 -- Init and goal conditions
@@ -549,18 +562,14 @@ cfaToITransition cfa fname = case trans of
 cfaToIProcess :: PID -> I.CFA -> ProcTrans
 cfaToIProcess pid cfa = --trace ("cfaToIProcess\nCFA: " ++ show cfa ++ "\nreachable: " ++ (intercalate ", " $ map show r)) $
                              I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ pidToName pid) $
-                             ProcTrans pid trans' final wait
+                             ProcTrans pid trans' final
     where
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa
     trans = concatMap (locTrans cfa) states
     -- filter out unreachable transitions
     trans' = map (utranSuffix pid True) trans
-    final = I.cfaFinal cfa
-    --pcenum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) states
-    wait   = map (\loc -> case I.cfaLocLabel loc cfa of
-                               I.LFinal _ _      -> (loc, I.true)
-                               I.LPause _ _ cond -> (loc, cond)) states
+    final  = I.cfaFinal cfa
 
 
 locTrans :: I.CFA -> I.Loc -> [I.Transition]

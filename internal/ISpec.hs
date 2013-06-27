@@ -6,6 +6,7 @@ module ISpec(Spec(..),
              specTmpVar,
              specStateVar,
              specGetProcess,
+             specAllCFAs,
              specAllProcs,
              specGetCFA,
              specMapCFA,
@@ -20,7 +21,6 @@ module ISpec(Spec(..),
 
 import Data.List
 import Data.Maybe
-import qualified Data.Map as M
 import qualified Data.Graph.Inductive.Graph as G
 import Text.PrettyPrint
 
@@ -106,14 +106,21 @@ specGetCFA spec pid (Just meth) = taskCFA task
     where proc = specGetProcess spec pid
           task = fromJustMsg "specGetCFA: error2" $ find ((== meth) . taskName) $ procTask proc
 
-specAllProcs :: Spec -> [(PID, CFA)]
-specAllProcs Spec{..} = concatMap (\p -> procAllProcs [] p) specProc ++
-                        map (\Task{..} -> ([taskName], taskCFA)) specCTask
+specAllCFAs :: Spec -> [(PID, CFA)]
+specAllCFAs Spec{..} = concatMap (\p -> procAllCFAs [] p) specProc ++
+                       map (\Task{..} -> ([taskName], taskCFA)) specCTask
 
-procAllProcs :: PID -> Process -> [(PID, CFA)]
-procAllProcs parpid Process{..} = (pid, procCFA) :
-                                  concatMap (procAllProcs pid) procChildren ++
-                                  map (\Task{..} -> (pid++[taskName], taskCFA)) procTask
+procAllCFAs :: PID -> Process -> [(PID, CFA)]
+procAllCFAs parpid Process{..} = (pid, procCFA) :
+                                 concatMap (procAllCFAs pid) procChildren ++
+                                 map (\Task{..} -> (pid++[taskName], taskCFA)) procTask
+    where pid = parpid ++ [procName]
+
+specAllProcs :: Spec -> [(PID, Process)]
+specAllProcs Spec{..} = concatMap (     procAllForkedProcs []) specProc
+
+procAllForkedProcs :: PID -> Process -> [(PID, Process)]
+procAllForkedProcs parpid p@Process{..} = (pid, p) : concatMap (procAllForkedProcs pid) procChildren
     where pid = parpid ++ [procName]
 
 -- Apply transformation to all task and process CFA's in the spec

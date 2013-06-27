@@ -13,6 +13,7 @@ module CFA(Statement(..),
            TranLabel(..),
            CFA,
            isDelayLabel,
+           isDeadendLoc,
            newCFA,
            cfaNop,
            cfaErrLoc,
@@ -24,6 +25,7 @@ module CFA(Statement(..),
            cfaLocSetAct,
            cfaLocSetStack,
            cfaLocInline,
+           cfaLocWaitCond,
            cfaInsTrans,
            cfaInsTransMany,
            cfaInsTrans',
@@ -224,7 +226,13 @@ isDelayLabel (LPause _ _ _) = True
 isDelayLabel (LFinal _ _)   = True
 isDelayLabel (LInst _)      = False
 
+isDeadendLoc :: CFA -> Loc -> Bool
+isDeadendLoc cfa loc = G.outdeg cfa loc == 0
 
+cfaLocWaitCond :: CFA -> Loc -> Expr
+cfaLocWaitCond cfa loc = case cfaLocLabel loc cfa of
+                              LPause _ _ c -> c
+                              LFinal _ _   -> true
 
 newCFA :: F.Scope -> F.Statement -> Expr -> CFA 
 newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [FrameStatic sc cfaInitLoc] initcond) 

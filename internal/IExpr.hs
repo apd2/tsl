@@ -15,6 +15,8 @@ module IExpr(LVal(..),
              disj,
              conj,
              neg,
+             land,
+             lor,
              econcat,
              true,
              false,
@@ -229,6 +231,12 @@ conj es = foldl' (\e1 e2 -> EBinOp And e1 e2) (head es) (tail es)
 
 neg :: Expr -> Expr
 neg = EUnOp Not
+
+land :: Expr -> Expr -> Expr
+land = EBinOp And
+
+lor :: Expr -> Expr -> Expr
+lor = EBinOp Or
 
 -- TODO: merge adjacent expressions
 econcat :: [Expr] -> Expr
