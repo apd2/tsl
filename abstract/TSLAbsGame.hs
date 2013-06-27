@@ -17,6 +17,7 @@ import Inline
 import qualified Interface   as Abs
 import qualified TermiteGame as Abs
 import qualified HAST.HAST   as H
+import qualified HAST.BDD    as H
 import ACFA
 import ACFACompile
 
@@ -91,7 +92,7 @@ tslContAbs spec m ops = do
         ?pred = p
     H.compileBDD m ops $ bexprAbstract $ mkContVar === true
 
-tslUpdateAbs :: Spec -> C.STDdManager s u -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslUpdateAbs :: Spec -> C.STDdManager s u -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslUpdateAbs spec m avars ops = do
     trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops  = ops
@@ -99,9 +100,11 @@ tslUpdateAbs spec m avars ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    let cont  = varUpdateTrans avars $ tsCTran $ specTran spec
-        ucont = H.Disj $ map (varUpdateTrans avars) $ tsUTran $ specTran spec
-    H.compileBDD m ops $ H.Or cont ucont
+    let pervar = map (\av -> let cont  = varUpdateTrans [av] $ tsCTran $ specTran spec
+                                 ucont = H.Disj $ map (varUpdateTrans [av]) $ tsUTran $ specTran spec
+                             in H.Or cont ucont)
+                        avars
+    mapM (H.compileBDD m ops) pervar
 
 ----------------------------------------------------------------------------
 -- PDB operations
