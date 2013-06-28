@@ -23,7 +23,6 @@ import Predicate
 import BFormula
 import ACFACompile
 import RefineCommon
-import qualified HAST.HAST as H
 import qualified HAST.BDD  as H
 
 --eqSolver :: Spec -> Solver Predicate s u

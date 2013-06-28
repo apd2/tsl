@@ -3,6 +3,7 @@
 module Predicate(PVarOps,
                  PDB,
                  bavarAVar,
+                 avarBAVar,
                  AbsVar(..),
                  avarWidth,
                  avarIsPred,
@@ -56,6 +57,10 @@ bavarAVar :: BAVar AbsVar AbsVar -> AbsVar
 bavarAVar (StateVar av _) = av
 bavarAVar (LabelVar av _) = av
 bavarAVar (OutVar   av _) = av
+
+avarBAVar :: (?spec::Spec) => AbsVar -> BAVar AbsVar AbsVar
+avarBAVar av | avarCategory av == VarTmp   = LabelVar av (avarWidth av)
+avarBAVar av | avarCategory av == VarState = StateVar av (avarWidth av)
 
 data AbsVar = AVarPred Predicate      -- predicate variable
             | AVarTerm Term           -- unabstracted Bool or Enum scalar variable

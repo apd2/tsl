@@ -7,17 +7,25 @@ module TSLUtil(fromLeft,
                uniqNames,
                grCycle,
                bitWidth,
-               readBin) where
+               readBin,
+               graphTrace,
+               graphTraceFile,
+               graphTraceFileMany,
+               graphShow,
+               graphSave) where
 
 import Control.Monad.Error
 import Data.List
 import Data.Maybe
-import Data.Graph.Inductive.Graph
-import Data.Graph.Inductive.Query.BFS
-import Data.Graph.Inductive.Query.DFS
+import Data.Graph.Inductive
+import Data.Graph.Inductive.Graphviz 
+
 import System.IO.Unsafe
 import Data.IORef
 import Data.Bits
+import System.IO.Unsafe
+import System.Process
+import Data.String.Utils
 
 import Util hiding (name)
 import Pos
@@ -66,3 +74,51 @@ readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
                               case c of
                                    '0' -> 0
                                    '1' -> 1) 0 s
+
+-- Graph visualisation --
+
+sanitize :: String -> String
+sanitize title = replace "\"" "_" $ replace "/" "_" $ replace "$" "" $ replace ":" "_" title
+
+graphTrace :: (Show b, Show c) => Gr b c -> String -> a -> a
+graphTrace g title x = unsafePerformIO $ do
+    graphShow g title
+    return x
+
+graphTraceFile :: (Show b, Show c) => Gr b c -> String -> a -> a
+graphTraceFile g title x = unsafePerformIO $ do
+    _ <- graphSave g title False
+    return x
+
+graphTraceFileMany :: (Show b, Show c) => [Gr b c] -> String -> a -> a
+graphTraceFileMany gs title x = unsafePerformIO $ do
+    fnames <- mapM (\(g,n) -> graphSave g (title++show n) True) $ zip gs ([1..]::[Int])
+    _ <- readProcess "psmerge" (["-o" ++ (sanitize title) ++ ".ps"]++fnames) ""
+    return x
+
+graphShow :: (Show b, Show c) => Gr b c -> String -> IO ()
+graphShow g title = do
+    fname <- graphSave g title True
+    _ <- readProcess "evince" [fname] ""
+    return ()
+
+graphSave :: (Show b, Show c) => Gr b c -> String -> Bool -> IO String
+graphSave g title tmp = do
+    let -- Convert graph to dot format
+        title' = sanitize title
+        fname = (if tmp then "/tmp/" else "") ++ title' ++ ".ps"
+        graphstr = graphToDot g title'
+    writeFile (fname++".dot") graphstr
+    _ <- readProcess "dot" ["-Tps", "-o" ++ fname] graphstr 
+    return fname
+
+graphToDot :: (Show b, Show c) => Gr b c -> String -> String
+graphToDot g title = graphviz g' title (6.0, 11.0) (1,1) Portrait
+    where g' = emap (eformat . show)
+               $ gmap (\(inb, n, l, outb) -> (inb, n, show n ++ ": " ++ (nformat $ show l), outb)) g
+          maxLabel = 64
+          nformat :: String -> String
+          nformat s = if' (length s <= maxLabel) s ((take maxLabel s) ++ "...") 
+          eformat :: String -> String
+          eformat s | length s <= maxLabel = s
+                    | otherwise            = (take maxLabel s) ++ "\n" ++ eformat (drop maxLabel s)

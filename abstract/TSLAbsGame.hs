@@ -103,8 +103,8 @@ tslUpdateAbs spec m avars ops = do
     let pervar = map (\av -> let cont  = varUpdateTrans [av] $ tsCTran $ specTran spec
                                  ucont = H.Disj $ map (varUpdateTrans [av]) $ tsUTran $ specTran spec
                              in H.Or cont ucont)
-                        avars
-    mapM (H.compileBDD m ops) pervar
+                     avars
+    mapM (\(ast, (av,_)) -> trace ("compiling " ++ show av) $ H.compileBDD m ops ast) $ zip pervar avars
 
 ----------------------------------------------------------------------------
 -- PDB operations

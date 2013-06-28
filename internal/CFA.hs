@@ -44,23 +44,19 @@ module CFA(Statement(..),
            cfaShow,
            cfaSave) where
 
-import qualified Data.Graph.Inductive.Graph    as G
-import qualified Data.Graph.Inductive.Tree     as G
-import qualified Data.Graph.Inductive.Graphviz as G
+import qualified Data.Graph.Inductive as G
 import Data.Maybe
 import Data.List
 import Data.Tuple
-import qualified Data.Set                      as S
-import qualified Data.Map                      as M
+import qualified Data.Set             as S
+import qualified Data.Map             as M
 import Text.PrettyPrint
-import System.IO.Unsafe
-import System.Process
-import Data.String.Utils
 
 import Name
 import PP
 import Ops
 import Util hiding (name,trace)
+import TSLUtil
 import IExpr
 import IType
 import {-# SOURCE #-} ISpec
@@ -175,51 +171,19 @@ instance Show CFA where
     show = render . pp
 
 cfaTrace :: CFA -> String -> a -> a
-cfaTrace cfa title x = unsafePerformIO $ do
-    cfaShow cfa title
-    return x
-
-sanitize :: String -> String
-sanitize title = replace "\"" "_" $ replace "/" "_" $ replace "$" "" $ replace ":" "_" title
+cfaTrace cfa title x = graphTrace cfa title x
 
 cfaTraceFile :: CFA -> String -> a -> a
-cfaTraceFile cfa title x = unsafePerformIO $ do
-    _ <- cfaSave cfa title False
-    return x
+cfaTraceFile cfa title x = graphTraceFile cfa title x
 
 cfaTraceFileMany :: [CFA] -> String -> a -> a
-cfaTraceFileMany cfas title x = unsafePerformIO $ do
-    fnames <- mapM (\(cfa,n) -> cfaSave cfa (title++show n) True) $ zip cfas ([1..]::[Int])
-    _ <- readProcess "psmerge" (["-o" ++ (sanitize title) ++ ".ps"]++fnames) ""
-    return x
+cfaTraceFileMany cfas title x = graphTraceFileMany cfas title x
 
 cfaShow :: CFA -> String -> IO ()
-cfaShow cfa title = do
-    fname <- cfaSave cfa title True
-    _ <- readProcess "evince" [fname] ""
-    return ()
+cfaShow cfa title = graphShow cfa title
 
 cfaSave :: CFA -> String -> Bool -> IO String
-cfaSave cfa title tmp = do
-    let -- Convert graph to dot format
-        title' = sanitize title
-        fname = (if tmp then "/tmp/" else "") ++ "cfa_" ++ title' ++ ".ps"
-        graphstr = cfaToDot cfa title'
-    writeFile (fname++".dot") graphstr
-    _ <- readProcess "dot" ["-Tps", "-o" ++ fname] graphstr 
-    return fname
-
-cfaToDot :: CFA -> String -> String
-cfaToDot cfa title = G.graphviz cfa' title (6.0, 11.0) (1,1) G.Portrait
-    where cfa' = G.emap (eformat . show)
-                 $ G.gmap (\(inb, n, l, outb) -> (inb, n, show n ++ ": " ++ (nformat $ show l), outb)) cfa
-          maxLabel = 64
-          nformat :: String -> String
-          nformat s = if' (length s <= maxLabel) s ((take maxLabel s) ++ "...") 
-          eformat :: String -> String
-          eformat s | length s <= maxLabel = s
-                    | otherwise            =
-                        (take maxLabel s) ++ "\n" ++ eformat (drop maxLabel s)
+cfaSave cfa title tmp = graphSave cfa ("cfa_" ++ title) tmp
 
 isDelayLabel :: LocLabel -> Bool
 isDelayLabel (LPause _ _ _) = True
