@@ -3,6 +3,7 @@
 module ACFACompile(TAST,
                    ACFA,
                    ACascade,
+                   acfaTraceFile,
                    compileACFA,
                    compileFormula,
                    tcasAbsVars,
@@ -16,8 +17,8 @@ import Data.Maybe
 import Debug.Trace
 import GHC.Exts
 
-import Util hiding (trace)
 import TSLUtil
+import Util hiding (trace)
 import qualified HAST.HAST as H
 import Cascade
 import Predicate
@@ -50,8 +51,13 @@ conj xs  = H.Conj xs
 -- vars defined in the state
 type ACFA = G.Gr [AbsVar] (Int,[ACascade])
 
+acfaTraceFile :: ACFA -> String -> a -> a
+acfaTraceFile acfa title = graphTraceFile (G.emap (\_ -> "") acfa) title
+
 compileACFA :: (?spec::Spec, ?pred::[Predicate]) => [(AbsVar, f)] -> ACFA -> TAST f e c
-compileACFA nxtvs acfa = let ?acfa = acfa in mkAST nxtvs ord
+compileACFA nxtvs acfa = -- trace ("ord: " ++ show ord) 
+                         -- $ graphTrace (G.emap (\_ -> "") acfa) "ACFA"
+                         let ?acfa = acfa in mkAST nxtvs ord
     where
     ord = order []
     order ls = -- pick node with all successors in ls with the highest outbound degree
@@ -87,19 +93,18 @@ mkAST nxtvs ord = mkAST' (vmap1, M.empty) ord
 mkAST' :: (?spec::Spec, ?acfa::ACFA) => EMap f e c -> [Loc] -> TAST f e c
 mkAST' _            []      = H.T
 mkAST' (vmap, tmap) (l:ord) = 
-    H.Exists 1 
+    H.NExists ("f" ++ show l) 1 
     $ (\xl -> let fl = H.Var $ H.EVar xl in
-              H.existsMany (replicate (length out) 1)
+              H.nExistsMany (map (\(l',_) -> ("f" ++ show l ++ "-" ++ show l', 1)) out)
               $ (\xll -> let fll = map (H.Var . H.EVar) xll in
                          let tmap' = foldl' (\m (v, (_, (i,_))) -> M.insert (l,i) v m) tmap $ zip fll out in
-                         H.existsMany (map avarWidth vs)
-                         $ (\xs -> let vmap' = foldl' (\m (v, av) -> M.insertWith (\_ old -> old) (l,av) (H.EVar v) m) 
-                                                      vmap $ zip xs vs
-                                   in (mkAST' (vmap', tmap') ord)                 `H.And` 
-                                      (fl `H.XNor` if' (null fll) H.T (disj fll)) `H.And`
-                                      mkFanin (vmap', tmap') fl)))
+                         H.nExistsMany (map (\v -> (show v ++ show l, avarWidth v)) vs)
+                         $ (\xs -> let vmap' = foldl' (\m (v, av) -> M.insert (l,av) (H.EVar v) m) vmap $ zip xs vs
+                                   in (mkAST' (vmap', tmap') ord)                  `H.And` 
+                                      ((fl `H.XNor` if' (null fll) H.T (disj fll)) `H.And`
+                                       mkFanin (vmap', tmap') fl))))
     where 
-    vs  = fromJust $ G.lab ?acfa l
+    vs  = filter (\v -> M.notMember (l,v) $ vmap) $ fromJust $ G.lab ?acfa l
     out = G.lsuc ?acfa l
     mkFanin emap fl = case G.lpre ?acfa l of
                            []  -> fl

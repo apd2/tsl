@@ -12,7 +12,8 @@ module TSLUtil(fromLeft,
                graphTraceFile,
                graphTraceFileMany,
                graphShow,
-               graphSave) where
+               graphSave,
+               traceFile) where
 
 import Control.Monad.Error
 import Data.List
@@ -78,7 +79,7 @@ readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
 -- Graph visualisation --
 
 sanitize :: String -> String
-sanitize title = replace "\"" "_" $ replace "/" "_" $ replace "$" "" $ replace ":" "_" title
+sanitize title = replace "'" "" $ replace "\"" "_" $ replace "/" "_" $ replace "$" "" $ replace ":" "_" title
 
 graphTrace :: (Show b, Show c) => Gr b c -> String -> a -> a
 graphTrace g title x = unsafePerformIO $ do
@@ -122,3 +123,8 @@ graphToDot g title = graphviz g' title (6.0, 11.0) (1,1) Portrait
           eformat :: String -> String
           eformat s | length s <= maxLabel = s
                     | otherwise            = (take maxLabel s) ++ "\n" ++ eformat (drop maxLabel s)
+
+traceFile :: String -> FilePath -> a -> a
+traceFile str fname x = unsafePerformIO $ do
+    writeFile (sanitize fname) str
+    return x

@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE ImplicitParams, ScopedTypeVariables #-}
 
 module TSLAbsGame(tslAbsGame,
                   bexprToFormula) where
@@ -6,7 +6,11 @@ module TSLAbsGame(tslAbsGame,
 import Prelude hiding (and)
 import Data.List hiding (and)
 import Debug.Trace
+import Text.PrettyPrint.Leijen.Text
+import Data.Text.Lazy hiding (intercalate, map, take, length, zip, filter)
 
+import TSLUtil
+import Util hiding (trace)
 import qualified CuddExplicitDeref as C
 import ISpec
 import TranSpec
@@ -41,7 +45,7 @@ tslGoalAbs spec m ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    mapM (\g -> do let ast = tranPrecondition (goalCond g)
+    mapM (\g -> do let ast = tranPrecondition ("goal_" ++ (goalName g))  (goalCond g)
                    H.compileBDD m ops ast)
          $ tsGoal $ specTran spec
 
@@ -61,7 +65,7 @@ tslInitAbs spec m ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    let pre   = tranPrecondition (fst $ tsInit $ specTran spec)
+    let pre   = tranPrecondition "init" (fst $ tsInit $ specTran spec)
         extra = bexprAbstract (snd $ tsInit $ specTran spec)
         res   = H.And pre extra
     H.compileBDD m ops res
@@ -100,10 +104,11 @@ tslUpdateAbs spec m avars ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    let pervar = map (\av -> let cont  = varUpdateTrans [av] $ tsCTran $ specTran spec
-                                 ucont = H.Disj $ map (varUpdateTrans [av]) $ tsUTran $ specTran spec
+    let pervar = map (\av -> let cont  = varUpdateTrans "cont" [av] $ tsCTran $ specTran spec
+                                 ucont = H.Disj $ mapIdx (\tr i -> varUpdateTrans (show i) [av] tr) $ tsUTran $ specTran spec
                              in H.Or cont ucont)
                      avars
+    _ <- mapIdxM (\tr i -> cfaTraceFile (tranCFA tr) ("cfa" ++ show i) $ return ()) $ tsUTran $ specTran spec
     mapM (\(ast, (av,_)) -> trace ("compiling " ++ show av) $ H.compileBDD m ops ast) $ zip pervar avars
 
 ----------------------------------------------------------------------------
@@ -125,14 +130,21 @@ bexprAbstract :: (?spec::Spec, ?pred::[Predicate]) => Expr -> TAST f e c
 bexprAbstract = compileFormula . bexprToFormula
 
 -- Compute precondition of transition without taking always blocks and wires into account
-tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => Transition -> TAST f e c
-tranPrecondition tran = varUpdateLoc [] (tranFrom tran) (tranCFA tran)
+tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => String -> Transition -> TAST f e c
+tranPrecondition trname tran = varUpdateLoc trname [] (tranFrom tran) (tranCFA tran)
 
 -- Compute update functions for a list of variables wrt to a transition
-varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => [(AbsVar,f)] -> Transition -> TAST f e c
-varUpdateTrans vs tran = varUpdateLoc vs (tranFrom tran) (cfaLocInlineWireAlways ?spec (tranCFA tran) (tranFrom tran))
+varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar,f)] -> Transition -> TAST f e c
+varUpdateTrans trname vs tran = varUpdateLoc trname vs (tranFrom tran) (cfaLocInlineWireAlways ?spec (tranCFA tran) (tranFrom tran))
 
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA. 
-varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => [(AbsVar, f)] -> Loc -> CFA -> TAST f e c
-varUpdateLoc vs loc cfa = compileACFA vs $ tranCFAToACFA (map fst vs) loc cfa
+varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar, f)] -> Loc -> CFA -> TAST f e c
+varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
+                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
+    where
+    acfa = tranCFAToACFA (map fst vs) loc cfa
+    ast  = compileACFA vs acfa
+    vs'  = map (\(av,_) -> (av, text $ pack $ show av ++ "'")) vs
+    vlst = intercalate "_" $ map (show . snd) vs'
+    ast'::(TAST Doc Doc Doc) = compileACFA vs' acfa

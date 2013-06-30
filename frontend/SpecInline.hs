@@ -593,7 +593,7 @@ utranSuffix pid updatepc (I.Transition from to cfa) =
                                 in I.cfaInsTrans' loc1 (I.TranStat $ mkPCVar pid I.=: mkPC pid to) cfa2
                            else (cfa1, lfinal)
         -- Transition only available in uncontrollable states
-        (cfa4, aftucont) = I.cfaInsTrans' aftpc (I.TranStat $ I.SAssume $ mkContVar I.=== I.false) cfa3
+--        (cfa4, aftucont) = I.cfaInsTrans' aftpc (I.TranStat $ I.SAssume $ mkContVar I.=== I.false) cfa3
         -- non-deterministically reset cont to true if inside a magic block
 --        (cfa7,aftcont) = if updatecont 
 --                            then let (cfa5, loc3)     = I.cfaInsTrans' aftucont (I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true) cfa4
@@ -602,7 +602,7 @@ utranSuffix pid updatepc (I.Transition from to cfa) =
 --                            else (cfa4, aftucont)
         -- set $pid
         --(cfa8, after)   = I.cfaInsTrans' aftcont (I.TranStat $ mkPIDVar I.=: mkPIDEnum pid) cfa7
-    in I.Transition linit aftucont cfa4
+    in I.Transition linit aftpc cfa3
 
 tranAppend :: I.Transition -> I.Statement -> I.Transition
 tranAppend (I.Transition from to cfa) s = I.Transition from to' cfa'

@@ -456,11 +456,13 @@ ctxDelay loc lab cond = do pid  <- gets ctxPID
                                         then ctxInsTrans' loc $ I.TranNop
                                         else do befpid <- ctxInsTrans' loc $ I.TranStat $ I.SAssume $ mkPIDLVar I.=== mkPIDEnum pid'
                                                 ctxInsTrans' befpid $ I.TranStat $ mkPIDVar I.=: mkPIDLVar
-                           -- non-deterministically set $cont to true if inside a magic block
+                           -- 1. uncontrollable transitions are only available in uncontrollable states
+                           -- 2. non-deterministically set $cont to true if inside a magic block
                            if ((not cont) && pid /= []) 
-                              then do ifmagic <- ctxInsTrans' aftpid $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
-                                      ctxInsTrans ifmagic after $ I.TranStat $ mkContVar I.=: mkContLVar
-                                      ctxInsTrans aftpid after $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.false
+                              then do aftucont <- ctxInsTrans' aftpid $ I.TranStat  $ I.SAssume $ mkContVar I.=== I.false
+                                      ifmagic <- ctxInsTrans' aftucont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
+                                      ctxInsTrans ifmagic after $ I.TranStat        $ mkContVar I.=: mkContLVar
+                                      ctxInsTrans aftucont after $ I.TranStat       $ I.SAssume $ mkMagicVar I.=== I.false
                               else ctxInsTrans aftpid after I.TranNop
                            case cond of
                                 (I.EConst (I.BoolVal True)) -> return after
