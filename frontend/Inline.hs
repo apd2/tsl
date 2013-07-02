@@ -191,7 +191,7 @@ mkPIDEnum = I.EConst . I.EnumVal . mkPIDEnumeratorName
 
 mkPIDVarDecl :: [PID] -> (I.Var, I.Enumeration)
 mkPIDVarDecl pids = (I.Var False I.VarState mkPIDVarName (I.Enum "$pidenum"), enum)
-    where enum = I.Enumeration "$pidenum" $ map mkPIDEnumeratorName $ pidIdle:pidCont:pids
+    where enum = I.Enumeration "$pidenum" $ map mkPIDEnumeratorName $ pidCont:pids
 
 mkPIDLVarDecl :: I.Var
 mkPIDLVarDecl = I.Var False I.VarTmp mkPIDLVarName (I.Enum "$pidenum")
