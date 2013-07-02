@@ -189,13 +189,15 @@ parsePIDEnumerator n = splitOn "/" $ tail n
 mkPIDEnum :: PID -> I.Expr
 mkPIDEnum = I.EConst . I.EnumVal . mkPIDEnumeratorName
 
+mkPIDEnumName :: String
+mkPIDEnumName = "$pidenum" 
+
 mkPIDVarDecl :: [PID] -> (I.Var, I.Enumeration)
-mkPIDVarDecl pids = (I.Var False I.VarState mkPIDVarName (I.Enum "$pidenum"), enum)
-    where enum = I.Enumeration "$pidenum" $ map mkPIDEnumeratorName $ pidCont:pids
+mkPIDVarDecl pids = (I.Var False I.VarState mkPIDVarName (I.Enum mkPIDEnumName), enum)
+    where enum = I.Enumeration mkPIDEnumName $ map mkPIDEnumeratorName $ pidCont:pids
 
 mkPIDLVarDecl :: I.Var
-mkPIDLVarDecl = I.Var False I.VarTmp mkPIDLVarName (I.Enum "$pidenum")
-
+mkPIDLVarDecl = I.Var False I.VarTmp mkPIDLVarName (I.Enum mkPIDEnumName)
 
 mkTagVarName :: String
 mkTagVarName = "$tag"
@@ -469,7 +471,7 @@ ctxDelay loc lab cond = do pid  <- gets ctxPID
                                 _                           -> ctxInsTrans' after (I.TranStat $ I.SAssume cond)
 
 ctxErrTrans :: I.Loc -> I.TranLabel -> State CFACtx ()
-ctxErrTrans loc t = modify $ (\ctx -> ctx {ctxCFA = I.cfaErrTrans loc t $ ctxCFA ctx})
+ctxErrTrans loc t = modify $ \ctx -> ctx {ctxCFA = I.cfaErrTrans loc t $ ctxCFA ctx}
 
 ctxPruneUnreachable :: State CFACtx ()
 ctxPruneUnreachable = modify (\ctx -> ctx {ctxCFA = I.cfaPruneUnreachable (ctxCFA ctx) [I.cfaInitLoc]})

@@ -92,7 +92,7 @@ enumToInt n = fst $ fromJust $ find ((==n) . snd) $ zip [0..] (enumEnums $ getEn
 specGetProcess :: Spec -> PID -> Process
 specGetProcess spec (name:names) | names == [] = root
                                  | otherwise   = specGetProcess' root names
-    where root = fromJustMsg "specGetProcess: error" $ find ((== name) . procName) $ specProc spec
+    where root = fromJustMsg ("specGetProcess " ++ name ++ ": error") $ find ((== name) . procName) $ specProc spec
 
 specGetProcess' :: Process -> PID -> Process
 specGetProcess' proc (name:names) | names == [] = child
