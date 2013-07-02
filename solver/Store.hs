@@ -152,7 +152,7 @@ storeSet' _            e               _     = error $ "storeSet': " ++ show e
 storeExtendDefault :: (?spec::Spec) => Store -> Store
 storeExtendDefault store = foldl' (\st v -> let evar = EVar $ varName v in
                                             foldl' extendScalar st (exprScalars evar (typ evar)))
-                                  store (specVar ?spec)
+                                  store $ filter ((== VarState) . varCat) (specVar ?spec)
 
 extendScalar :: (?spec::Spec) => Store -> Expr -> Store
 extendScalar store e = case storeTryEval store e of
