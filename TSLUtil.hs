@@ -79,7 +79,14 @@ readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
 -- Graph visualisation --
 
 sanitize :: String -> String
-sanitize title = replace "'" "" $ replace "\"" "_" $ replace "/" "_" $ replace "$" "" $ replace ":" "_" title
+sanitize title = replace "("  "" 
+               $ replace ")"  "" 
+               $ replace "'"  "" 
+               $ replace "\"" "_" 
+               $ replace "/"  "_" 
+               $ replace "$"  "" 
+               $ replace ":"  "_" 
+               title
 
 graphTrace :: (Show b, Show c) => Gr b c -> String -> a -> a
 graphTrace g title x = unsafePerformIO $ do

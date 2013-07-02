@@ -8,6 +8,7 @@ import qualified Data.Graph.Inductive as G
 import Data.List
 import Data.Maybe
 import Data.Functor
+import qualified Data.Map as M
 import Control.Applicative
 
 import Util
@@ -27,35 +28,65 @@ tranCFAToACFA :: (?spec::Spec, ?pred::[Predicate]) => [AbsVar] -> Loc -> CFA -> 
 tranCFAToACFA vs loc cfa = 
     let ?initloc = loc 
         ?cfa = cfaPruneUnreachable cfa [loc] in 
-    let -- prefill cache for final states
-        acfa0 = foldl' (\g l -> G.insNode (l,vs) g) G.empty
+    let -- prefill ACFA for final states
+        acfa0 = foldl' (\g l -> foldl' (\g' v -> addUseDefVar g' v l l) (G.insNode (l, ([],M.empty)) g) vs) G.empty
                 $ filter ((==0) . G.outdeg cfa)
                 $ G.nodes cfa
-    in mkACFA acfa0
+    in mkACFA acfa0 []
 
-mkACFA :: (?spec::Spec, ?initloc::Loc, ?pred::[Predicate], ?cfa::CFA) => ACFA -> ACFA
-mkACFA acfa = 
+mkACFA :: (?spec::Spec, ?initloc::Loc, ?pred::[Predicate], ?cfa::CFA) => ACFA -> [Loc] -> ACFA
+mkACFA acfa added = 
     let -- select a location not from the cache with all successors in the cache,
         loc = head
-              $ filter (all (\n -> elem n $ G.nodes acfa) . G.suc ?cfa)
-              $ filter (\n -> notElem n $ G.nodes acfa)
+              $ filter (all (\n -> elem n added) . G.suc ?cfa)
+              $ filter (\n -> notElem n added)
               $ G.nodes ?cfa
         -- compute variable updates along all outgoing transitions
-        updates = map (\(loc', tran) -> (loc', map (varUpdateTran tran) $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
+        updates = map (\(loc', tran) -> (loc', tranPrecondition tran, map (varUpdateTran tran) $ fst $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
         -- extract the list of abstract variables from transitions
-        vs = nub 
-             $ concatMap acasAbsVars
-             $ concatMap snd updates
-        acfa' = foldIdx (\gr (l, upds) i -> G.insEdge (loc, l, (i,upds)) gr)
-                (G.insNode (loc, vs) acfa) updates
+        vs = nub $ concatMap (\(_,pre,upd) -> formAbsVars pre ++ concatMap acasAbsVars upd) updates
+        acfa0  = case G.lab acfa loc of
+                     Nothing -> G.insNode (loc, ([], M.empty)) acfa
+                     Just _  -> acfa
+        acfa'  = foldl' (\gr v -> addUseDefVar gr v loc $ varRecomputedLoc loc v) acfa0 vs
+        acfa'' = foldIdx (\gr (l, pre, upds) i -> G.insEdge (loc, l, (i,pre,upds)) gr) acfa' updates
     in if loc == ?initloc
-          then acfa'
-          else mkACFA acfa'
+          then acfa''
+          else mkACFA acfa'' (loc:added)
+
+varRecomputedLoc :: (?spec::Spec, ?pred::[Predicate], ?cfa::CFA) => Loc -> AbsVar -> Loc
+varRecomputedLoc l v | null (G.pre ?cfa l)                                 = l
+                     | any (isVarRecomputedByTran v . snd) (G.lpre ?cfa l) = l
+                     | all (== pre0) pres                                  = pre0
+                     | otherwise                                           = l
+    where (pre0:pres) = map (\l' -> varRecomputedLoc l' v) $ G.pre ?cfa l
+
+isVarRecomputedByTran :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> TranLabel -> Bool
+isVarRecomputedByTran v@(AVarTerm t) tr = case varUpdateTran tr v of
+                                               Left  (CasLeaf t')         -> t' /= t
+                                               Right (CasLeaf f)          -> f  /= (ptrFreeBExprToFormula $ termToExpr t)
+                                               _                          -> True
+isVarRecomputedByTran v@(AVarPred p) tr = case varUpdateTran tr v of
+                                               Right (CasLeaf (FPred p')) -> p' /= p
+                                               _                          -> True
+
+addUseDefVar :: ACFA -> AbsVar -> Loc -> Loc -> ACFA
+addUseDefVar acfa v useloc defloc = acfa2
+    where
+    acfa1 = case G.lab acfa useloc of
+                 Nothing -> G.insNode (useloc, ([], M.singleton v defloc)) acfa
+                 Just _  -> G.gmap (\(pre, l, (def,use), suc) -> (pre, l, (def, if' (l == useloc) (M.insert v defloc use) use), suc)) acfa
+    acfa2 = case G.lab acfa defloc of
+                 Nothing -> G.insNode (defloc, ([v], M.empty)) acfa1
+                 Just _  -> G.gmap (\(pre, l, (def,use), suc) -> (pre, l, (if' (l == defloc) (nub $ v:def) def,use), suc)) acfa1
+
+-- Precondition of a transition
+tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> Formula
+tranPrecondition (TranStat (SAssume e))   = ptrFreeBExprToFormula e
+tranPrecondition _                        = FTrue
 
 -- Compute variable updates for an individual CFA edge
 varUpdateTran :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> AbsVar -> ACascade
-varUpdateTran (TranStat (SAssume e))     (AVarPred p) = Right $ CasTree [(bexprToFormulaPlus e, CasLeaf $ bexprToFormula $ predToExpr p)] 
-varUpdateTran (TranStat (SAssume e))     (AVarTerm t) = Left  $ CasTree [(bexprToFormulaPlus e, CasLeaf t)] 
 varUpdateTran (TranStat (SAssign e1 e2)) v            = varUpdateAsnStat1 e1 e2 v
 varUpdateTran _                          (AVarPred p) = Right $ CasLeaf $ bexprToFormula $ predToExpr p
 varUpdateTran _                          (AVarTerm t) = Left  $ CasLeaf t
@@ -63,7 +94,7 @@ varUpdateTran _                          (AVarTerm t) = Left  $ CasLeaf t
 -- Individual variable update for an assignment statement
 varUpdateAsnStat1 :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> AbsVar -> ACascade
 varUpdateAsnStat1 lhs rhs (AVarPred p) = Right $ CasLeaf $ updatePredAsn lhs rhs p
-varUpdateAsnStat1 lhs rhs (AVarTerm t) = 
+varUpdateAsnStat1 lhs rhs (AVarTerm t) = --Left  $ fmap exprToTerm $ casMap exprExpandPtr $ updateScalAsn lhs rhs t
     let upd = casMap exprExpandPtr $ updateScalAsn lhs rhs t in
     case typ t of
          Bool -> Right $ CasLeaf $ fcasToFormula $ fmap ptrFreeBExprToFormula upd

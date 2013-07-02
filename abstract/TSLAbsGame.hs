@@ -1,7 +1,6 @@
 {-# LANGUAGE ImplicitParams, ScopedTypeVariables #-}
 
-module TSLAbsGame(tslAbsGame,
-                  bexprToFormula) where
+module TSLAbsGame(tslAbsGame, bexprToFormula) where
 
 import Prelude hiding (and)
 import Data.List hiding (and)
@@ -108,8 +107,9 @@ tslUpdateAbs spec m avars ops = do
                                  ucont = H.Disj $ mapIdx (\tr i -> varUpdateTrans (show i) [av] tr) $ tsUTran $ specTran spec
                              in H.Or cont ucont)
                      avars
-    _ <- mapIdxM (\tr i -> cfaTraceFile (tranCFA tr) ("cfa" ++ show i) $ return ()) $ tsUTran $ specTran spec
+--    _ <- mapIdxM (\tr i -> cfaTraceFile (tranCFA tr) ("cfa" ++ show i) $ return ()) $ tsUTran $ specTran spec
     mapM (\(ast, (av,_)) -> trace ("compiling " ++ show av) $ H.compileBDD m ops ast) $ zip pervar avars
+--    (liftM concat)  mapM (\(asts, (av,_)) -> trace ("compiling " ++ show av) $ mapIdxM (\ast i -> trace ("compiling transition " ++ show (i-1)) $ H.compileBDD m ops ast) asts) $ zip pervar avars
 
 ----------------------------------------------------------------------------
 -- PDB operations
@@ -140,8 +140,8 @@ varUpdateTrans trname vs tran = varUpdateLoc trname vs (tranFrom tran) (cfaLocIn
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA. 
 varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar, f)] -> Loc -> CFA -> TAST f e c
-varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
-                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
+varUpdateLoc trname vs loc cfa = {-acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
+                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") -} ast
     where
     acfa = tranCFAToACFA (map fst vs) loc cfa
     ast  = compileACFA vs acfa
