@@ -12,6 +12,7 @@ import qualified Data.Map as M
 import Control.Applicative
 
 import Util
+import TSLUtil
 import Cascade
 import Predicate
 import BFormula
@@ -29,7 +30,7 @@ tranCFAToACFA vs loc cfa =
     let ?initloc = loc 
         ?cfa = cfaPruneUnreachable cfa [loc] in 
     let -- prefill ACFA for final states
-        acfa0 = foldl' (\g l -> foldl' (\g' v -> addUseDefVar g' v l l) (G.insNode (l, ([],M.empty)) g) vs) G.empty
+        acfa0 = foldl' (\g l -> addUseDefVar g l $ map (,l) vs) G.empty
                 $ filter ((==0) . G.outdeg cfa)
                 $ G.nodes cfa
     in mkACFA acfa0 []
@@ -45,10 +46,7 @@ mkACFA acfa added =
         updates = map (\(loc', tran) -> (loc', tranPrecondition tran, map (varUpdateTran tran) $ fst $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
         -- extract the list of abstract variables from transitions
         vs = nub $ concatMap (\(_,pre,upd) -> formAbsVars pre ++ concatMap acasAbsVars upd) updates
-        acfa0  = case G.lab acfa loc of
-                     Nothing -> G.insNode (loc, ([], M.empty)) acfa
-                     Just _  -> acfa
-        acfa'  = foldl' (\gr v -> addUseDefVar gr v loc $ varRecomputedLoc loc v) acfa0 vs
+        acfa'  = addUseDefVar acfa loc $ map (\v -> (v, varRecomputedLoc loc v)) vs
         acfa'' = foldIdx (\gr (l, pre, upds) i -> G.insEdge (loc, l, (i,pre,upds)) gr) acfa' updates
     in if loc == ?initloc
           then acfa''
@@ -70,15 +68,19 @@ isVarRecomputedByTran v@(AVarPred p) tr = case varUpdateTran tr v of
                                                Right (CasLeaf (FPred p')) -> p' /= p
                                                _                          -> True
 
-addUseDefVar :: ACFA -> AbsVar -> Loc -> Loc -> ACFA
-addUseDefVar acfa v useloc defloc = acfa2
+-- Takes a location and a list of variables used in this location and updates
+-- the corresponding use and defined lists.
+addUseDefVar :: ACFA -> Loc -> [(AbsVar, Loc)] -> ACFA
+addUseDefVar acfa useloc defs = 
+    foldl' (\acfa' (v, defloc) -> let acfa1 = graphUpdNode useloc (\(def, use) -> (def, M.insert v defloc use)) acfa'
+                                  in case G.lab acfa1 defloc of
+                                          Nothing -> G.insNode (defloc, ([v], M.empty)) acfa1
+                                          Just _  -> graphUpdNode defloc (\(def, use) -> (nub $ v:def, use)) acfa1)
+           acfa0 defs
     where
-    acfa1 = case G.lab acfa useloc of
-                 Nothing -> G.insNode (useloc, ([], M.singleton v defloc)) acfa
-                 Just _  -> G.gmap (\(pre, l, (def,use), suc) -> (pre, l, (def, if' (l == useloc) (M.insert v defloc use) use), suc)) acfa
-    acfa2 = case G.lab acfa defloc of
-                 Nothing -> G.insNode (defloc, ([v], M.empty)) acfa1
-                 Just _  -> G.gmap (\(pre, l, (def,use), suc) -> (pre, l, (if' (l == defloc) (nub $ v:def) def,use), suc)) acfa1
+    acfa0 = case G.lab acfa useloc of
+                 Nothing -> G.insNode (useloc, ([], M.empty)) acfa
+                 Just _  -> acfa
 
 -- Precondition of a transition
 tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> Formula

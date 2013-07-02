@@ -50,7 +50,7 @@ conj xs  = H.Conj xs
 -- Abstract CFA - has the same topology as CFA, but labels transitions
 -- with variable update functions and states--with sets of abstract
 -- vars to be recomputed in this state and a map from abstract vars to
--- locations where these vars are defined
+-- locations where these vars are recomputed
 type ACFA = G.Gr ([AbsVar], M.Map AbsVar Loc) (Int,Formula,[ACascade])
 
 acfaTraceFile :: ACFA -> String -> a -> a

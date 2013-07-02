@@ -8,6 +8,7 @@ module TSLUtil(fromLeft,
                grCycle,
                bitWidth,
                readBin,
+               graphUpdNode,
                graphTrace,
                graphTraceFile,
                graphTraceFileMany,
@@ -75,6 +76,11 @@ readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
                               case c of
                                    '0' -> 0
                                    '1' -> 1) 0 s
+
+-- Graph operations --
+
+graphUpdNode :: Node -> (a -> a) -> Gr a b -> Gr a b
+graphUpdNode n f g = gmap (\(pre, n', lab, suc) -> (pre, n', if' (n'==n) (f lab) lab, suc)) g
 
 -- Graph visualisation --
 
