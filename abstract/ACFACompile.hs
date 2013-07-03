@@ -166,7 +166,7 @@ compileTransition1 (cas, av) =
             Left  tcas -> compileTCas tcas astvar
 
 compileFCas :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e c, ?loc::Loc) => FCascade -> TASTVar f e -> TAST f e c
-compileFCas (CasLeaf f)  av = (H.Var av) `H.XNor` compileFormula f
+compileFCas (CasLeaf f)  av = (H.Var av) `H.XNor` compileFormulaLoc f
 compileFCas (CasTree bs) av = disj $ map (\(f,cas) -> compileFormulaLoc f `H.And` compileFCas cas av) bs
 
 compileTCas :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e c, ?loc::Loc) => TCascade -> TASTVar f e -> TAST f e c
@@ -250,7 +250,7 @@ getAbsVar av = (fst ?emap) M.! (defloc, av)
     where defloc = case G.lab ?acfa ?loc of
                         Nothing          -> ?loc
                         Just (_, defmap) -> {-trace ("getAbsVar " ++ show av ++ " at " ++ show ?loc) $-} defmap M.! av
-    
+
 compileFormula :: (?spec::Spec) => Formula -> TAST f e c
 compileFormula f = let ?loc  = cfaInitLoc in
                    let vmap = foldl' (\m v -> M.insert (?loc, v) (H.NVar $ avarBAVar v) m) M.empty (formAbsVars f) in
