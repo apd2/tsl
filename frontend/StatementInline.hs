@@ -240,7 +240,8 @@ statToCFA' before after s@(SInvoke _ mref as) = do
 statToCFA' before after (SAssert _ cond) = do
     cond' <- exprToIExprDet cond
     ctxInsTrans before after (I.TranStat $ I.SAssume cond')
-    ctxErrTrans before (I.TranStat $ I.SAssume $ I.EUnOp Not cond')
+    aftcond <- ctxInsTrans' before (I.TranStat $ I.SAssume $ I.EUnOp Not cond')
+    ctxErrTrans aftcond 
 
 statToCFA' before after (SAssume _ cond) = do
     cond' <- exprToIExprDet cond
@@ -407,5 +408,6 @@ copyOutArgs loc meth args = do
 procStatToCFA :: (?spec::Spec, ?procs::[I.Process]) => Statement -> I.Loc -> State CFACtx I.Loc
 procStatToCFA stat before = do
     after <- statToCFA before stat
-    modify (\ctx -> ctx {ctxCFA = I.cfaAddNullPtrTrans (ctxCFA ctx)})
+    ctxAddNullPtrTrans
+    --modify (\ctx -> ctx {ctxCFA = I.cfaAddNullPtrTrans (ctxCFA ctx)})
     return after

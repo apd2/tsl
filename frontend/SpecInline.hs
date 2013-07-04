@@ -420,12 +420,14 @@ taskToCFA pid meth ctl = I.cfaTraceFile (ctxCFA ctx') (pidToName pid ++ "_" ++ s
                        , ctxLastVar = 0
                        , ctxVar     = []}
           ctx' = execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume guard
-                               aftcall <- ctxInsTrans' aftguard $ I.TranCall meth Nothing
-                               retloc  <- ctxInsLoc
+                               aftcall  <- ctxInsTrans' aftguard $ I.TranCall meth Nothing
+                               retloc   <- ctxInsLoc
                                aftreset <- ctxInsTrans' retloc (I.TranStat reset)
-                               ctxInsTrans aftreset I.cfaInitLoc I.TranReturn
+                               aftsuf   <- ctxInsLoc
                                ctxPushScope sc retloc (mkRetVar (Just pid) meth) (methodLMap pid meth)
-                               aftbody <- procStatToCFA stat aftcall
+                               ctxSuffix aftreset aftsuf I.cfaInitLoc                               
+                               ctxInsTrans aftsuf I.cfaInitLoc I.TranReturn
+                               aftbody  <- procStatToCFA stat aftcall
                                ctxInsTrans aftbody retloc I.TranNop
                                ctxPruneUnreachable) ctx
 
@@ -555,8 +557,7 @@ cfaToIProcess pid cfa = I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ pi
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa
     trans = concatMap (locTrans cfa) states
-    -- filter out unreachable transitions
-    trans' = map (utranSuffix pid True) trans
+    trans' = map (extractTransition pid) trans
 
 
 locTrans :: I.CFA -> I.Loc -> [I.Transition]
@@ -579,30 +580,17 @@ pruneTrans cfa from to = if G.noNodes cfa'' == G.noNodes cfa then cfa'' else pru
                     else cfa
           cfa'' = foldl' (\g loc -> if loc /= to && null (G.suc g loc) then G.delNode loc g else g) cfa' (G.nodes cfa') 
 
--- Insert constraints over PC and cont variables after the last location of 
--- the transition
-utranSuffix :: PID -> Bool -> I.Transition -> I.Transition
-utranSuffix pid updatepc (I.Transition from to cfa) = 
+-- Extract transition into a separate CFA
+extractTransition :: PID -> I.Transition -> I.Transition
+extractTransition pid (I.Transition from to cfa) = 
     let -- If this is a loop transition, split the initial node
         (linit, lfinal, cfa1) = if from == to
                                    then splitLoc from cfa
                                    else (from, to, cfa)
-        -- update PC if requested
-        (cfa3, aftpc) = if updatepc
-                           then let (cfa2, loc1) = I.cfaInsTrans' lfinal (I.TranStat $ I.SAssume $ mkPCVar pid I.=== mkPC pid from) cfa1
-                                in I.cfaInsTrans' loc1 (I.TranStat $ mkPCVar pid I.=: mkPC pid to) cfa2
-                           else (cfa1, lfinal)
-        -- Transition only available in uncontrollable states
---        (cfa4, aftucont) = I.cfaInsTrans' aftpc (I.TranStat $ I.SAssume $ mkContVar I.=== I.false) cfa3
-        -- non-deterministically reset cont to true if inside a magic block
---        (cfa7,aftcont) = if updatecont 
---                            then let (cfa5, loc3)     = I.cfaInsTrans' aftucont (I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true) cfa4
---                                     (cfa6, aftreset) = I.cfaInsTrans' loc3 (I.TranStat $ mkContVar I.=: I.true) cfa5
---                                 in (I.cfaInsTrans aftucont aftreset I.TranNop cfa6, aftreset)
---                            else (cfa4, aftucont)
-        -- set $pid
-        --(cfa8, after)   = I.cfaInsTrans' aftcont (I.TranStat $ mkPIDVar I.=: mkPIDEnum pid) cfa7
-    in I.Transition linit aftpc cfa3
+        (cfa2, befpc) = I.cfaInsLoc (I.LInst I.ActNone) cfa1
+        -- check PC value before the transition
+        cfa3 = I.cfaInsTrans befpc linit (I.TranStat $ I.SAssume $ mkPCVar pid I.=== mkPC pid from) cfa2
+    in I.Transition befpc lfinal cfa3
 
 tranAppend :: I.Transition -> I.Statement -> I.Transition
 tranAppend (I.Transition from to cfa) s = I.Transition from to' cfa'

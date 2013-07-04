@@ -7,8 +7,9 @@ import Data.List.Split
 import Data.Maybe
 import Data.Tuple.Select
 import Control.Monad.State
-import qualified Data.Map as M
+import qualified Data.Map             as M
 import Text.PrettyPrint
+import qualified Data.Graph.Inductive as G
 
 import PP
 import Util hiding (name)
@@ -440,38 +441,77 @@ ctxFrames loc = do
 
 
 ctxPause :: I.Loc -> I.Expr -> I.LocAction -> State CFACtx I.Loc
-ctxPause loc cond act = ctxDelay loc (I.LPause act [] cond) cond 
+ctxPause loc cond act = do
+    after <- ctxInsLocLab (I.LPause act [] cond)
+    stack <- ctxFrames after
+    ctxLocSetStack after stack
+    ctxSuffix loc after after
+    ctxInsTrans' after (I.TranStat $ I.SAssume cond)
 
 ctxFinal :: I.Loc -> State CFACtx I.Loc
-ctxFinal loc = ctxDelay loc (I.LFinal I.ActNone []) I.true
+ctxFinal loc = do 
+    after <- ctxInsLocLab (I.LFinal I.ActNone [])
+    stack <- ctxFrames after
+    ctxLocSetStack after stack
+    ctxSuffix loc after after
+    return after
 
 -- common code of ctxPause and ctxFinal
-ctxDelay :: I.Loc -> I.LocLabel -> I.Expr -> State CFACtx I.Loc
-ctxDelay loc lab cond = do pid  <- gets ctxPID
-                           cont <- gets ctxCont
-                           let pid' = if' cont pidCont pid
-                           after <- ctxInsLocLab lab
-                           stack <- ctxFrames after
-                           ctxLocSetStack after stack
-                           -- set PID variable
-                           aftpid <- if pid' == []
-                                        then ctxInsTrans' loc $ I.TranNop
-                                        else do befpid <- ctxInsTrans' loc $ I.TranStat $ I.SAssume $ mkPIDLVar I.=== mkPIDEnum pid'
-                                                ctxInsTrans' befpid $ I.TranStat $ mkPIDVar I.=: mkPIDLVar
-                           -- 1. uncontrollable transitions are only available in uncontrollable states
-                           -- 2. non-deterministically set $cont to true if inside a magic block
-                           if ((not cont) && pid /= []) 
-                              then do aftucont <- ctxInsTrans' aftpid $ I.TranStat  $ I.SAssume $ mkContVar I.=== I.false
-                                      ifmagic <- ctxInsTrans' aftucont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
-                                      ctxInsTrans ifmagic after $ I.TranStat        $ mkContVar I.=: mkContLVar
-                                      ctxInsTrans aftucont after $ I.TranStat       $ I.SAssume $ mkMagicVar I.=== I.false
-                              else ctxInsTrans aftpid after I.TranNop
-                           case cond of
-                                (I.EConst (I.BoolVal True)) -> return after
-                                _                           -> ctxInsTrans' after (I.TranStat $ I.SAssume cond)
+ctxSuffix :: I.Loc -> I.Loc -> I.Loc -> State CFACtx ()
+ctxSuffix loc after pc = do pid  <- gets ctxPID
+                            cont <- gets ctxCont
+                            sc   <- gets ctxScope
+                            let pid' = if' cont pidCont pid
+                                fullpid = case sc of 
+                                               ScopeMethod _ m -> pid ++ [sname m]
+                                               _               -> pid
+                            -- set PID variable
+                            aftpid <- if pid' == []
+                                         then ctxInsTrans' loc $ I.TranNop
+                                         else do befpid <- ctxInsTrans' loc $ I.TranStat $ I.SAssume $ mkPIDLVar I.=== mkPIDEnum pid'
+                                                 ctxInsTrans' befpid $ I.TranStat $ mkPIDVar I.=: mkPIDLVar
+                            -- 1. update PC
+                            -- 2. uncontrollable transitions are only available in uncontrollable states
+                            -- 3. non-deterministically set $cont to true if inside a magic block
+                            if ((not cont) && pid /= []) 
+                               then do aftpc    <- ctxInsTrans' aftpid $ I.TranStat   $ mkPCVar fullpid I.=: mkPC fullpid pc
+                                       aftucont <- ctxInsTrans' aftpc $ I.TranStat    $ I.SAssume $ mkContVar I.=== I.false
+                                       ifmagic  <- ctxInsTrans' aftucont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
+                                       ctxInsTrans ifmagic after $ I.TranStat         $ mkContVar I.=: mkContLVar
+                                       ctxInsTrans aftucont after $ I.TranStat        $ I.SAssume $ mkMagicVar I.=== I.false
+                               else ctxInsTrans aftpid after I.TranNop
 
-ctxErrTrans :: I.Loc -> I.TranLabel -> State CFACtx ()
-ctxErrTrans loc t = modify $ \ctx -> ctx {ctxCFA = I.cfaErrTrans loc t $ ctxCFA ctx}
+ctxErrTrans :: I.Loc -> State CFACtx ()
+ctxErrTrans loc = do
+    aftsuf <- ctxInsLoc
+    ctxSuffix loc aftsuf I.cfaErrLoc
+    modify $ \ctx -> ctx {ctxCFA = I.cfaErrTrans aftsuf $ ctxCFA ctx}
+
+-- Add error transitions for all potential null-pointer dereferences
+ctxAddNullPtrTrans :: State CFACtx ()
+ctxAddNullPtrTrans = do 
+    ctx  <- get
+    _ <- mapM addNullPtrTrans1 (G.labEdges $ ctxCFA ctx)
+    return () 
+
+addNullPtrTrans1 :: (I.Loc,I.Loc,I.TranLabel) -> State CFACtx ()
+addNullPtrTrans1 (from , to, l@(I.TranStat (I.SAssign e1 e2))) = do
+    let cond = -- We don't have access to ?spec here, hence cannot determine type of
+               -- NullVal.  Keep it undefined until a separate pass.
+               I.disj 
+               $ map (\e -> e I.=== (I.EConst $ I.NullVal $ error "NullVal type undefined")) 
+               $ I.exprPtrSubexpr e1 ++ I.exprPtrSubexpr e2
+    case cond of
+         I.EConst (I.BoolVal False) -> return ()
+         _ -> do modify $ \ctx -> ctx {ctxCFA = G.delLEdge (from, to, l) $ ctxCFA ctx}
+                 fromok  <- ctxInsTrans' from (I.TranStat $ I.SAssume $ I.neg cond)
+                 fromerr <- ctxInsTrans' from (I.TranStat $ I.SAssume cond)
+                 ctxInsTrans fromok to l
+                 ctxErrTrans fromerr
+   
+addNullPtrTrans1 (_    , _, _)                             = return ()
+
+
 
 ctxPruneUnreachable :: State CFACtx ()
 ctxPruneUnreachable = modify (\ctx -> ctx {ctxCFA = I.cfaPruneUnreachable (ctxCFA ctx) [I.cfaInitLoc]})

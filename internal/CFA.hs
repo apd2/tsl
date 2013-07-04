@@ -33,7 +33,6 @@ module CFA(Statement(..),
            cfaErrTrans,
            cfaSuc,
            cfaFinal,
-           cfaAddNullPtrTrans,
            cfaAddNullTypes,
            cfaPruneUnreachable,
            cfaReachInst,
@@ -276,10 +275,8 @@ cfaInsTransMany' :: Loc -> [TranLabel] -> CFA -> (CFA, Loc)
 cfaInsTransMany' from stats cfa = (cfaInsTransMany from to stats cfa', to)
     where (cfa', to) = cfaInsLoc (LInst ActNone) cfa
 
-cfaErrTrans :: Loc -> TranLabel -> CFA -> CFA
-cfaErrTrans loc stat cfa =
-    let (cfa',loc') = cfaInsTrans' loc stat cfa
-    in cfaInsTrans loc' cfaErrLoc (TranStat $ EVar cfaErrVarName =: true) cfa'
+cfaErrTrans :: Loc -> CFA -> CFA
+cfaErrTrans loc cfa = cfaInsTrans loc cfaErrLoc (TranStat $ EVar cfaErrVarName =: true) cfa
 
 cfaSuc :: Loc -> CFA -> [(TranLabel,Loc)]
 cfaSuc loc cfa = map swap $ G.lsuc cfa loc
@@ -288,26 +285,6 @@ cfaFinal :: CFA -> [Loc]
 cfaFinal cfa = map fst $ filter (\n -> case snd n of
                                             LFinal _ _ -> True
                                             _          -> False) $ G.labNodes cfa
-
--- Add error transitions for all potential null-pointer dereferences
-cfaAddNullPtrTrans :: CFA -> CFA
-cfaAddNullPtrTrans cfa = foldl' addNullPtrTrans1 cfa (G.labEdges cfa)
-
-addNullPtrTrans1 :: CFA -> (Loc,Loc,TranLabel) -> CFA
-addNullPtrTrans1 cfa (from , to, l@(TranStat (SAssign e1 e2))) = 
-    case cond of
-         EConst (BoolVal False) -> cfa
-         _ -> let (cfa1, from') = cfaInsLoc (LInst ActNone) cfa
-                  cfa2 = cfaInsTrans from' to l $ G.delLEdge (from, to, l) cfa1
-                  cfa3 = cfaInsTrans from from' (TranStat $ SAssume $ neg cond) cfa2
-              in cfaErrTrans from (TranStat $ SAssume cond) cfa3
-    where cond = -- We don't have access to ?spec here, hence cannot determine type of
-                 -- NullVal.  Keep it undefined until a separate pass.
-                 disj 
-                 $ map (\e -> e === (EConst $ NullVal $ error "NullVal type undefined")) 
-                 $ exprPtrSubexpr e1 ++ exprPtrSubexpr e2
-    
-addNullPtrTrans1 cfa (_    , _, _)                             = cfa
 
 -- Add types to NullVal expressions introduced by cfaAddNullPtrTrans
 cfaAddNullTypes :: Spec -> CFA -> CFA
