@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams #-}
 
-module ExprFlatten(exprFlatten, exprFlatten') where
+module ExprFlatten(exprFlatten, exprFlatten', flattenName) where
 
 import Debug.Trace
 
@@ -11,12 +11,21 @@ import InstTree
 import Type
 import Spec
 import NS
+import Template
+import Pos
+
+-- Flatten static enum or const name by prepending template name to it
+flattenName :: (WithName a) => Template -> a -> Ident
+flattenName t x = Ident (pos $ name x) $ (sname t) ++ "::" ++ (sname x)
+
 
 exprFlatten :: (?spec::Spec) => IID -> Scope -> Expr -> Expr
 exprFlatten iid s e = mapExpr (exprFlatten' iid) s e
 
 exprFlatten' iid s e@(ETerm p n) = case getTerm s n of
-                                       ObjGVar tm v -> ETerm p [itreeFlattenName iid (name v)]
+                                       ObjGVar tm v                          -> ETerm p [itreeFlattenName iid (name v)]
+                                       ObjEnum (Type (ScopeTemplate t) _) en -> ETerm p [flattenName t en]
+                                       ObjConst (ScopeTemplate t) c          -> ETerm p [flattenName t c]
                                        _            -> e
 exprFlatten' iid s (EField p e f) = 
     let ?scope = s

@@ -27,6 +27,7 @@ import Const
 import ConstOps
 import Expr
 import ExprOps
+import ExprFlatten
 
 -- TODO:
 --
@@ -223,10 +224,6 @@ mergeParents :: Spec -> Spec
 mergeParents s = s{specTemplate = tms}
     where tms = let ?spec = s 
                 in map tmMergeParents $ filter isConcreteTemplate $ specTemplate s
-
--- Flatten static enum or const name by prepending template name to it
-flattenName :: (WithName a) => Template -> a -> Ident
-flattenName t x = Ident (pos $ name x) $ (sname t) ++ "::" ++ (sname x)
 
 
 -- Move constants from templates to the top level
