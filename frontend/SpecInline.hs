@@ -59,7 +59,7 @@ spec2Internal s =
                          inittr    <- mkInit
                          usergoals <- mapM mkGoal $ tmGoal tmMain
                          maggoal   <- mkMagicGoal
-                         return (wire, always, inittr, if' (null usergoals) usergoals [maggoal]))
+                         return (wire, always, inittr, if' (not $ null usergoals) usergoals [maggoal]))
                      (0,[])
         extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) Nothing Nothing v) extratmvars
         (specProc, tmppvs) = unzip $ (map procToCProc $ mkIdleProc : tmProcess tmMain) 
@@ -267,7 +267,7 @@ mkCond descr s extra = do
         -- precondition
     return $ case trans of
                   [t] -> let res = foldl' tranAppend t (map I.SAssume extra)
-                         in I.cfaTraceFile (I.tranCFA t) descr $ res
+                         in I.cfaTraceFile (I.tranCFA res) descr $ res
                   _   -> error $ "mkCond " ++ show s ++ ": Invalid condition"
 
 ----------------------------------------------------------------------

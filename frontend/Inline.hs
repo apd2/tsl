@@ -13,7 +13,6 @@ import qualified Data.Graph.Inductive as G
 
 import PP
 import Util hiding (name)
---import qualified ISpec    as I
 import qualified TranSpec as I
 import qualified IExpr    as I
 import qualified CFA      as I
