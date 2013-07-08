@@ -18,11 +18,11 @@ import Method
 import Spec
 import Template
 
-validateExpr :: (?spec::Spec, MonadError String me) => Scope -> Expr -> me ()
+validateExpr :: (?spec::Spec, ?privoverride::Bool, MonadError String me) => Scope -> Expr -> me ()
 validateExpr s e = let ?scope = s 
                    in validateExpr' e
 
-validateExpr' :: (?spec::Spec, ?scope::Scope, MonadError String me) => Expr -> me ()
+validateExpr' :: (?spec::Spec, ?scope::Scope, ?privoverride::Bool, MonadError String me) => Expr -> me ()
 
 -- * terms refer to variable or constants visible in the current scope
 validateExpr' (ETerm _ n)        = do {checkTerm ?scope n; return ()}
@@ -47,9 +47,9 @@ validateExpr' (EField p e f) = do
                                       Nothing                -> err (pos f) $ "Unknown identifier " ++ show f
                                       Just (ObjPort   _ _)   -> return ()
                                       Just (ObjInstance _ _) -> return ()
-                                      Just (ObjGVar   _ v)   -> assert (gvarExport v) (pos f) $
+                                      Just (ObjGVar   _ v)   -> assert (gvarExport v || ?privoverride) (pos f) $
                                                                        "Cannot access private variable " ++ sname v ++ " of template " ++ show t
-                                      Just (ObjWire   _ w)   -> assert (wireExport w) (pos f) $
+                                      Just (ObjWire   _ w)   -> assert (wireExport w || ?privoverride) (pos f) $
                                                                        "Cannot access private wire " ++ sname w ++ " of template " ++ show t
                                       _                      -> err (pos f) $ show f ++ " does not refer to an externally visible member of template " ++ show t
          _                    -> err (pos f) $ "Expression " ++ show e ++ " is not a struct or template"
@@ -223,7 +223,7 @@ validateExpr' (ENonDet p) = do
 
 
 -- Common code to validate method calls in statement and expression contexts
-validateCall :: (?spec::Spec, ?scope::Scope, MonadError String me) => Pos -> MethodRef -> [Expr] -> me ()
+validateCall :: (?spec::Spec, ?scope::Scope, ?privoverride::Bool, MonadError String me) => Pos -> MethodRef -> [Expr] -> me ()
 validateCall p mref as = do
     let isfunc = isFunctionScope ?scope
         istm   = isTemplateScope ?scope

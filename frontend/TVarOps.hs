@@ -38,6 +38,7 @@ validateVar2 s v = do
     validateTypeSpec2 s (tspec v)
     case varInit v of
          Just e -> do let ?scope = s
+                          ?privoverride = False
                       validateExpr' e
                       checkTypeMatch (typ v) e
          _      -> return ()

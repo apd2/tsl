@@ -43,6 +43,7 @@ validateTypeSpec _  _ = return ()
 validateTypeSpec2 :: (?spec::Spec, MonadError String me) => Scope -> TypeSpec -> me ()
 validateTypeSpec2 s (ArraySpec _ t l) = do
     let ?scope = s
+        ?privoverride = False
     validateExpr' l
     assert (isConstExpr l) (pos l)  $ "Array length must be a constant expression"
     assert (isInt l) (pos l)        $ "Array length must be an integer expression"

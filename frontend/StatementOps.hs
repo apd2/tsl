@@ -216,12 +216,12 @@ statReturns _                          = False
 -- Validation
 -------------------------------------------------------------------------
 
-validateStat :: (?spec::Spec, MonadError String me) => Scope -> Statement -> me ()
+validateStat :: (?spec::Spec, ?privoverride::Bool, MonadError String me) => Scope -> Statement -> me ()
 validateStat s st = do let ?scope = s 
                        validateStat' False st
 
 -- The first argument indicates that the statement belongs to a loop
-validateStat' :: (?spec::Spec, ?scope::Scope, MonadError String me) => Bool -> Statement -> me ()
+validateStat' :: (?spec::Spec, ?privoverride::Bool, ?scope::Scope, MonadError String me) => Bool -> Statement -> me ()
 validateStat' _ (SVarDecl p v) = do 
     assert (not $ isTemplateScope ?scope) p "variable declaration inside always-block"
     validateVar ?scope v
@@ -372,7 +372,7 @@ validateStat' l (SMagic p _ g) = do
 
 -- There is no path through the loop body that does not break out of the loop and
 -- does not contain some form of pause
-checkLoopBody :: (?spec::Spec, ?scope::Scope, MonadError String me) => Statement -> me ()
+checkLoopBody :: (?spec::Spec, ?scope::Scope, ?privoverride::Bool, MonadError String me) => Statement -> me ()
 checkLoopBody s = do
     validateStat' True s
     case findInstPath False s of

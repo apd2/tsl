@@ -139,6 +139,7 @@ validateTmDerives tm = do {mapM (validateDerive tm) (tmDerive tm); return()}
 validateAlways2 :: (?spec::Spec, MonadError String me) => Template -> Always -> me ()
 validateAlways2 t a = do
     let ?scope = ScopeTemplate t
+        ?privoverride = False
     validateStat' False (alwBody a)
 
 validateTmAlways2 :: (?spec::Spec, MonadError String me) => Template -> me ()
@@ -151,6 +152,7 @@ validateTmAlways2 t = do {mapM (validateAlways2 t) (tmAlways t); return ()}
 validateInit2 :: (?spec::Spec, MonadError String me) => Template -> Init -> me ()
 validateInit2 t i = do
     let ?scope = ScopeTemplate t
+        ?privoverride = False
     validateExpr' (initBody i)
     assert (exprNoSideEffects $ initBody i) (pos $ initBody i) "Initial conditions must be side-effect free"
 
@@ -165,6 +167,7 @@ validateTmInit2 t = do {mapM (validateInit2 t) (tmInit t); return ()}
 validateGoal2 :: (?spec::Spec, MonadError String me) => Template -> Goal -> me ()
 validateGoal2 t g = do
     let ?scope = ScopeTemplate t
+        ?privoverride = False
     validateExpr' (goalCond g)
     assert (exprNoSideEffects $ goalCond g) (pos $ goalCond g) "Goal conditions must be side-effect free"
     assert (isBool $ goalCond g) (pos $ goalCond g) $ "Goal must be a boolean expression"
@@ -245,6 +248,7 @@ validateTmWires t = do {mapM (validateWire t) (tmWire t); return ()}
 validateWire2 :: (?spec::Spec, MonadError String me) => Template -> Wire -> me () 
 validateWire2 t w = do
     let ?scope = ScopeTemplate t
+        ?privoverride = False
     case wireRHS w of
          Just e  -> do validateExpr' e
                        checkTypeMatch (Type ?scope $ tspec w) e

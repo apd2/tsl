@@ -115,6 +115,7 @@ validateMeth t m = do
     methCheckOverride t m
     validateMethNS t m
     let ?scope = ScopeMethod t m
+        ?privoverride = False
     case methParent t m of
          Just (t',m') -> case (methBody m', methBody m) of
                               (Right _, Left _)   -> err (pos m) "Complete method body is required in overloaded method declaration"
