@@ -104,7 +104,7 @@ specGetCFA spec [] (Just meth)  = taskCFA $ fromJustMsg "specGetCFA: error1" $ f
 specGetCFA spec pid Nothing     = procCFA $ specGetProcess spec pid
 specGetCFA spec pid (Just meth) = taskCFA task
     where proc = specGetProcess spec pid
-          task = fromJustMsg "specGetCFA: error2" $ find ((== meth) . taskName) $ procTask proc
+          task = fromJustMsg ("specGetCFA: " ++ show pid ++ " " ++ meth ++ " error2") $ find ((== meth) . taskName) $ procTask proc
 
 specAllCFAs :: Spec -> [(PID, CFA)]
 specAllCFAs Spec{..} = concatMap (\p -> procAllCFAs [] p) specProc ++

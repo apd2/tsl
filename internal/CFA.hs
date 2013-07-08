@@ -4,7 +4,6 @@ module CFA(Statement(..),
            Frame(..),
            frameMethod,
            Stack,
-           showStack,
            (=:),
            Loc,
            LocAction(..),
@@ -102,12 +101,11 @@ instance PP LocAction where
     pp ActNone     = empty
 
 -- Stack frame
-data Frame = FrameStatic      {fScope :: F.Scope, fLoc :: Loc}
-           | FrameInteractive {fScope :: F.Scope, fLoc :: Loc, fCFA :: CFA}
+data Frame = Frame { fScope :: F.Scope
+                   , fLoc   :: Loc}
 
 instance PP Frame where
-    pp (FrameStatic      sc loc  ) =                         text (show sc) <> char ':' <+> pp loc
-    pp (FrameInteractive sc loc _) = text "interactive:" <+> text (show sc) <> char ':' <+> pp loc
+    pp (Frame sc loc) =                         text (show sc) <> char ':' <+> pp loc
 
 frameMethod :: Frame -> Maybe F.Method
 frameMethod f = case fScope f of
@@ -118,9 +116,6 @@ type Stack = [Frame]
 
 instance PP Stack where
     pp stack = vcat $ map pp stack
-
-showStack :: Stack -> String
-showStack = render . pp
 
 data LocLabel = LInst  {locAct :: LocAction}
               | LPause {locAct :: LocAction, locStack :: Stack, locExpr :: Expr}
@@ -198,8 +193,8 @@ cfaLocWaitCond cfa loc = case cfaLocLabel loc cfa of
                               LFinal _ _   -> true
 
 newCFA :: F.Scope -> F.Statement -> Expr -> CFA 
-newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [FrameStatic sc cfaInitLoc] initcond) 
-                        $ G.insNode (cfaErrLoc,LPause ActNone [FrameStatic sc cfaErrLoc] false) G.empty
+newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame sc cfaInitLoc] initcond) 
+                        $ G.insNode (cfaErrLoc,LPause ActNone [Frame sc cfaErrLoc] false) G.empty
 
 cfaErrLoc :: Loc
 cfaErrLoc = 0

@@ -436,7 +436,7 @@ ctxFrames loc = do
     -- and append current location in the end. 
     let scopes = map sel1 cfastack
         locs   = (tail $ map sel2 cfastack) ++ [loc]
-    return $ map (uncurry I.FrameStatic) $ zip scopes locs
+    return $ map (uncurry I.Frame) $ zip scopes locs
 
 
 ctxPause :: I.Loc -> I.Expr -> I.LocAction -> State CFACtx I.Loc
