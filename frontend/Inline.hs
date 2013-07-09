@@ -455,12 +455,16 @@ ctxFinal loc = do
     ctxSuffix loc after after
     return after
 
--- common code of ctxPause and ctxFinal
+-- common code of ctxPause, ctxFinal, ctxErrTrans
 ctxSuffix :: I.Loc -> I.Loc -> I.Loc -> State CFACtx ()
 ctxSuffix loc after pc = do pid  <- gets ctxPID
                             cont <- gets ctxCont
-                            sc   <- gets ctxScope
-                            let pid' = if' cont pidCont pid
+                            sc   <- gets (sel1 . last . ctxStack)
+                            let pid' = if' cont pidCont $
+                                       if' (pid == []) (case sc of
+                                                             ScopeMethod _ m -> [sname m]
+                                                             _               -> []) $
+                                       pid
                                 fullpid = case sc of 
                                                ScopeMethod _ m -> pid ++ [sname m]
                                                _               -> pid
@@ -472,7 +476,7 @@ ctxSuffix loc after pc = do pid  <- gets ctxPID
                             -- 1. update PC
                             -- 2. uncontrollable transitions are only available in uncontrollable states
                             -- 3. non-deterministically set $cont to true if inside a magic block
-                            if ((not cont) && pid /= []) 
+                            if ((not cont) && pid' /= []) 
                                then do aftpc    <- ctxInsTrans' aftpid $ I.TranStat   $ mkPCVar fullpid I.=: mkPC fullpid pc
                                        aftucont <- ctxInsTrans' aftpc $ I.TranStat    $ I.SAssume $ mkContVar I.=== I.false
                                        ifmagic  <- ctxInsTrans' aftucont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true

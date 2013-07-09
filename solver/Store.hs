@@ -13,7 +13,9 @@ module Store (Store(..),
               storeTryEvalBool,
               storeEvalBool,
               storeSet,
-              storeExtendDefault) where
+              storeExtendDefault,
+              storeExtendDefaultState,
+              storeExtendDefaultLabel) where
 
 import Data.List
 import Control.Monad
@@ -149,10 +151,17 @@ storeSet' s            (EUnOp Deref e) val   = storeSet' s (lvalToExpr l) val
 storeSet' _            e               _     = error $ "storeSet': " ++ show e
 
 -- Assign all unassigned state variables to their default values
-storeExtendDefault :: (?spec::Spec) => Store -> Store
-storeExtendDefault store = foldl' (\st v -> let evar = EVar $ varName v in
-                                            foldl' extendScalar st (exprScalars evar (typ evar)))
-                                  store $ filter ((== VarState) . varCat) (specVar ?spec)
+
+storeExtendDefault :: (?spec::Spec) => Store -> [Var] -> Store
+storeExtendDefault store vs = foldl' (\st v -> let evar = EVar $ varName v in
+                                               foldl' extendScalar st (exprScalars evar (typ evar)))
+                                     store vs
+
+storeExtendDefaultState :: (?spec::Spec) => Store -> Store
+storeExtendDefaultState store = storeExtendDefault store $ filter ((== VarState) . varCat) (specVar ?spec)
+
+storeExtendDefaultLabel :: (?spec::Spec) => Store -> Store
+storeExtendDefaultLabel store = storeExtendDefault store $ filter ((== VarTmp) . varCat) (specVar ?spec)
 
 extendScalar :: (?spec::Spec) => Store -> Expr -> Store
 extendScalar store e = case storeTryEval store e of
