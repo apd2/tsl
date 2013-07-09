@@ -102,14 +102,15 @@ mkOp RNeq False = DP.Eq
 mkOp op   _     = error $ "EqSMT.mkOp: " ++ show op ++ " is not supported"
 
 mkTerm :: (?spec::Spec) => Term -> DP.Term
-mkTerm   (TVar n)                = DP.TVar $ mkVar n
-mkTerm   (TSInt w i)             = DP.TLit i w
-mkTerm   (TUInt w i)             = DP.TLit i w
-mkTerm x@(TField t f)            = case mkTerm t of
-                                        DP.TVar (DP.Var p t' c) -> DP.TVar $ DP.Var (p++[(f,Nothing)]) t' c
-                                        _                        -> error $ "EqSMT.mkTerm " ++ show x
-mkTerm   (TSlice t s)            = DP.TSlice s $ mkTerm t
-mkTerm   t                       = error $ "EqSMT.mkTerm " ++ show t
+mkTerm     (TVar n)                = DP.TVar $ mkVar n
+mkTerm     (TSInt w i)             = DP.TLit i w
+mkTerm     (TUInt w i)             = DP.TLit i w
+mkTerm   x@(TField t f)            = case mkTerm t of
+                                          DP.TVar (DP.Var p t' c) -> DP.TVar $ DP.Var (p++[(f,Nothing)]) t' c
+                                          _                        -> error $ "EqSMT.mkTerm " ++ show x
+mkTerm     (TSlice t s)            = DP.TSlice s $ mkTerm t
+mkTerm   t@(TBinOp ABConcat t1 t2) = DP.TFunc (DP.FBuiltin DP.FConcat) [mkTerm t1, mkTerm t2] (termWidth t)
+mkTerm   t                         = error $ "EqSMT.mkTerm " ++ show t
 
 mkVar :: (?spec::Spec) => String -> DP.Var
 mkVar n = {-trace ("mkVar " ++ n ++ ", type " ++ show t) -} DP.Var [(varName v,Nothing)] t DP.VarState
