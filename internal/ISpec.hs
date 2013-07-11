@@ -2,6 +2,7 @@
 
 module ISpec(Spec(..),
              Task(..),
+             taskName,
              Process(..),
              specTmpVar,
              specStateVar,
@@ -25,17 +26,22 @@ import qualified Data.Graph.Inductive.Graph as G
 import Text.PrettyPrint
 
 import Util
+import Name
 import CFA
 import IVar
 import IType
-import Inline
 import TranSpec
 import PP
+import PID
+import qualified Method as F
 
 data Task = Task {
-    taskName :: String,
-    taskCFA  :: CFA
+    taskMethod :: F.Method,
+    taskCFA    :: CFA
 }
+
+taskName :: Task -> String
+taskName = sname . taskMethod
 
 data Process = Process {
     procName     :: String,
@@ -89,39 +95,37 @@ getEnumeration e = fromJustMsg ("getEnumeration: enumeration " ++ e ++ " not fou
 enumToInt :: (?spec::Spec) => String -> Int
 enumToInt n = fst $ fromJust $ find ((==n) . snd) $ zip [0..] (enumEnums $ getEnumerator n)
 
-specGetProcess :: Spec -> PID -> Process
-specGetProcess spec (name:names) | names == [] = root
-                                 | otherwise   = specGetProcess' root names
-    where root = fromJustMsg ("specGetProcess " ++ name ++ ": error") $ find ((== name) . procName) $ specProc spec
+specGetProcess :: Spec -> PrID -> Process
+specGetProcess spec (PrID n names) | names == [] = root
+                                   | otherwise   = specGetProcess' root names
+    where root = fromJustMsg ("specGetProcess " ++ n ++ ": error") $ find ((== n) . procName) $ specProc spec
 
-specGetProcess' :: Process -> PID -> Process
-specGetProcess' proc (name:names) | names == [] = child
-                                  | otherwise   = specGetProcess' child names
-    where child = fromJustMsg "specGetProcess': error" $ find ((== name) . procName) $ procChildren proc
+specGetProcess' :: Process -> [String] -> Process
+specGetProcess' proc (n:names) | names == [] = child
+                               | otherwise   = specGetProcess' child names
+    where child = fromJustMsg "specGetProcess': error" $ find ((== n) . procName) $ procChildren proc
 
-specGetCFA :: Spec -> PID -> Maybe String -> CFA
-specGetCFA spec [] (Just meth)  = taskCFA $ fromJustMsg "specGetCFA: error1" $ find ((==meth) . taskName) $ specCTask spec
-specGetCFA spec pid Nothing     = procCFA $ specGetProcess spec pid
-specGetCFA spec pid (Just meth) = taskCFA task
-    where proc = specGetProcess spec pid
-          task = fromJustMsg ("specGetCFA: " ++ show pid ++ " " ++ meth ++ " error2") $ find ((== meth) . taskName) $ procTask proc
+specGetCFA :: Spec -> CID -> CFA
+specGetCFA spec (UCID pid Nothing)  = procCFA $ specGetProcess spec pid
+specGetCFA spec (UCID pid (Just m)) = taskCFA $ fromJust $ find ((== sname m) . taskName) $ procTask $ specGetProcess spec pid
+specGetCFA spec (CTCID m)           = taskCFA $ fromJust $ find ((== sname m) . taskName) $ specCTask spec
+specGetCFA spec CCID                = specCAct spec 
 
-specAllCFAs :: Spec -> [(PID, CFA)]
-specAllCFAs Spec{..} = concatMap (\p -> procAllCFAs [] p) specProc ++
-                       map (\Task{..} -> ([taskName], taskCFA)) specCTask
+specAllCFAs :: Spec -> [(CID, CFA)]
+specAllCFAs Spec{..} = concatMap (\p -> procAllCFAs (PrID (procName p) []) p) specProc  ++
+                       map       (\Task{..} -> (CTCID taskMethod, taskCFA))   specCTask ++
+                       [(CCID, specCAct)]
 
-procAllCFAs :: PID -> Process -> [(PID, CFA)]
-procAllCFAs parpid Process{..} = (pid, procCFA) :
-                                 concatMap (procAllCFAs pid) procChildren ++
-                                 map (\Task{..} -> (pid++[taskName], taskCFA)) procTask
-    where pid = parpid ++ [procName]
+procAllCFAs :: PrID -> Process -> [(CID, CFA)]
+procAllCFAs pid proc = (UCID pid Nothing, procCFA proc) :
+                       concatMap (\p -> procAllCFAs (childPID pid (procName p)) p) (procChildren proc) ++
+                       map (\Task{..} -> (UCID pid (Just taskMethod), taskCFA))    (procTask proc)
 
-specAllProcs :: Spec -> [(PID, Process)]
-specAllProcs Spec{..} = concatMap (     procAllForkedProcs []) specProc
+specAllProcs :: Spec -> [(PrID, Process)]
+specAllProcs Spec{..} = concatMap (\p -> procAllForkedProcs (PrID (procName p) []) p) specProc
 
-procAllForkedProcs :: PID -> Process -> [(PID, Process)]
-procAllForkedProcs parpid p@Process{..} = (pid, p) : concatMap (procAllForkedProcs pid) procChildren
-    where pid = parpid ++ [procName]
+procAllForkedProcs :: PrID -> Process -> [(PrID, Process)]
+procAllForkedProcs pid p = (pid,p) : (concatMap (\p' -> procAllForkedProcs (childPID pid (procName p')) p') $ procChildren p)
 
 -- Apply transformation to all task and process CFA's in the spec
 specMapCFA :: (CFA -> CFA) -> Spec -> Spec

@@ -8,16 +8,14 @@ import Data.Maybe
 import Data.Tuple.Select
 import Control.Monad.State
 import qualified Data.Map             as M
-import Text.PrettyPrint
 import qualified Data.Graph.Inductive as G
 
-import PP
 import Util hiding (name)
-import qualified TranSpec as I
 import qualified IExpr    as I
 import qualified CFA      as I
 import qualified IType    as I
 import qualified IVar     as I
+import PID
 import Name
 import NS
 import Method
@@ -33,49 +31,15 @@ import Ops
 tmMain :: (?spec::Spec) => Template
 tmMain = head $ specTemplate ?spec
 
-
-----------------------------------------------------------------------
--- Process ID (path in the process tree)
-----------------------------------------------------------------------
-
-type PID = [String]
-
-data ProcTrans = ProcTrans { pPID    :: PID
-                           , pBody   :: [I.Transition]
-                           }
-
-instance PP ProcTrans where
-    pp p = text "ProcTrans" <+> (text $ pidToName $ pPID p) <+>
-           (braces' $
-           (vcat $ map (($+$ text "") . pp) (pBody p)))
-
-instance Show ProcTrans where
-    show = render . pp
-
--- PID to process name
-pidToName :: PID -> String
-pidToName pid = intercalate "/" pid
-
-childPID :: PID -> Ident -> PID
-childPID pid pname = pid ++ [sname pname]
-
-procNameIdle = "$pididle"
-
-pidIdle = [procNameIdle]
-pidCont = ["$pidcont"]
-
 ----------------------------------------------------------------------
 -- Names
 ----------------------------------------------------------------------
 
---initid = [":init"]
+mkVarName :: (WithName a) => NSID -> a -> String
+mkVarName nsid x = mkVarNameS nsid (sname x)
 
-
-mkVarName :: (WithName a) => Maybe PID -> Maybe Method -> a -> String
-mkVarName mpid mmeth x = mkVarNameS mpid mmeth (sname x)
-
-mkVarNameS :: Maybe PID -> Maybe Method -> String -> String
-mkVarNameS mpid mmeth s = intercalate "/" names
+mkVarNameS :: NSID -> String -> String
+mkVarNameS (NSID mpid mmeth) s = intercalate "/" names
     where -- don't prefix function and procedure variables with PID
           mpid' = case mmeth of
                        Nothing -> mpid
@@ -83,53 +47,58 @@ mkVarNameS mpid mmeth s = intercalate "/" names
                                        Function  -> Nothing
                                        Procedure -> Nothing
                                        _         -> mpid
-          names = fromMaybe [] mpid' ++ 
-                  fromMaybe [] (fmap ((:[]). (++ "()") . sname) mmeth) ++ 
+          names = maybe [] (return . show)              mpid' ++ 
+                  maybe [] (return . sname) mmeth ++ 
                   [s]
 
-mkVar :: (WithName a) => Maybe PID -> Maybe Method -> a -> I.Expr
-mkVar mpid mmeth x = I.EVar $ mkVarName mpid mmeth x
+mkVar :: (WithName a) => NSID -> a -> I.Expr
+mkVar nsid x = I.EVar $ mkVarName nsid x
 
-mkVarS :: Maybe PID -> Maybe Method -> String -> I.Expr
-mkVarS mpid mmeth s = I.EVar $ mkVarNameS mpid mmeth s
+mkVarS :: NSID -> String -> I.Expr
+mkVarS nsid s = I.EVar $ mkVarNameS nsid s
 
-mkVarDecl :: (?spec::Spec, WithName a, WithType a) => Bool -> Maybe PID -> Maybe Method -> a -> I.Var
-mkVarDecl mem mpid mmeth x = I.Var mem I.VarState (mkVarName mpid mmeth x) (mkType $ typ x)
+mkVarDecl :: (?spec::Spec, WithName a, WithType a) => Bool -> NSID -> a -> I.Var
+mkVarDecl mem nsid x = I.Var mem I.VarState (mkVarName nsid x) (mkType $ typ x)
 
-parseVarName :: String -> (Maybe PID, Maybe String, String)
-parseVarName n = (pid, meth, vname)
+parseVarName :: String -> (Maybe PrID, Maybe String, String)
+parseVarName n = (mpid, mmeth, vname)
     where toks = splitOn "/" n
           vname = last toks
-          (pid, meth) = case init toks of
-                             [] -> (Nothing, Nothing)
-                             toks' -> if (take 2 $ reverse $ last toks') == ")("
-                                         then (Just $ init toks', Just $ init $ init $ last toks')
-                                         else (Just toks', Nothing)
+          (mpid,mmeth) = case init toks of
+                              []    -> (Nothing, Nothing)
+                              toks' -> (mp, mm)
+                                       where
+                                       mm = if (take 2 $ reverse $ last toks') == ")("
+                                               then Just $ init $ init $ last toks'
+                                               else Nothing
+                                       mp = case init toks' of
+                                                 []     -> Nothing
+                                                 (p:ps) -> Just $ PrID p ps
 
 -- Variable that stores return value of a task
-mkRetVar :: Maybe PID -> Method -> Maybe I.Expr
+mkRetVar :: Maybe PrID -> Method -> Maybe I.Expr
 mkRetVar mpid meth = case methRettyp meth of
                           Nothing -> Nothing
-                          Just _  -> Just $ mkVarS mpid (Just meth) "$ret"
+                          Just _  -> Just $ mkVarS (NSID mpid (Just meth)) "$ret"
 
-mkRetVarDecl :: (?spec::Spec) => Maybe PID -> Method -> Maybe I.Var
+mkRetVarDecl :: (?spec::Spec) => Maybe PrID -> Method -> Maybe I.Var
 mkRetVarDecl mpid meth = case methRettyp meth of
                               Nothing -> Nothing
                               Just t  -> Just $ I.Var False
                                                       I.VarState
-                                                      (mkVarNameS mpid (Just meth) "$ret") 
+                                                      (mkVarNameS (NSID mpid (Just meth)) "$ret") 
                                                       (mkType $ Type (ScopeTemplate tmMain) t)
 
-mkEnVarName :: PID -> Maybe Method -> String
-mkEnVarName pid mmeth = mkVarNameS (Just pid) mmeth "$en"
+mkEnVarName :: PrID -> Maybe Method -> String
+mkEnVarName pid mmeth = mkVarNameS (NSID (Just pid) mmeth) "$en"
 
-mkEnVar :: PID -> Maybe Method -> I.Expr
+mkEnVar :: PrID -> Maybe Method -> I.Expr
 mkEnVar pid mmeth = I.EVar $ mkEnVarName pid mmeth
 
-mkEnVarDecl :: PID -> Maybe Method -> I.Var
+mkEnVarDecl :: PrID -> Maybe Method -> I.Var
 mkEnVarDecl pid mmeth = I.Var False I.VarState (mkEnVarName pid mmeth) I.Bool
 
-mkWaitForTask :: PID -> Method -> I.Expr
+mkWaitForTask :: PrID -> Method -> I.Expr
 mkWaitForTask pid meth = envar I.=== I.false
     where envar = mkEnVar pid (Just meth)
 
@@ -145,20 +114,21 @@ isWaitForMagic (I.EBinOp Eq (I.EVar n) e2) | (e2 == I.false) && (n == mkMagicVar
                                            | otherwise = False
 isWaitForMagic _ = False
 
-mkPCVarName :: PID -> String
-mkPCVarName pid = mkVarNameS (Just pid) Nothing "$pc"
+mkPCVarName :: CID -> String
+mkPCVarName cid = mkVarNameS (cid2nsid cid) "$pc"
 
-mkPCEnumName :: PID -> String
-mkPCEnumName pid = mkVarNameS (Just pid) Nothing "$pcenum"
+mkPCEnumName :: CID -> String
+mkPCEnumName cid = filter (\c -> notElem c "()")
+                   $ mkVarNameS (cid2nsid cid) "$pcenum"
 
-mkPCVar :: PID -> I.Expr
-mkPCVar pid = I.EVar $ mkPCVarName pid
+mkPCVar :: CID -> I.Expr
+mkPCVar cid = I.EVar $ mkPCVarName cid
 
-mkPCEnum :: PID -> I.Loc -> String
-mkPCEnum pid loc = mkVarNameS (Just pid) Nothing $ "$pc" ++ show loc
+mkPCEnum :: CID -> I.Loc -> String
+mkPCEnum cid loc = mkVarNameS (cid2nsid cid) $ "$pc" ++ show loc
 
-mkPC :: PID -> I.Loc -> I.Expr
-mkPC pid loc = I.EConst $ I.EnumVal $ mkPCEnum pid loc 
+mkPC :: CID -> I.Loc -> I.Expr
+mkPC cid loc = I.EConst $ I.EnumVal $ mkPCEnum cid loc 
 
 pcEnumToLoc :: String -> I.Loc
 pcEnumToLoc str = read 
@@ -168,36 +138,36 @@ pcEnumToLoc str = read
                   $ tails str
 
 -- PID of the last process to make a transition
-mkPIDVarName :: String
-mkPIDVarName = "$pid"
+mkEPIDVarName :: String
+mkEPIDVarName = "$epid"
 
-mkPIDVar :: I.Expr
-mkPIDVar = I.EVar mkPIDVarName
+mkEPIDVar :: I.Expr
+mkEPIDVar = I.EVar mkEPIDVarName
 
-mkPIDLVarName :: String
-mkPIDLVarName = "$lpid"
+mkEPIDLVarName :: String
+mkEPIDLVarName = "$lepid"
 
-mkPIDLVar :: I.Expr
-mkPIDLVar = I.EVar mkPIDLVarName
+mkEPIDLVar :: I.Expr
+mkEPIDLVar = I.EVar mkEPIDLVarName
 
-mkPIDEnumeratorName :: PID -> String
-mkPIDEnumeratorName pid = "$" ++ pidToName pid
+mkEPIDEnumeratorName :: EPID -> String
+mkEPIDEnumeratorName epid = "$" ++ show epid
 
-parsePIDEnumerator :: String -> PID
-parsePIDEnumerator n = splitOn "/" $ tail n
+parseEPIDEnumerator :: String -> EPID
+parseEPIDEnumerator n = read $ tail n
 
-mkPIDEnum :: PID -> I.Expr
-mkPIDEnum = I.EConst . I.EnumVal . mkPIDEnumeratorName
+mkEPIDEnum :: EPID -> I.Expr
+mkEPIDEnum = I.EConst . I.EnumVal . mkEPIDEnumeratorName
 
-mkPIDEnumName :: String
-mkPIDEnumName = "$pidenum" 
+mkEPIDEnumName :: String
+mkEPIDEnumName = "$epidenum" 
 
-mkPIDVarDecl :: [PID] -> (I.Var, I.Enumeration)
-mkPIDVarDecl pids = (I.Var False I.VarState mkPIDVarName (I.Enum mkPIDEnumName), enum)
-    where enum = I.Enumeration mkPIDEnumName $ map mkPIDEnumeratorName $ pidCont:pids
+mkEPIDVarDecl :: [EPID] -> (I.Var, I.Enumeration)
+mkEPIDVarDecl epids = (I.Var False I.VarState mkEPIDVarName (I.Enum mkEPIDEnumName), enum)
+    where enum = I.Enumeration mkEPIDEnumName $ map mkEPIDEnumeratorName epids
 
-mkPIDLVarDecl :: I.Var
-mkPIDLVarDecl = I.Var False I.VarTmp mkPIDLVarName (I.Enum mkPIDEnumName)
+mkEPIDLVarDecl :: I.Var
+mkEPIDLVarDecl = I.Var False I.VarTmp mkEPIDLVarName (I.Enum mkEPIDEnumName)
 
 mkTagVarName :: String
 mkTagVarName = "$tag"
@@ -280,27 +250,27 @@ mkChoiceEnumDecl i = I.Enumeration {..}
 
 type NameMap = M.Map Ident I.Expr
 
-methodLMap :: PID -> Method -> NameMap 
-methodLMap pid meth = 
-    M.fromList $ map (\v -> (name v, mkVar (Just pid) (Just meth) v)) (methVar meth) ++
-                 map (\a -> (name a, mkVar (Just pid) (Just meth) a)) (methArg meth)
+methodLMap :: Maybe PrID -> Method -> NameMap 
+methodLMap mpid meth = 
+    M.fromList $ map (\v -> (name v, mkVar (NSID mpid (Just meth)) v)) (methVar meth) ++
+                 map (\a -> (name a, mkVar (NSID mpid (Just meth)) a)) (methArg meth)
 
 procLMap :: Process -> NameMap
-procLMap p = M.fromList $ map (\v -> (name v, mkVar (Just [sname p]) Nothing v)) (procVar p)
+procLMap p = M.fromList $ map (\v -> (name v, mkVar (NSID (Just $ PrID (sname p) []) Nothing) v)) (procVar p)
 
-scopeLMap :: PID -> Scope -> NameMap
-scopeLMap pid sc = 
+scopeLMap :: Maybe PrID -> Scope -> NameMap
+scopeLMap mpid sc = 
     case sc of
-         ScopeMethod   _ meth -> methodLMap pid meth
+         ScopeMethod   _ meth -> methodLMap mpid meth
          ScopeProcess  _ proc -> procLMap proc
          ScopeTemplate _      -> M.empty
          
 globalNMap :: (?spec::Spec) => NameMap
 globalNMap = M.fromList $ gvars ++ wires ++ enums
     where -- global variables
-          gvars  = map (\v -> (name v, mkVar Nothing Nothing v)) $ tmVar tmMain
+          gvars  = map (\v -> (name v, mkVar (NSID Nothing Nothing) v)) $ tmVar tmMain
           -- wires
-          wires  = map (\w -> (name w, mkVar Nothing Nothing w)) $ tmWire tmMain
+          wires  = map (\w -> (name w, mkVar (NSID Nothing Nothing) w)) $ tmWire tmMain
           -- enums
           enums  = concatMap (\d -> case tspec d of
                                             EnumSpec _ es -> map (\e -> (name e, I.EConst $ I.EnumVal $ sname e)) es
@@ -342,8 +312,7 @@ getEnumName n =
 -- State maintained during CFA construction
 -----------------------------------------------------------
 
-data CFACtx = CFACtx { ctxPID     :: PID                                     -- PID of the process being constructed
-                     , ctxCont    :: Bool                                    -- True iff controllable transitions are being generated
+data CFACtx = CFACtx { ctxCID     :: Maybe CID                               -- ID of the CFA being constructed or Nothing if the CFA is not part of the final spec
                      , ctxStack   :: [(Scope, I.Loc, Maybe I.Expr, NameMap)] -- stack of syntactic scopes: (scope, return location, LHS, local namemap)
                      , ctxCFA     :: I.CFA                                   -- CFA constructed so far
                      , ctxBrkLocs :: [I.Loc]                                 -- stack break location
@@ -416,13 +385,11 @@ ctxInsTransMany' from ts = do
 
 ctxInsTmpVar :: I.Type -> State CFACtx I.Var
 ctxInsTmpVar t = do
-    lst <- gets ctxLastVar
-    pid <- gets ctxPID
-    sc  <- gets ctxScope
-    let m = case sc of
-                 ScopeMethod _ meth -> Just meth
-                 _                  -> Nothing
-        vname = mkVarNameS (Just pid) m ("$tmp" ++ show (lst + 1))
+    lst  <- gets ctxLastVar
+    mcid <- gets ctxCID
+    sc   <- gets ctxScope
+    let nsid = maybe (NSID Nothing Nothing) (\cid -> epid2nsid (cid2epid cid) sc) mcid
+        vname = mkVarNameS nsid ("$tmp" ++ show (lst + 1))
         v = I.Var False I.VarTmp vname t
     modify $ (\ctx -> ctx { ctxLastVar = lst + 1
                           , ctxVar     = v:(ctxVar ctx)})
@@ -457,32 +424,24 @@ ctxFinal loc = do
 
 -- common code of ctxPause, ctxFinal, ctxErrTrans
 ctxSuffix :: I.Loc -> I.Loc -> I.Loc -> State CFACtx ()
-ctxSuffix loc after pc = do pid  <- gets ctxPID
-                            cont <- gets ctxCont
-                            sc   <- gets (sel1 . last . ctxStack)
-                            let pid' = if' cont pidCont $
-                                       if' (pid == []) (case sc of
-                                                             ScopeMethod _ m -> [sname m]
-                                                             _               -> []) $
-                                       pid
-                                fullpid = case sc of 
-                                               ScopeMethod _ m -> pid ++ [sname m]
-                                               _               -> pid
+ctxSuffix loc after pc = do mcid  <- gets ctxCID
+                            let mepid = fmap cid2epid mcid
                             -- set PID variable
-                            aftpid <- if pid' == []
-                                         then ctxInsTrans' loc $ I.TranNop
-                                         else do befpid <- ctxInsTrans' loc $ I.TranStat $ I.SAssume $ mkPIDLVar I.=== mkPIDEnum pid'
-                                                 ctxInsTrans' befpid $ I.TranStat $ mkPIDVar I.=: mkPIDLVar
+                            aftepid <- if isNothing mepid
+                                          then ctxInsTrans' loc $ I.TranNop
+                                          else do befepid <- ctxInsTrans' loc $ I.TranStat $ I.SAssume $ mkEPIDLVar I.=== (mkEPIDEnum $ fromJust mepid)
+                                                  ctxInsTrans' befepid $ I.TranStat $ mkEPIDVar I.=: mkEPIDLVar
                             -- 1. update PC
                             -- 2. uncontrollable transitions are only available in uncontrollable states
                             -- 3. non-deterministically set $cont to true if inside a magic block
-                            if ((not cont) && pid' /= []) 
-                               then do aftpc    <- ctxInsTrans' aftpid $ I.TranStat   $ mkPCVar fullpid I.=: mkPC fullpid pc
+                            if (isJust mcid && mepid /= Just EPIDCont) 
+                               then do let Just cid = mcid
+                                       aftpc    <- ctxInsTrans' aftepid $ I.TranStat  $ mkPCVar cid I.=: mkPC cid pc
                                        aftucont <- ctxInsTrans' aftpc $ I.TranStat    $ I.SAssume $ mkContVar I.=== I.false
                                        ifmagic  <- ctxInsTrans' aftucont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
                                        ctxInsTrans ifmagic after $ I.TranStat         $ mkContVar I.=: mkContLVar
                                        ctxInsTrans aftucont after $ I.TranStat        $ I.SAssume $ mkMagicVar I.=== I.false
-                               else ctxInsTrans aftpid after I.TranNop
+                               else ctxInsTrans aftepid after I.TranNop
 
 ctxErrTrans :: I.Loc -> State CFACtx ()
 ctxErrTrans loc = do
