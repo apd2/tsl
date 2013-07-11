@@ -1,7 +1,10 @@
+{-# LANGUAGE ImplicitParams #-}
+
 module PID (PrID(..),
             EPID(..),
             CID(..),
             NSID(..),
+            parseEPID,
             pid2cid,
             childPID,
             cid2nsid,
@@ -10,11 +13,16 @@ module PID (PrID(..),
             epid2nsid) where
 
 import Text.PrettyPrint
+import Data.List.Split
 
+import Util
+import Pos
 import PP
 import NS
 import Name
 import Method
+import Spec
+import Expr
 
 -- Process ID: root process or forked process
 
@@ -52,8 +60,13 @@ instance PP EPID where
 instance Show EPID where
     show = render . pp
 
-instance Read EPID where
-    readsPrec = error "Read EPID not implemented"
+parseEPID :: Spec -> String -> EPID
+parseEPID spec s = if' (s=="$contproc")                         EPIDCont                            $
+                   if' ((take 2 $ reverse $ last toks) == ")(") (EPIDCTask $ methodByName $ init $ init $ last toks) $
+                   (EPIDProc $ PrID (head toks) (tail toks))
+                   where toks = splitOn "/" s
+                         methodByName n = let ?spec = spec 
+                                          in snd $ getMethod (ScopeTemplate $ head $ specTemplate ?spec) (MethodRef nopos [Ident nopos n])
 
 epid2nsid :: EPID -> Scope -> NSID
 epid2nsid epid sc = NSID mpid mmeth
@@ -64,12 +77,6 @@ epid2nsid epid sc = NSID mpid mmeth
     mmeth = case sc of
                  ScopeMethod _ m -> Just m
                  _               -> Nothing
-
---    if (take 2 $ reverse $ last toks) == ")("
---       then EPIDCTask $ init $ init $ last toks
---       else EPIDProc $ PrID (head toks) (tail toks)
---    where toks = splitOn "/" n
-
 
 -- CFA ID: process, controllable, or uncontrollable task, or controllable transition
 data CID = UCID  PrID (Maybe Method)

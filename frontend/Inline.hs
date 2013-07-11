@@ -48,7 +48,7 @@ mkVarNameS (NSID mpid mmeth) s = intercalate "/" names
                                        Procedure -> Nothing
                                        _         -> mpid
           names = maybe [] (return . show)              mpid' ++ 
-                  maybe [] (return . sname) mmeth ++ 
+                  maybe [] (return . (++ "()") . sname) mmeth ++ 
                   [s]
 
 mkVar :: (WithName a) => NSID -> a -> I.Expr
@@ -153,8 +153,8 @@ mkEPIDLVar = I.EVar mkEPIDLVarName
 mkEPIDEnumeratorName :: EPID -> String
 mkEPIDEnumeratorName epid = "$" ++ show epid
 
-parseEPIDEnumerator :: String -> EPID
-parseEPIDEnumerator n = read $ tail n
+parseEPIDEnumerator :: Spec -> String -> EPID
+parseEPIDEnumerator spec n = parseEPID spec $ tail n
 
 mkEPIDEnum :: EPID -> I.Expr
 mkEPIDEnum = I.EConst . I.EnumVal . mkEPIDEnumeratorName
