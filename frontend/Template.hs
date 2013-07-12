@@ -6,7 +6,8 @@ module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, t
                 Init(Init,initBody),
                 Always(Always,alwBody),
                 Wire(Wire,wireExport,wireRHS,wireType,wireName),
-                Derive(Derive,drvTemplate)) where
+                Derive(Derive,drvTemplate),
+                mergeTemplate) where
 
 import Text.PrettyPrint
 import Data.Maybe
@@ -194,3 +195,19 @@ instance WithName Template where
 
 instance Show Template where
     show = render . pp
+
+mergeTemplate :: Template -> Template -> Template
+mergeTemplate tm1 tm2 = Template { tpos       = tpos tm1
+                                 , tname      = tname tm1
+                                 , tmPort     = tmPort tm1 ++ tmPort tm2
+                                 , tmDerive   = tmDerive tm1 ++ tmDerive tm2
+                                 , tmConst    = tmConst tm1 ++ tmConst tm2
+                                 , tmTypeDecl = tmTypeDecl tm1 ++ tmTypeDecl tm2
+                                 , tmVar      = tmVar tm1 ++ tmVar tm2
+                                 , tmWire     = tmWire tm1 ++ tmWire tm2
+                                 , tmInst     = tmInst tm1 ++ tmInst tm2
+                                 , tmInit     = tmInit tm1 ++ tmInit tm2
+                                 , tmAlways   = tmAlways tm1 ++ tmAlways tm2
+                                 , tmProcess  = tmProcess tm1 ++ tmProcess tm2
+                                 , tmMethod   = tmMethod tm1 ++ tmMethod tm2
+                                 , tmGoal     = tmGoal tm1 ++ tmGoal tm2}
