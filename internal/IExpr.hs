@@ -34,7 +34,7 @@ import Control.Monad.Error
 import qualified Text.Parsec as P
 
 import Util
-import Parse
+import Grammar
 import PP
 import TSLUtil
 import Ops
