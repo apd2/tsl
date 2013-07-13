@@ -1,6 +1,9 @@
 {-# LANGUAGE ImplicitParams #-}
 
-module ExprFlatten(exprFlatten, exprFlatten', flattenName) where
+module ExprFlatten(exprFlatten, 
+                   exprFlatten', 
+                   flattenName,
+                   unflattenName) where
 
 import Debug.Trace
 
@@ -18,6 +21,8 @@ import Pos
 flattenName :: (WithName a) => Template -> a -> Ident
 flattenName t x = Ident (pos $ name x) $ (sname t) ++ "::" ++ (sname x)
 
+unflattenName :: Ident -> StaticSym
+unflattenName n = error "unflattenName not implemented"
 
 exprFlatten :: (?spec::Spec) => IID -> Scope -> Expr -> Expr
 exprFlatten iid s e = mapExpr (exprFlatten' iid) s e

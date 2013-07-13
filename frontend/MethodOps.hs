@@ -116,6 +116,10 @@ validateMeth t m = do
     validateMethNS t m
     let ?scope = ScopeMethod t m
         ?privoverride = False
+    mapM (\a -> case argType a of
+                     StructSpec _ _ -> err (pos $ argType a) "Inline struct declaration is illegal in method argument" -- because then there is no way to pass such an argument by value
+                     _              -> return ())
+         $ methArg m
     case methParent t m of
          Just (t',m') -> case (methBody m', methBody m) of
                               (Right _, Left _)   -> err (pos m) "Complete method body is required in overloaded method declaration"

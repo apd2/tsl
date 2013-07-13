@@ -29,6 +29,9 @@ import NS
 import Expr
 import {-# SOURCE #-} ExprOps
 
+instance (?spec::Spec, ?scope::Scope) => WithType Field where
+    typ = Type ?scope . tspec
+
 -- Map function over TypeSpec
 mapTSpec :: (?spec::Spec) => (Scope -> TypeSpec -> TypeSpec) -> Scope -> TypeSpec -> TypeSpec
 mapTSpec f s (StructSpec p fs)    = f s $ StructSpec p (map (\fl -> Field (pos fl) (mapTSpec f s $ tspec fl) (name fl)) fs)

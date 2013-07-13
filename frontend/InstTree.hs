@@ -7,7 +7,8 @@ module InstTree (IID,
                  itreeTemplate,
                  itreeFlattenName,
                  itreeParseName,
-                 itreeRelToAbsPath) where
+                 itreeRelToAbsPath,
+                 itreeAbsToRelPath) where
 
 import qualified Data.Tree as T
 import Data.List
@@ -70,3 +71,9 @@ itreeRelToAbsPath' iid n =
           parent = itreeTemplate $ init iid
           parentInst = fromJustMsg "fromJustMsg itreeRelToAbsPath.parentInst'" $ find ((== last iid) . name) $ tmInst parent
           portVal = (instPort parentInst) !! portIdx
+
+
+-- Given two instances, compute a relative path from the first to the second 
+-- instance, if one exists
+itreeAbsToRelPath :: (?spec::Spec) => IID -> IID -> Maybe [Ident]
+itreeAbsToRelPath from to = error "itreeAbsToRelPath not implemented"

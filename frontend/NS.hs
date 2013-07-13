@@ -4,6 +4,7 @@ module NS(Scope(..),
           WithScope(..),
           isFunctionScope,
           isTemplateScope,
+          staticSymReScope,
           Type(Type),
           WithType(..),
           lookupTemplate, checkTemplate, getTemplate, 
@@ -76,6 +77,9 @@ isFunctionScope _                 = False
 isTemplateScope :: Scope -> Bool
 isTemplateScope (ScopeTemplate _) = True
 isTemplateScope _                 = False
+
+staticSymReScope :: (StaticSym, Scope) -> Scope -> StaticSym 
+staticSymReScope (sym, sc) sc' = error "staticSymRescope not implemented"
 
 data Type = Type Scope TypeSpec
 

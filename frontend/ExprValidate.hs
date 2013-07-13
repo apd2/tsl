@@ -193,7 +193,7 @@ validateExpr' (EStruct p n es) = do
     (d,s) <- checkTypeDecl ?scope n
     let t = Type s $ tspec d
     assert (isStruct t) (pos n) $ show n ++ " is not a struct type"
-    let (StructSpec _ fs) = tspec d
+    let (StructSpec _ fs) = tspec $ typ' t
         nes = case es of 
                    Left es -> length es
                    Right es -> length es
