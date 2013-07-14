@@ -7,6 +7,7 @@ module ISpec(Spec(..),
              specTmpVar,
              specStateVar,
              specGetProcess,
+             specGetCTask,
              specAllCFAs,
              specAllProcs,
              specGetCFA,
@@ -104,6 +105,9 @@ specGetProcess' :: Process -> [String] -> Process
 specGetProcess' proc (n:names) | names == [] = child
                                | otherwise   = specGetProcess' child names
     where child = fromJustMsg "specGetProcess': error" $ find ((== n) . procName) $ procChildren proc
+
+specGetCTask :: Spec -> String -> Task
+specGetCTask Spec{..} n = fromJust $ find ((== n) . sname . taskMethod) specCTask
 
 specGetCFA :: Spec -> CID -> CFA
 specGetCFA spec (UCID pid Nothing)  = procCFA $ specGetProcess spec pid
