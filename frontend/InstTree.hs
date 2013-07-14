@@ -11,6 +11,8 @@ module InstTree (IID,
                  itreeAbsToRelPath) where
 
 import qualified Data.Tree as T
+import qualified Data.Map  as M
+import Data.Maybe
 import Data.List
 import Data.String.Utils
 
@@ -76,4 +78,17 @@ itreeRelToAbsPath' iid n =
 -- Given two instances, compute a relative path from the first to the second 
 -- instance, if one exists
 itreeAbsToRelPath :: (?spec::Spec) => IID -> IID -> Maybe [Ident]
-itreeAbsToRelPath from to = error "itreeAbsToRelPath not implemented"
+itreeAbsToRelPath from to = M.lookup to $ itreeReachable from
+
+-- Compute all instances reachable from from via relative 
+-- names
+itreeReachable :: (?spec::Spec) => IID -> M.Map IID [Ident]
+itreeReachable from = itreeReachable' [] M.empty from
+
+itreeReachable' :: (?spec::Spec) => [Ident] -> M.Map IID [Ident] -> IID -> M.Map IID [Ident]
+itreeReachable' pref reach iid | (isJust $ M.lookup iid reach) = reach
+                               | otherwise                     = 
+   foldl' (\r n -> itreeReachable' (pref ++ [n]) r (itreeRelToAbsPath iid [n])) reach0
+          $ (map name $ tmPort $ itreeTemplate iid) ++ (map name $ tmInst $ itreeTemplate iid)
+   where reach0 = M.insert iid pref reach
+

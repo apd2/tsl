@@ -6,6 +6,7 @@ module ExprFlatten(exprFlatten,
                    unflattenName) where
 
 import Debug.Trace
+import Data.List.Split
 
 import Name
 import Expr
@@ -22,7 +23,7 @@ flattenName :: (WithName a) => Template -> a -> Ident
 flattenName t x = Ident (pos $ name x) $ (sname t) ++ "::" ++ (sname x)
 
 unflattenName :: Ident -> StaticSym
-unflattenName n = error "unflattenName not implemented"
+unflattenName n = map (Ident nopos) $ splitOn "::" (sname n)
 
 exprFlatten :: (?spec::Spec) => IID -> Scope -> Expr -> Expr
 exprFlatten iid s e = mapExpr (exprFlatten' iid) s e

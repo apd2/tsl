@@ -100,9 +100,6 @@ instance PP CID where
 instance Show CID where
     show = render . pp
 
-instance Read CID where
-    readsPrec = error "Read CID not implemented"
-
 cid2epid :: CID -> EPID
 cid2epid (UCID pid _) = EPIDProc pid
 cid2epid (CTCID m)    = EPIDCTask m
