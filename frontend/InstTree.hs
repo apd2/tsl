@@ -83,12 +83,14 @@ itreeAbsToRelPath from to = M.lookup to $ itreeReachable from
 -- Compute all instances reachable from from via relative 
 -- names
 itreeReachable :: (?spec::Spec) => IID -> M.Map IID [Ident]
-itreeReachable from = itreeReachable' [] M.empty from
+itreeReachable from = itreeReachable' (M.singleton from [])
 
-itreeReachable' :: (?spec::Spec) => [Ident] -> M.Map IID [Ident] -> IID -> M.Map IID [Ident]
-itreeReachable' pref reach iid | (isJust $ M.lookup iid reach) = reach
-                               | otherwise                     = 
-   foldl' (\r n -> itreeReachable' (pref ++ [n]) r (itreeRelToAbsPath iid [n])) reach0
+itreeReachable' :: (?spec::Spec) => M.Map IID [Ident] -> M.Map IID [Ident]
+itreeReachable' reach = if' (M.size reach' == M.size reach) reach (itreeReachable' reach')
+    where reach' = M.foldlWithKey itreeReachable1 reach reach
+
+itreeReachable1 :: (?spec::Spec) => M.Map IID [Ident] -> IID -> [Ident] -> M.Map IID [Ident]
+itreeReachable1 reach iid path = 
+   foldl' (\r n -> let iid' = itreeRelToAbsPath iid [n] in
+                   if' (M.member iid' r) r (M.insert iid' (path++[n]) r)) reach
           $ (map name $ tmPort $ itreeTemplate iid) ++ (map name $ tmInst $ itreeTemplate iid)
-   where reach0 = M.insert iid pref reach
-
