@@ -92,10 +92,10 @@ fnot FTrue  = FFalse
 fnot FFalse = FTrue
 fnot f      = FNot f
 
-fAtom :: (?spec::Spec) => RelOp -> Term -> Term -> Formula
+fAtom :: RelOp -> Term -> Term -> Formula
 fAtom op t1 t2 = fAtom' op (termSimplify t1) (termSimplify t2)
 
-fAtom' :: (?spec::Spec) => RelOp -> Term -> Term -> Formula
+fAtom' :: RelOp -> Term -> Term -> Formula
 fAtom' REq  l r | l == r                         = FTrue
 fAtom' REq  l r | isConstTerm l && isConstTerm r = if evalConstTerm l == evalConstTerm r then FTrue  else FFalse
 fAtom' REq  l r | l < r                          = FPred $ PAtom REq l r
@@ -111,7 +111,7 @@ fVar (FNot f)         = fVar f
 
 
 -- Convert boolean expression without pointers to a formula
-ptrFreeBExprToFormula :: (?spec::Spec) => Expr -> Formula
+ptrFreeBExprToFormula :: Expr -> Formula
 ptrFreeBExprToFormula e@(EVar _)                         = fAtom REq (exprToTerm e) TTrue
 ptrFreeBExprToFormula   (EConst (BoolVal True))          = FTrue
 ptrFreeBExprToFormula   (EConst (BoolVal False))         = FFalse
@@ -121,10 +121,10 @@ ptrFreeBExprToFormula   (EUnOp Not e)                    = fnot $ ptrFreeBExprTo
 ptrFreeBExprToFormula   (EBinOp op e1 e2) | isRelBOp op  = combineExpr (bopToRelOp op) e1 e2
 ptrFreeBExprToFormula   (EBinOp op e1 e2) | isBoolBOp op = FBinOp (bopToBoolOp op) (ptrFreeBExprToFormula e1) (ptrFreeBExprToFormula e2)
 
-combineExpr :: (?spec::Spec) => RelOp -> Expr -> Expr -> Formula
+combineExpr :: RelOp -> Expr -> Expr -> Formula
 combineExpr REq  (EUnOp AddrOf e1) (EUnOp AddrOf e2) = combineAddrOfExpr e1 e2
 combineExpr RNeq (EUnOp AddrOf e1) (EUnOp AddrOf e2) = fnot $ combineAddrOfExpr e1 e2
-combineExpr op e1 e2 | typ e1 == Bool                = 
+combineExpr op e1 e2                                 = 
    case e1 of
        EConst (BoolVal True)  -> if op == REq then ptrFreeBExprToFormula e2 else fnot $ ptrFreeBExprToFormula e2
        EConst (BoolVal False) -> if op == REq then fnot $ ptrFreeBExprToFormula e2 else ptrFreeBExprToFormula e2
@@ -132,13 +132,16 @@ combineExpr op e1 e2 | typ e1 == Bool                =
            case e2 of
                 EConst (BoolVal True)  -> if op == REq then ptrFreeBExprToFormula e1 else fnot $ ptrFreeBExprToFormula e1
                 EConst (BoolVal False) -> if op == REq then fnot $ ptrFreeBExprToFormula e1 else ptrFreeBExprToFormula e1
-                _                      -> let f = FBinOp Equiv (ptrFreeBExprToFormula e1) (ptrFreeBExprToFormula e2)
-                                          in if op == REq then f else fnot f
-                     | otherwise                     = fAtom op (exprToTerm e1) (exprToTerm e2)
+                _                      -> fAtom op (exprToTerm e1) (exprToTerm e2)
+                
+--                        let f = FBinOp Equiv (ptrFreeBExprToFormula e1) (ptrFreeBExprToFormula e2)
+--                                          in if op == REq then f else fnot f
+--
+--                     | otherwise                     = fAtom op (exprToTerm e1) (exprToTerm e2)
 
 -- Two addrof expressions are equal if they are isomorphic and
 -- array indices in matching positions in these expressions are equal.
-combineAddrOfExpr :: (?spec::Spec) => Expr -> Expr -> Formula
+combineAddrOfExpr :: Expr -> Expr -> Formula
 combineAddrOfExpr (EVar n1)      (EVar n2)      | n1 == n2 = FTrue
 combineAddrOfExpr (EVar n1)      (EVar n2)      | n1 /= n2 = FFalse
 combineAddrOfExpr (EField e1 f1) (EField e2 f2) | f1 == f2 = combineAddrOfExpr e1 e2

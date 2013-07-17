@@ -195,8 +195,18 @@ termVar (TUnOp _ t)      = termVar t
 termVar (TBinOp _ t1 t2) = termVar t1 ++ termVar t2
 termVar (TSlice t _)     = termVar t
 
-isConstTerm :: (?spec::Spec) => Term -> Bool
-isConstTerm = null . termVar
+isConstTerm :: Term -> Bool
+isConstTerm (TVar n)         = False
+isConstTerm (TSInt _ _)      = True
+isConstTerm (TUInt _ _)      = True
+isConstTerm (TEnum _)        = True
+isConstTerm TTrue            = True
+isConstTerm (TAddr t)        = isConstTerm t
+isConstTerm (TField t _)     = isConstTerm t
+isConstTerm (TIndex a i)     = isConstTerm a && isConstTerm i
+isConstTerm (TUnOp _ t)      = isConstTerm t
+isConstTerm (TBinOp _ t1 t2) = isConstTerm t1 && isConstTerm t2
+isConstTerm (TSlice t _)     = isConstTerm t
 
 evalConstTerm :: Term -> Term
 evalConstTerm = exprToTerm . EConst . evalConstExpr . termToExpr

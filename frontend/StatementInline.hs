@@ -25,6 +25,8 @@ import TypeOps
 import ExprOps
 import ExprInline
 import PID
+import SMTSolver
+import BFormula
 
 import qualified IExpr as I
 import qualified CFA   as I
@@ -98,7 +100,7 @@ statSimplify' st                      = return [st]
 ----------------------------------------------------------
 -- Convert statement to CFA
 ----------------------------------------------------------
-statToCFA :: (?spec::Spec, ?procs::[I.Process]) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA :: (?spec::Spec, ?procs::[I.Process], ?solver::SMTSolver) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA before   (SSeq _ ss)    = foldM statToCFA before ss
 statToCFA before s@(SPause _)     = do ctxLocSetAct before (I.ActStat s)
                                        ctxPause before I.true (I.ActStat s)
@@ -127,7 +129,7 @@ statToCFA before s@stat           = do ctxLocSetAct before (I.ActStat s)
                                        return after
 
 -- Only safe to call from statToCFA.  Do not call this function directly!
-statToCFA' :: (?spec::Spec, ?procs::[I.Process]) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
+statToCFA' :: (?spec::Spec, ?procs::[I.Process], ?solver::SMTSolver) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
 statToCFA' before _ (SReturn _ rval) = do
     -- add transition before before to return location
     mlhs  <- gets ctxLHS
@@ -278,19 +280,26 @@ statToCFA' before after (SITE _ cond sthen mselse) = do
     ctxInsTrans aftelse after I.TranNop
 
 statToCFA' before after (SCase _ e cs mdef) = do
-    let negs = map (eAnd nopos . map (EBinOp nopos Neq e)) $ inits $ map fst cs
-        cs' = map (\((c, st), neg) -> (EBinOp nopos And (EBinOp nopos Eq e c) neg, Just st)) $ zip cs negs
-        cs'' = case mdef of
-                    Nothing  -> cs' ++ [(last negs, Nothing)]
-                    Just def -> cs' ++ [(last negs, Just def)]
-    _ <- mapM (\(c,mst) -> do c' <- exprToIExprDet c
-                              befst <- ctxInsTrans' before (I.TranStat $ I.SAssume c')
+    e'  <- exprToIExprDet e
+    let (vs,ss) = unzip cs
+    vs0 <- mapM exprToIExprDet vs
+    let vs1 = map (\(c, prev) -> let cond = (I.EBinOp Eq e' c)
+                                     dist = let ?pred = [] in
+                                            map (I.EBinOp Neq c)
+                                            $ filter ((/= Just False) . smtCheckSAT ?solver . return . ptrFreeBExprToFormula . I.EBinOp Eq c)
+                                            $ prev
+                                 in I.conj (cond:dist))
+                $ zip vs0 (inits vs0)
+    let negs = I.conj $ map (I.EBinOp Neq e') vs0
+    let cs' = case mdef of
+                   Nothing  -> (zip vs1 $ map Just ss) ++ [(negs, Nothing)]
+                   Just def -> (zip vs1 $ map Just ss) ++ [(negs, Just def)]
+    _ <- mapM (\(c,mst) -> do befst <- ctxInsTrans' before (I.TranStat $ I.SAssume c)
                               aftst <- case mst of 
                                             Nothing -> return befst
                                             Just st -> statToCFA befst st
-                              ctxInsTrans aftst after I.TranNop) cs''
+                              ctxInsTrans aftst after I.TranNop) cs'
     return ()
-
 
 statToCFA' before after s@(SMagic _ _ constr) = do
     -- magic block flag
@@ -308,7 +317,7 @@ statToCFA' before after (SMagExit _) = do
 --    aftpid  <- ctxInsTrans' aftcont $ I.TranStat $ mkPIDVar   I.=: mkPIDEnum pidCont
     ctxInsTrans aftcont after       $ I.TranStat $ mkMagicVar I.=: I.false
 
-methInline :: (?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
+methInline :: (?spec::Spec,?procs::[I.Process],?solver::SMTSolver) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
 methInline before after meth args mlhs act = do
     -- save current context
     mcid <- gets ctxCID
@@ -408,7 +417,7 @@ copyOutArgs loc meth args = do
 -- Top-level function: convert process statement to CFA
 ----------------------------------------------------------
 
-procStatToCFA :: (?spec::Spec, ?procs::[I.Process]) => Statement -> I.Loc -> State CFACtx I.Loc
+procStatToCFA :: (?spec::Spec, ?procs::[I.Process], ?solver::SMTSolver) => Statement -> I.Loc -> State CFACtx I.Loc
 procStatToCFA stat before = do
     after <- statToCFA before stat
     ctxAddNullPtrTrans
