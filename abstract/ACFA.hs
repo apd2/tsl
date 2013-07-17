@@ -2,7 +2,8 @@
 
 module ACFA(tranCFAToACFA,
             bexprToFormula,
-            bexprToFormulaPlus) where
+            bexprToFormulaPlus,
+            pruneCFAVar) where
 
 import qualified Data.Graph.Inductive as G
 import Data.List
@@ -31,9 +32,11 @@ tranCFAToACFA vs loc cfa =
         ?cfa = cfaPruneUnreachable cfa [loc] in 
     let -- prefill ACFA for final states
         acfa0 = foldl' (\g l -> addUseDefVar g l $ map (,l) vs) G.empty
-                $ filter ((==0) . G.outdeg cfa)
-                $ G.nodes cfa
+                $ filter ((==0) . G.outdeg ?cfa)
+                $ G.nodes ?cfa
     in mkACFA acfa0 []
+
+
 
 mkACFA :: (?spec::Spec, ?initloc::Loc, ?pred::[Predicate], ?cfa::CFA) => ACFA -> [Loc] -> ACFA
 mkACFA acfa added = 
@@ -51,6 +54,18 @@ mkACFA acfa added =
     in if loc == ?initloc
           then acfa''
           else mkACFA acfa'' (loc:added)
+
+pruneCFAVar :: (?spec::Spec, ?pred::[Predicate]) => [AbsVar] -> CFA -> CFA
+pruneCFAVar avs cfa = foldl' (\g l -> if' (elem l keep) g (G.delNode l g)) cfa (G.nodes cfa)
+    where
+    -- Find all transitions that update variable values
+    trs = filter (\(_,_,tr) -> any (\av -> isVarRecomputedByTran av tr) avs) 
+          $ G.labEdges cfa
+    -- Find all predecessors and successors of these transitions
+    reach = concatMap (\(_,to,_) -> G.dfs  [to] cfa) trs
+    preds  = concatMap (\(fr,_,_) -> G.rdfs [fr] cfa) trs
+    keep  = nub $ reach ++ preds
+
 
 varRecomputedLoc :: (?spec::Spec, ?pred::[Predicate], ?cfa::CFA) => Loc -> AbsVar -> Loc
 varRecomputedLoc l v | null (G.pre ?cfa l)                                 = l

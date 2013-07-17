@@ -1,12 +1,14 @@
-{-# LANGUAGE ImplicitParams, ScopedTypeVariables #-}
+{-# LANGUAGE ImplicitParams, ScopedTypeVariables, RecordWildCards #-}
 
 module TSLAbsGame(tslAbsGame, bexprToFormula) where
 
 import Prelude hiding (and)
 import Data.List hiding (and)
 import Debug.Trace
+import Data.Maybe
 import Text.PrettyPrint.Leijen.Text
 import Data.Text.Lazy hiding (intercalate, map, take, length, zip, filter)
+import qualified Data.Graph.Inductive as G
 
 import TSLUtil
 import Util hiding (trace)
@@ -104,8 +106,12 @@ tslUpdateAbs spec m avars ops = do
         ?m    = m
         ?pred = p
     let pervar = map (\av -> let cont  = varUpdateTrans "cont" [av] $ tsCTran $ specTran spec
-                                 ucont = H.Disj $ mapIdx (\tr i -> varUpdateTrans (show i) [av] tr) $ tsUTran $ specTran spec
-                             in H.Or cont ucont)
+                                 ucont = mapIdx (\tr i -> varUpdateTrans (show i) [av] tr) $ tsUTran $ specTran spec
+                                 (upds, pres) = unzip $ catMaybes $ cont:ucont
+                                 -- generate condition when variable value does not change
+                                 ident = H.EqVar (H.NVar $ avarBAVar $ fst av) (H.FVar $ snd av)
+                                 unchanged = H.And (H.Conj $ map H.Not pres) ident
+                             in H.Disj (unchanged:upds))
                      avars
 --    _ <- mapIdxM (\tr i -> cfaTraceFile (tranCFA tr) ("cfa" ++ show i) $ return ()) $ tsUTran $ specTran spec
     mapM (\(ast, (av,_)) -> trace ("compiling " ++ show av) $ H.compileBDD m ops ast) $ zip pervar avars
@@ -134,14 +140,22 @@ tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => String -> Transition ->
 tranPrecondition trname tran = varUpdateLoc trname [] (tranFrom tran) (tranCFA tran)
 
 -- Compute update functions for a list of variables wrt to a transition
-varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar,f)] -> Transition -> TAST f e c
-varUpdateTrans trname vs tran = varUpdateLoc trname vs (tranFrom tran) (cfaLocInlineWireAlways ?spec (tranCFA tran) (tranFrom tran))
+-- Returns update function and precondition of the transition.  The precondition
+-- can be used to generate complementary condition when variable value remains 
+-- unchanged.  
+varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar,f)] -> Transition -> Maybe (TAST f e c, TAST f e c)
+varUpdateTrans trname vs Transition{..} = if G.isEmpty cfa
+                                             then Nothing
+                                             else Just (varUpdateLoc trname vs tranFrom cfa, varUpdateLoc (trname ++ "_pre") [] tranFrom cfa)
+    where cfa' = pruneCFAVar (map fst vs) tranCFA
+          cfa  = cfaLocInlineWireAlways ?spec cfa' tranFrom
+
 
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA. 
 varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar, f)] -> Loc -> CFA -> TAST f e c
-varUpdateLoc trname vs loc cfa = {-acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
-                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") -} ast
+varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
+                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
     where
     acfa = tranCFAToACFA (map fst vs) loc cfa
     ast  = compileACFA vs acfa
