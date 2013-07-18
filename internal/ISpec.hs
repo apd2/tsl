@@ -1,13 +1,10 @@
 {-# LANGUAGE RecordWildCards, ImplicitParams #-}
 
 module ISpec(Spec(..),
-             Task(..),
-             taskName,
              Process(..),
              specTmpVar,
              specStateVar,
              specGetProcess,
-             specGetCTask,
              specAllCFAs,
              specAllProcs,
              specGetCFA,
@@ -27,28 +24,17 @@ import qualified Data.Graph.Inductive.Graph as G
 import Text.PrettyPrint
 
 import Util
-import Name
 import CFA
 import IVar
 import IType
 import TranSpec
 import PP
 import PID
-import qualified Method as F
-
-data Task = Task {
-    taskMethod :: F.Method,
-    taskCFA    :: CFA
-}
-
-taskName :: Task -> String
-taskName = sname . taskMethod
 
 data Process = Process {
     procName     :: String,
     procCFA      :: CFA,
-    procChildren :: [Process],
-    procTask     :: [Task]
+    procChildren :: [Process]
 }
 
 data Spec = Spec {
@@ -57,7 +43,6 @@ data Spec = Spec {
     specWire   :: Maybe CFA,   -- wire assignment
     specAlways :: Maybe CFA,   -- always blocks
     specProc   :: [Process],   -- processes
-    specCTask  :: [Task],      -- controllable tasks
     specCAct   :: CFA,         -- controllable transitions
     specTran   :: TranSpec     -- info required for variable update
                                -- computation
@@ -106,24 +91,17 @@ specGetProcess' proc (n:names) | names == [] = child
                                | otherwise   = specGetProcess' child names
     where child = fromJustMsg "specGetProcess': error" $ find ((== n) . procName) $ procChildren proc
 
-specGetCTask :: Spec -> String -> Task
-specGetCTask Spec{..} n = fromJust $ find ((== n) . sname . taskMethod) specCTask
+specGetCFA :: Spec -> EPID -> CFA
+specGetCFA spec (EPIDProc pid) = procCFA $ specGetProcess spec pid
+specGetCFA spec EPIDCont       = specCAct spec 
 
-specGetCFA :: Spec -> CID -> CFA
-specGetCFA spec (UCID pid Nothing)  = procCFA $ specGetProcess spec pid
-specGetCFA spec (UCID pid (Just m)) = taskCFA $ fromJust $ find ((== sname m) . taskName) $ procTask $ specGetProcess spec pid
-specGetCFA spec (CTCID m)           = taskCFA $ fromJust $ find ((== sname m) . taskName) $ specCTask spec
-specGetCFA spec CCID                = specCAct spec 
-
-specAllCFAs :: Spec -> [(CID, CFA)]
+specAllCFAs :: Spec -> [(EPID, CFA)]
 specAllCFAs Spec{..} = concatMap (\p -> procAllCFAs (PrID (procName p) []) p) specProc  ++
-                       map       (\Task{..} -> (CTCID taskMethod, taskCFA))   specCTask ++
-                       [(CCID, specCAct)]
+                       [(EPIDCont, specCAct)]
 
-procAllCFAs :: PrID -> Process -> [(CID, CFA)]
-procAllCFAs pid proc = (UCID pid Nothing, procCFA proc) :
-                       concatMap (\p -> procAllCFAs (childPID pid (procName p)) p) (procChildren proc) ++
-                       map (\Task{..} -> (UCID pid (Just taskMethod), taskCFA))    (procTask proc)
+procAllCFAs :: PrID -> Process -> [(EPID, CFA)]
+procAllCFAs pid proc = (EPIDProc pid, procCFA proc) :
+                       concatMap (\p -> procAllCFAs (childPID pid (procName p)) p) (procChildren proc) 
 
 specAllProcs :: Spec -> [(PrID, Process)]
 specAllProcs Spec{..} = concatMap (\p -> procAllForkedProcs (PrID (procName p) []) p) specProc
@@ -131,21 +109,17 @@ specAllProcs Spec{..} = concatMap (\p -> procAllForkedProcs (PrID (procName p) [
 procAllForkedProcs :: PrID -> Process -> [(PrID, Process)]
 procAllForkedProcs pid p = (pid,p) : (concatMap (\p' -> procAllForkedProcs (childPID pid (procName p')) p') $ procChildren p)
 
--- Apply transformation to all task and process CFA's in the spec
+-- Apply transformation to all CFA's in the spec
 specMapCFA :: (CFA -> CFA) -> Spec -> Spec
 specMapCFA f spec = 
-   spec { specProc  = map (procMapCFA f) $ specProc  spec
-        , specCTask = map (taskMapCFA f) $ specCTask spec}
+   spec { specProc = map (procMapCFA f) $ specProc spec
+        , specCAct = f $ specCAct spec}
 
 procMapCFA :: (CFA -> CFA) -> Process -> Process
 procMapCFA f proc = 
     proc { procCFA      = f $ procCFA proc
          , procChildren = map (procMapCFA f) $ procChildren proc
-         , procTask     = map (taskMapCFA f) $ procTask     proc
          }
-
-taskMapCFA :: (CFA -> CFA) -> Task -> Task
-taskMapCFA f task = task {taskCFA = f $ taskCFA task}
 
 specInlineWireAlways :: Spec -> Spec
 specInlineWireAlways spec = specMapCFA (cfaInlineWireAlways spec) spec

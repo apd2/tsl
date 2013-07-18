@@ -2,14 +2,9 @@
 
 module PID (PrID(..),
             EPID(..),
-            CID(..),
             NSID(..),
             parseEPID,
-            pid2cid,
             childPID,
-            cid2nsid,
-            cid2epid,
-            cid2mpid,
             epid2nsid) where
 
 import Text.PrettyPrint
@@ -38,35 +33,26 @@ instance Show PrID where
 childPID :: PrID -> String -> PrID
 childPID (PrID p ps) pname = PrID p (ps ++ [pname])
 
-pid2cid :: PrID -> CID
-pid2cid pid = UCID pid Nothing
-
--- Extended PID: process id, controllable task process, or controllable transition
+-- Extended PID: process id or controllable transition
 data EPID = EPIDProc  PrID
-          | EPIDCTask Method
           | EPIDCont
 
 instance Eq EPID where
     (==) (EPIDProc p1)  (EPIDProc p2)  = p1 == p2
-    (==) (EPIDCTask m1) (EPIDCTask m2) = sname m1 == sname m2
     (==) EPIDCont       EPIDCont       = True
     (==) _              _              = False
 
 instance PP EPID where
     pp (EPIDProc  pid) = pp pid
-    pp (EPIDCTask m)   = (text $ sname m) <> text "()"
     pp EPIDCont        = text "$contproc"
 
 instance Show EPID where
     show = render . pp
 
 parseEPID :: Spec -> String -> EPID
-parseEPID spec s = if' (s=="$contproc")                         EPIDCont                            $
-                   if' ((take 2 $ reverse $ last toks) == ")(") (EPIDCTask $ methodByName $ init $ init $ last toks) $
+parseEPID spec s = if' (s=="$contproc") EPIDCont $
                    (EPIDProc $ PrID (head toks) (tail toks))
                    where toks = splitOn "/" s
-                         methodByName n = let ?spec = spec 
-                                          in snd $ getMethod (ScopeTemplate $ head $ specTemplate ?spec) (MethodRef nopos [Ident nopos n])
 
 epid2nsid :: EPID -> Scope -> NSID
 epid2nsid epid sc = NSID mpid mmeth
@@ -77,42 +63,6 @@ epid2nsid epid sc = NSID mpid mmeth
     mmeth = case sc of
                  ScopeMethod _ m -> Just m
                  _               -> Nothing
-
--- CFA ID: process, controllable, or uncontrollable task, or controllable transition
-data CID = UCID  PrID (Maybe Method)
-         | CTCID Method
-         | CCID
-
-instance Eq CID where
-    (==) (UCID p1 Nothing)   (UCID p2 Nothing)   = p1 == p2 
-    (==) (UCID p1 (Just m1)) (UCID p2 (Just m2)) = p1 == p2 && sname m1 == sname m2
-    (==) (CTCID m1)          (CTCID m2)          = sname m1 == sname m2
-    (==) CCID                CCID                = True
-    (==) _                   _                   = False
-
-instance PP CID where
-    pp (UCID pid mm) = pp pid <> case mm of 
-                                      Nothing -> empty
-                                      Just m  -> char '/' <> (text $ sname m) <> text "()"
-    pp (CTCID m)     = (text $ sname m) <> text "()"
-    pp CCID          = text "$contcfa"
-
-instance Show CID where
-    show = render . pp
-
-cid2epid :: CID -> EPID
-cid2epid (UCID pid _) = EPIDProc pid
-cid2epid (CTCID m)    = EPIDCTask m
-cid2epid CCID         = EPIDCont
-
-cid2nsid :: CID -> NSID
-cid2nsid (UCID pid mm) = NSID (Just pid) mm
-cid2nsid (CTCID m)     = NSID Nothing    (Just m)
-cid2nsid CCID          = NSID Nothing    Nothing
-
-cid2mpid :: CID -> Maybe PrID
-cid2mpid (UCID pid _) = Just pid
-cid2mpid _            = Nothing
 
 -- Namespace ID: 
 -- Just/Just       = method executing within a process

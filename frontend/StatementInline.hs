@@ -148,19 +148,19 @@ statToCFA' before _ (SReturn _ rval) = do
                                         ctxInsTrans aftargs ret I.TranNop
 
 statToCFA' before after s@(SPar _ ps) = do
-    Just (UCID pid _) <- gets ctxCID
+    Just (EPIDProc pid) <- gets ctxEPID
     -- child process pids
     let pids  = map (childPID pid . sname . fst) ps
     -- enable child processes
     aften <- ctxInsTransMany' before $ map (\pid' -> I.TranStat $ mkEnVar pid' Nothing I.=: I.true) pids
-    let mkFinalCheck (n,_) = I.disj $ map (\loc -> mkPCVar (pid2cid pid') I.=== mkPC (pid2cid pid') loc) $ I.cfaFinal $ I.procCFA p
+    let mkFinalCheck (n,_) = I.disj $ map (\loc -> mkPCVar pid' I.=== mkPC pid' loc) $ I.cfaFinal $ I.procCFA p
                              where pid' = childPID pid $ sname n
                                    p = fromJustMsg ("mkFinalCheck: process " ++ show pid' ++ " unknown") 
                                        $ find ((== sname n) . I.procName) ?procs
     -- pause and wait for all of them to reach final states
     aftwait <- ctxPause aften (I.conj $ map mkFinalCheck ps) (I.ActStat s)
     -- Disable forked processes and bring them back to initial states
-    aftreset <- ctxInsTransMany' aftwait $ map (\pid' -> I.TranStat $ mkPCVar (pid2cid pid') I.=: mkPC (pid2cid pid') I.cfaInitLoc) pids
+    aftreset <- ctxInsTransMany' aftwait $ map (\pid' -> I.TranStat $ mkPCVar pid' I.=: mkPC pid' I.cfaInitLoc) pids
     aftdisable <- ctxInsTransMany' aftreset $ map  (\pid' -> I.TranStat $ mkEnVar pid' Nothing I.=: I.false) pids
     ctxInsTrans aftdisable after I.TranNop
 
@@ -235,10 +235,7 @@ statToCFA' before _ (SBreak _) = do
 statToCFA' before after s@(SInvoke _ mref as) = do
     sc <- gets ctxScope
     let meth = snd $ getMethod sc mref
-    case methCat meth of
-         Task Controllable   -> taskCall before after meth as Nothing s
-         Task Uncontrollable -> taskCall before after meth as Nothing s
-         _                   -> methInline before after meth as Nothing (I.ActStat s)
+    methInline before after meth as Nothing (I.ActStat s)
 
 statToCFA' before after (SAssert _ cond) = do
     cond' <- exprToIExprDet cond
@@ -250,13 +247,10 @@ statToCFA' before after (SAssume _ cond) = do
     cond' <- exprToIExprDet cond
     ctxInsTrans before after (I.TranStat $ I.SAssume cond')
 
-statToCFA' before after s@(SAssign _ lhs e@(EApply _ mref args)) = do
+statToCFA' before after (SAssign _ lhs e@(EApply _ mref args)) = do
     sc <- gets ctxScope
     let meth = snd $ getMethod sc mref
-    case methCat meth of
-         Task Controllable   -> taskCall before after meth args (Just lhs) s
-         Task Uncontrollable -> taskCall before after meth args (Just lhs) s
-         _                   -> methInline before after meth args (Just lhs) (I.ActExpr e)
+    methInline before after meth args (Just lhs) (I.ActExpr e)
 
 statToCFA' before after (SAssign _ lhs rhs) = do
     sc <- gets ctxScope
@@ -313,15 +307,17 @@ statToCFA' before after s@(SMagic _ _ constr) = do
     ctxInsTrans aftwait after I.TranNop
 
 statToCFA' before after (SMagExit _) = do
-    aftcont <- ctxInsTrans' before  $ I.TranStat $ mkContVar  I.=: I.false
+--    aftcont <- ctxInsTrans' before  $ I.TranStat $ mkContVar  I.=: I.false
 --    aftpid  <- ctxInsTrans' aftcont $ I.TranStat $ mkPIDVar   I.=: mkPIDEnum pidCont
-    ctxInsTrans aftcont after       $ I.TranStat $ mkMagicVar I.=: I.false
+    ctxInsTrans before after $ I.TranStat $ mkMagicVar I.=: I.false
 
 methInline :: (?spec::Spec,?procs::[I.Process],?solver::SMTSolver) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
 methInline before after meth args mlhs act = do
     -- save current context
-    mcid <- gets ctxCID
-    let mpid = maybe Nothing cid2mpid mcid
+    mepid <- gets ctxEPID
+    let mpid = case mepid of
+                    Just (EPIDProc pid) -> Just pid
+                    _                   -> Nothing
     let sc = ScopeMethod tmMain meth
     lhs <- case mlhs of
                 Nothing  -> return Nothing
@@ -331,7 +327,7 @@ methInline before after meth args mlhs act = do
     -- set return location
     retloc <- ctxInsLoc
     aftret <- ctxInsTrans' retloc I.TranReturn
-    ctxLocSetAct aftret act
+    --ctxLocSetAct aftret act
     -- clear break location
     ctxPushBrkLoc $ error "break outside a loop"
     -- change syntactic scope
@@ -344,56 +340,60 @@ methInline before after meth args mlhs act = do
     ctxPopScope
     -- copy out arguments
     aftout <- copyOutArgs aftret meth args
-    -- nop-transition to after
-    ctxInsTrans aftout after I.TranNop
+    -- pause after task invocation
+    aftpause <- if elem (methCat meth) [Task Controllable] && (mepid /= Just EPIDCont)
+                   then ctxPause aftout I.true act
+                   else do ctxLocSetAct aftout act
+                           return aftout
+    ctxInsTrans aftpause after I.TranNop
     -- restore context
     ctxPopBrkLoc
 
 
-taskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
-taskCall before after meth args mlhs st = do
-    Just cid <- gets ctxCID
-    if' (cid == CCID) (contTaskCall  before after meth args) 
-                      (ucontTaskCall before after meth args mlhs st)
-
-contTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> State CFACtx ()
-contTaskCall before after meth args = do
-    -- set tag
-    afttag <- ctxInsTrans' before $ I.TranStat $ mkTagVar I.=: tagMethod meth
-    -- set input arguments
-    aftarg <- setArgs afttag meth args
-    -- switch to uncontrollable state
-    ctxInsTrans aftarg after $ I.TranStat $ mkContVar I.=: I.false
-    -- $pid = $pidcont
-    --ctxInsTrans aftcont after $ I.TranStat $ mkPIDVar I.=: mkPIDEnum pidCont
-
-ucontTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
-ucontTaskCall before after meth args mlhs st = do
-    Just (UCID pid _) <- gets ctxCID
-    let envar = mkEnVar pid (Just meth)
-    -- set input arguments
-    aftarg <- setArgs before meth args
-    -- trigger task
-    afttag <- ctxInsTrans' aftarg $ I.TranStat $ envar I.=: I.true
-    -- pause and wait for task to complete
-    aftwait <- ctxPause afttag (mkWaitForTask pid meth) (I.ActStat st)
-    -- copy out arguments and retval
-    aftout <- copyOutArgs aftwait meth args
-    case (mlhs, mkRetVar (Just pid) meth) of
-         (Nothing, _)          -> ctxInsTrans aftout after I.TranNop
-         (Just lhs, Just rvar) -> do let t = mkType $ Type (ScopeTemplate tmMain) (fromJust $ methRettyp meth)
-                                     lhs' <- exprToIExprDet lhs
-                                     ctxInsTransMany aftout after $ map I.TranStat
-                                                                  $ zipWith I.SAssign (I.exprScalars lhs' t) 
-                                                                                      (I.exprScalars rvar t)
+--taskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
+--taskCall before after meth args mlhs st = do
+--    Just cid <- gets ctxCID
+--    if' (cid == CCID) (contTaskCall  before after meth args) 
+--                      (ucontTaskCall before after meth args mlhs st)
+--
+--contTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> State CFACtx ()
+--contTaskCall before after meth args = do
+--    -- set tag
+--    afttag <- ctxInsTrans' before $ I.TranStat $ mkTagVar I.=: tagMethod meth
+--    -- set input arguments
+--    aftarg <- setArgs afttag meth args
+--    -- switch to uncontrollable state
+--    ctxInsTrans aftarg after $ I.TranStat $ mkContVar I.=: I.false
+--    -- $pid = $pidcont
+--    --ctxInsTrans aftcont after $ I.TranStat $ mkPIDVar I.=: mkPIDEnum pidCont
+--
+--ucontTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
+--ucontTaskCall before after meth args mlhs st = do
+--    Just (UCID pid _) <- gets ctxCID
+--    let envar = mkEnVar pid (Just meth)
+--    -- set input arguments
+--    aftarg <- setArgs before meth args
+--    -- trigger task
+--    afttag <- ctxInsTrans' aftarg $ I.TranStat $ envar I.=: I.true
+--    -- pause and wait for task to complete
+--    aftwait <- ctxPause afttag (mkWaitForTask pid meth) (I.ActStat st)
+--    -- copy out arguments and retval
+--    aftout <- copyOutArgs aftwait meth args
+--    case (mlhs, mkRetVar (Just pid) meth) of
+--         (Nothing, _)          -> ctxInsTrans aftout after I.TranNop
+--         (Just lhs, Just rvar) -> do let t = mkType $ Type (ScopeTemplate tmMain) (fromJust $ methRettyp meth)
+--                                     lhs' <- exprToIExprDet lhs
+--                                     ctxInsTransMany aftout after $ map I.TranStat
+--                                                                  $ zipWith I.SAssign (I.exprScalars lhs' t) 
+--                                                                                      (I.exprScalars rvar t)
 
 -- Common part of methInline and taskCall
 
 -- assign input arguments to a method
 setArgs :: (?spec::Spec) => I.Loc -> Method -> [Expr] -> State CFACtx I.Loc 
 setArgs before meth args = do
-    mcid  <- gets ctxCID
-    let nsid = NSID (maybe Nothing cid2mpid mcid) (Just meth)
+    mepid  <- gets ctxEPID
+    let nsid = maybe (NSID Nothing Nothing) (\epid -> epid2nsid epid (ScopeMethod tmMain meth)) mepid
     foldM (\bef (farg,aarg) -> do aarg' <- exprToIExprs aarg (tspec farg)
                                   let t = mkType $ Type (ScopeTemplate tmMain) (tspec farg)
                                   ctxInsTransMany' bef $ map I.TranStat
@@ -404,8 +404,8 @@ setArgs before meth args = do
 -- copy out arguments
 copyOutArgs :: (?spec::Spec) => I.Loc -> Method -> [Expr] -> State CFACtx I.Loc
 copyOutArgs loc meth args = do
-    mcid  <- gets ctxCID
-    let nsid = NSID (maybe Nothing cid2mpid mcid) (Just meth)
+    mepid <- gets ctxEPID
+    let nsid = maybe (NSID Nothing Nothing) (\epid -> epid2nsid epid (ScopeMethod tmMain meth)) mepid
     foldM (\loc' (farg,aarg) -> do aarg' <- exprToIExprDet aarg
                                    let t = mkType $ Type (ScopeTemplate tmMain) (tspec farg)
                                    ctxInsTransMany' loc' $ map I.TranStat

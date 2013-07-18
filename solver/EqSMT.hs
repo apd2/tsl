@@ -11,6 +11,7 @@ import qualified DNFTypes          as DP
 import qualified PLit              as DP
 import qualified SyntaxTree2       as DP
 import qualified SymTab            as DP
+import qualified Term              as DP
 
 --import LogicClasses
 import Util
@@ -135,7 +136,9 @@ opToRelOp DP.Eq  = REq
 opToRelOp DP.Neq = RNeq
 
 dpTermToTerm :: (?spec::Spec) => DP.Term -> Term
-dpTermToTerm (DP.TVar (DP.Var [(n,Nothing)] _ _)) = TVar n
-dpTermToTerm (DP.TVar (DP.Var ns            t c)) = TField (dpTermToTerm $ DP.TVar $ DP.Var (init ns) t c) (fst $ last ns)
-dpTermToTerm (DP.TLit i w)                        = TUInt w i
-dpTermToTerm (DP.TSlice s t)                      = TSlice (dpTermToTerm t) s
+dpTermToTerm (DP.TVar (DP.Var [(n,Nothing)] _ _))          = TVar n
+dpTermToTerm (DP.TVar (DP.Var ns            t c))          = TField (dpTermToTerm $ DP.TVar $ DP.Var (init ns) t c) (fst $ last ns)
+dpTermToTerm (DP.TLit i w)                                 = TUInt w i
+dpTermToTerm (DP.TSlice s t)                               = TSlice (dpTermToTerm t) s
+dpTermToTerm (DP.TFunc (DP.FBuiltin DP.FConcat) [t1,t2] _) = TBinOp ABConcat (dpTermToTerm t1) (dpTermToTerm t2)
+dpTermToTerm (DP.TFunc (DP.FBuiltin DP.FConcat) (t1:ts) w) = TBinOp ABConcat (dpTermToTerm t1) (dpTermToTerm $ DP.TFunc (DP.FBuiltin DP.FConcat) ts (w - DP.tWidth t1))

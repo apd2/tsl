@@ -40,13 +40,14 @@ mkVarName nsid x = mkVarNameS nsid (sname x)
 
 mkVarNameS :: NSID -> String -> String
 mkVarNameS (NSID mpid mmeth) s = intercalate "/" names
-    where -- don't prefix function and procedure variables with PID
+    where -- don't prefix function, procedure, and controllable task variables with PID
           mpid' = case mmeth of
                        Nothing -> mpid
                        Just m  -> case methCat m of
-                                       Function  -> Nothing
-                                       Procedure -> Nothing
-                                       _         -> mpid
+                                       Function          -> Nothing
+                                       Procedure         -> Nothing
+                                       Task Controllable -> Nothing
+                                       _                 -> mpid
           names = maybe [] (return . show)              mpid' ++ 
                   maybe [] (return . (++ "()") . sname) mmeth ++ 
                   [s]
@@ -114,21 +115,20 @@ isWaitForMagic (I.EBinOp Eq (I.EVar n) e2) | (e2 == I.false) && (n == mkMagicVar
                                            | otherwise = False
 isWaitForMagic _ = False
 
-mkPCVarName :: CID -> String
-mkPCVarName cid = mkVarNameS (cid2nsid cid) "$pc"
+mkPCVarName :: PrID -> String
+mkPCVarName pid = mkVarNameS (NSID (Just pid) Nothing) "$pc"
 
-mkPCEnumName :: CID -> String
-mkPCEnumName cid = filter (\c -> notElem c "()")
-                   $ mkVarNameS (cid2nsid cid) "$pcenum"
+mkPCEnumName :: PrID -> String
+mkPCEnumName pid = mkVarNameS (NSID (Just pid) Nothing) "$pcenum"
 
-mkPCVar :: CID -> I.Expr
-mkPCVar cid = I.EVar $ mkPCVarName cid
+mkPCVar :: PrID -> I.Expr
+mkPCVar pid = I.EVar $ mkPCVarName pid
 
-mkPCEnum :: CID -> I.Loc -> String
-mkPCEnum cid loc = mkVarNameS (cid2nsid cid) $ "$pc" ++ show loc
+mkPCEnum :: PrID -> I.Loc -> String
+mkPCEnum pid loc = mkVarNameS (NSID (Just pid) Nothing) $ "$pc" ++ show loc
 
-mkPC :: CID -> I.Loc -> I.Expr
-mkPC cid loc = I.EConst $ I.EnumVal $ mkPCEnum cid loc 
+mkPC :: PrID -> I.Loc -> I.Expr
+mkPC pid loc = I.EConst $ I.EnumVal $ mkPCEnum pid loc 
 
 pcEnumToLoc :: String -> I.Loc
 pcEnumToLoc str = read 
@@ -169,28 +169,6 @@ mkEPIDVarDecl epids = (I.Var False I.VarState mkEPIDVarName (I.Enum mkEPIDEnumNa
 mkEPIDLVarDecl :: I.Var
 mkEPIDLVarDecl = I.Var False I.VarTmp mkEPIDLVarName (I.Enum mkEPIDEnumName)
 
-mkTagVarName :: String
-mkTagVarName = "$tag"
-
-mkTagVar :: I.Expr
-mkTagVar = I.EVar mkTagVarName
-
-mkTagIdle = "$idle"
-
-mkTagVarDecl :: (?spec::Spec) => (I.Var, I.Enumeration)
-mkTagVarDecl = (I.Var False I.VarState mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" tags)
-    where tags = mkTagIdle :
-                 (map sname
-                      $ filter ((== Task Controllable) . methCat)
-                      $ tmMethod tmMain)
-                              
-
-tagMethod :: Method -> I.Expr
-tagMethod meth = I.EConst $ I.EnumVal $ (sname $methName meth) 
-
-tagIdle :: I.Expr
-tagIdle = I.EConst $ I.EnumVal "$idle"
-
 mkContVarName :: String
 mkContVarName = "$cont"
 
@@ -229,6 +207,23 @@ mkErrVar = I.EVar mkErrVarName
 
 mkErrVarDecl :: I.Var
 mkErrVarDecl = I.Var False I.VarState mkErrVarName I.Bool
+
+mkTagVarName :: String
+mkTagVarName = "$tag"
+
+mkTagVar :: I.Expr
+mkTagVar = I.EVar mkTagVarName
+
+mkTagIdle = "$idle"
+
+mkTagVarDecl :: (?spec::Spec) => (I.Var, I.Enumeration)
+mkTagVarDecl = (I.Var False I.VarTmp mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" mkTagList)
+
+mkTagList :: (?spec::Spec) => [String]
+mkTagList = mkTagIdle :
+            (map sname
+             $ filter ((== Task Controllable) . methCat)
+             $ tmMethod tmMain)
 
 mkChoiceTypeName :: Int -> String
 mkChoiceTypeName n = "$choice" ++ show n
@@ -312,7 +307,7 @@ getEnumName n =
 -- State maintained during CFA construction
 -----------------------------------------------------------
 
-data CFACtx = CFACtx { ctxCID     :: Maybe CID                               -- ID of the CFA being constructed or Nothing if the CFA is not part of the final spec
+data CFACtx = CFACtx { ctxEPID    :: Maybe EPID                              -- ID of the CFA being constructed or Nothing if the CFA is not part of the final spec
                      , ctxStack   :: [(Scope, I.Loc, Maybe I.Expr, NameMap)] -- stack of syntactic scopes: (scope, return location, LHS, local namemap)
                      , ctxCFA     :: I.CFA                                   -- CFA constructed so far
                      , ctxBrkLocs :: [I.Loc]                                 -- stack break location
@@ -385,10 +380,10 @@ ctxInsTransMany' from ts = do
 
 ctxInsTmpVar :: I.Type -> State CFACtx I.Var
 ctxInsTmpVar t = do
-    lst  <- gets ctxLastVar
-    mcid <- gets ctxCID
-    sc   <- gets ctxScope
-    let nsid = maybe (NSID Nothing Nothing) (\cid -> epid2nsid (cid2epid cid) sc) mcid
+    lst   <- gets ctxLastVar
+    mepid <- gets ctxEPID
+    sc    <- gets ctxScope
+    let nsid = maybe (NSID Nothing Nothing) (\epid -> epid2nsid epid sc) mepid
         vname = mkVarNameS nsid ("$tmp" ++ show (lst + 1))
         v = I.Var False I.VarTmp vname t
     modify $ (\ctx -> ctx { ctxLastVar = lst + 1
@@ -402,7 +397,7 @@ ctxFrames loc = do
     -- type stores current locations in frames.  Shift ret locations by one 
     -- and append current location in the end. 
     let scopes = map sel1 cfastack
-        locs   = (tail $ map sel2 cfastack) ++ [loc]
+        locs   = loc: (init $ map sel2 cfastack)
     return $ map (uncurry I.Frame) $ zip scopes locs
 
 
@@ -424,8 +419,7 @@ ctxFinal loc = do
 
 -- common code of ctxPause, ctxFinal, ctxErrTrans
 ctxSuffix :: I.Loc -> I.Loc -> I.Loc -> State CFACtx ()
-ctxSuffix loc after pc = do mcid  <- gets ctxCID
-                            let mepid = fmap cid2epid mcid
+ctxSuffix loc after pc = do mepid  <- gets ctxEPID
                             -- set PID variable
                             aftepid <- if isNothing mepid
                                           then ctxInsTrans' loc $ I.TranNop
@@ -434,14 +428,16 @@ ctxSuffix loc after pc = do mcid  <- gets ctxCID
                             -- 1. update PC
                             -- 2. uncontrollable transitions are only available in uncontrollable states
                             -- 3. non-deterministically set $cont to true if inside a magic block
-                            if (isJust mcid && mepid /= Just EPIDCont) 
-                               then do let Just cid = mcid
-                                       aftpc    <- ctxInsTrans' aftepid $ I.TranStat  $ mkPCVar cid I.=: mkPC cid pc
-                                       aftucont <- ctxInsTrans' aftpc $ I.TranStat    $ I.SAssume $ mkContVar I.=== I.false
-                                       ifmagic  <- ctxInsTrans' aftucont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
-                                       ctxInsTrans ifmagic after $ I.TranStat         $ mkContVar I.=: mkContLVar
-                                       ctxInsTrans aftucont after $ I.TranStat        $ I.SAssume $ mkMagicVar I.=== I.false
-                               else ctxInsTrans aftepid after I.TranNop
+                            if' (isJust mepid && mepid /= Just EPIDCont) 
+                                (do let Just (EPIDProc pid) = mepid
+                                    aftpc    <- ctxInsTrans' aftepid $ I.TranStat  $ mkPCVar pid I.=: mkPC pid pc
+                                    aftucont <- ctxInsTrans' aftpc $ I.TranStat    $ I.SAssume $ mkContVar I.=== I.false
+                                    ifmagic  <- ctxInsTrans' aftucont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
+                                    ctxInsTrans ifmagic after $ I.TranStat         $ mkContVar I.=: mkContLVar
+                                    ctxInsTrans aftucont after $ I.TranStat        $ I.SAssume $ mkMagicVar I.=== I.false) $
+                                if' (mepid == Just EPIDCont)
+                                    (ctxInsTrans aftepid after $ I.TranStat $ mkContVar I.=: I.false)
+                                    (ctxInsTrans aftepid after I.TranNop)
 
 ctxErrTrans :: I.Loc -> State CFACtx ()
 ctxErrTrans loc = do
