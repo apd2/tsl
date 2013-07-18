@@ -105,9 +105,8 @@ tslUpdateAbs spec m avars ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    let pervar = map (\av -> let cont  = varUpdateTrans "cont" [av] $ tsCTran $ specTran spec
-                                 ucont = mapIdx (\tr i -> varUpdateTrans (show i) [av] tr) $ tsUTran $ specTran spec
-                                 (upds, pres) = unzip $ catMaybes $ cont:ucont
+    let pervar = map (\av -> let trans = mapIdx (\tr i -> varUpdateTrans (show i) [av] tr) $ (tsUTran $ specTran spec) ++ (tsCTran $ specTran spec)
+                                 (upds, pres) = unzip $ catMaybes trans
                                  -- generate condition when variable value does not change
                                  ident = H.EqVar (H.NVar $ avarBAVar $ fst av) (H.FVar $ snd av)
                                  unchanged = H.And (H.Conj $ map H.Not pres) ident
@@ -154,8 +153,8 @@ varUpdateTrans trname vs Transition{..} = if G.isEmpty cfa
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA. 
 varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar, f)] -> Loc -> CFA -> TAST f e c
-varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
-                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
+varUpdateLoc trname vs loc cfa ={- acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
+                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") -} ast
     where
     acfa = tranCFAToACFA (map fst vs) loc cfa
     ast  = compileACFA vs acfa

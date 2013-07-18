@@ -98,7 +98,7 @@ spec2Internal s =
         --pidinit  = mkPIDVar   I.=== mkPIDEnum pidIdle
         errinit  = mkErrVar   I.=== I.false in
 
-        spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransition ctran "ctran"
+        spec' {I.specTran = I.TranSpec { I.tsCTran  = [cfaToITransition ctran "ctran"]
                                        , I.tsUTran  = utran
                                        , I.tsWire   = cfaToITransition (fromMaybe I.cfaNop (I.specWire spec'))   "wires"
                                        , I.tsAlways = cfaToITransition (fromMaybe I.cfaNop (I.specAlways spec')) "always"

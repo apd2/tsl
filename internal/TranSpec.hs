@@ -41,7 +41,7 @@ data FairRegion = FairRegion { fairName :: String
 instance PP FairRegion where
     pp (FairRegion n c) = text "fair" <+> pp n <+> char '=' <+> pp c
 
-data TranSpec = TranSpec { tsCTran  :: Transition
+data TranSpec = TranSpec { tsCTran  :: [Transition]
                          , tsUTran  :: [Transition]
                          , tsWire   :: Transition
                          , tsInit   :: (Transition, Expr) -- initial state constraint (constraint_on_spec_variables,constraints_on_aux_variables)
@@ -51,7 +51,7 @@ data TranSpec = TranSpec { tsCTran  :: Transition
                          }
 
 instance PP TranSpec where
-    pp s = (text "controllable: " <+> (pp $ tsCTran s))
+    pp s = (vcat $ map (($+$ text "") . pp) (tsCTran s))
            $+$
            (vcat $ map (($+$ text "") . pp) (tsUTran s))
            $+$
