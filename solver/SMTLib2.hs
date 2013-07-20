@@ -16,8 +16,9 @@ import Data.List
 import Data.String.Utils
 import qualified Data.Set             as S
 import qualified Data.Map             as M
+import Debug.Trace
 
-import Util
+import Util hiding (trace)
 import Predicate
 import BFormula
 import ISpec
@@ -252,11 +253,14 @@ runSolver cfg spec parser =
        -- completed successfully.
        case P.parse parser "" out of
             Left e  -> error $ "Error parsing SMT solver output: " ++ 
-                               "\nsolver input: " ++ show spec ++
+                               "\nsolver input: " ++ render spec ++
                                "\nsolver stdout: " ++ out ++
                                "\nsolver stderr: " ++ err ++
                                "\nparser error: "++ show e
-            Right x -> trace ("solver input: " ++ show spec ++ " solver output: " ++ out) x
+            Right x -> trace "solver input: " 
+                       $ trace (render spec)
+                       $ trace " solver output: " 
+                       $ trace out x
 
 checkSat :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe Bool
 checkSat cfg fs = runSolver cfg spec satresParser
