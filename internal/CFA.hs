@@ -15,7 +15,6 @@ module CFA(Statement(..),
            isDeadendLoc,
            newCFA,
            cfaNop,
-           cfaErrLoc,
            cfaErrVarName,
            cfaInitLoc,
            cfaDelayLocs,
@@ -196,11 +195,7 @@ cfaLocWaitCond cfa loc = case cfaLocLabel loc cfa of
                               LFinal _ _   -> true
 
 newCFA :: F.Scope -> F.Statement -> Expr -> CFA 
-newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame sc cfaInitLoc] initcond) 
-                        $ G.insNode (cfaErrLoc,LPause ActNone [Frame sc cfaErrLoc] false) G.empty
-
-cfaErrLoc :: Loc
-cfaErrLoc = 0
+newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame sc cfaInitLoc] initcond) G.empty
 
 cfaErrVarName :: String
 cfaErrVarName = "$err"
@@ -245,7 +240,6 @@ inlineBetween cfa0 bef aft inscfa =
         (cfa1, locs1) = foldl' (\(cfa,locs) loc -> let lab = cfaLocLabel loc inscfa
                                                        (cfa', loc') = cfaInsLoc (LInst $ locAct lab) cfa
                                                    in if' (loc == cfaInitLoc)                     (cfaInsTrans bef loc' TranNop cfa', locs ++ [loc']) $
-                                                      if' (loc == cfaErrLoc)                      (cfa, locs ++ [loc]) $
                                                       if' (isDelayLabel $ cfaLocLabel loc inscfa) (cfa, locs ++ [aft]) $
                                                       (cfa', locs++[loc']))
                                (cfa0,[]) (G.nodes inscfa)
@@ -270,8 +264,8 @@ cfaInsTransMany' :: Loc -> [TranLabel] -> CFA -> (CFA, Loc)
 cfaInsTransMany' from stats cfa = (cfaInsTransMany from to stats cfa', to)
     where (cfa', to) = cfaInsLoc (LInst ActNone) cfa
 
-cfaErrTrans :: Loc -> CFA -> CFA
-cfaErrTrans loc cfa = cfaInsTrans loc cfaErrLoc (TranStat $ EVar cfaErrVarName =: true) cfa
+cfaErrTrans :: Loc -> Loc -> CFA -> CFA
+cfaErrTrans from to cfa = cfaInsTrans from to (TranStat $ EVar cfaErrVarName =: true) cfa
 
 cfaSuc :: Loc -> CFA -> [(TranLabel,Loc)]
 cfaSuc loc cfa = map swap $ G.lsuc cfa loc

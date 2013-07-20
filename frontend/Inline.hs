@@ -417,7 +417,7 @@ ctxFinal loc = do
     ctxSuffix loc after after
     return after
 
--- common code of ctxPause, ctxFinal, ctxErrTrans
+-- common code of ctxPause, ctxFinal
 ctxSuffix :: I.Loc -> I.Loc -> I.Loc -> State CFACtx ()
 ctxSuffix loc after pc = do mepid  <- gets ctxEPID
                             -- set PID variable
@@ -439,11 +439,9 @@ ctxSuffix loc after pc = do mepid  <- gets ctxEPID
                                     (ctxInsTrans aftepid after $ I.TranStat $ mkContVar I.=: I.false)
                                     (ctxInsTrans aftepid after I.TranNop)
 
-ctxErrTrans :: I.Loc -> State CFACtx ()
-ctxErrTrans loc = do
-    aftsuf <- ctxInsLoc
-    ctxSuffix loc aftsuf I.cfaErrLoc
-    modify $ \ctx -> ctx {ctxCFA = I.cfaErrTrans aftsuf $ ctxCFA ctx}
+ctxErrTrans :: I.Loc -> I.Loc -> State CFACtx ()
+ctxErrTrans from to = do
+    modify $ \ctx -> ctx {ctxCFA = I.cfaErrTrans from to $ ctxCFA ctx}
 
 -- Add error transitions for all potential null-pointer dereferences
 ctxAddNullPtrTrans :: State CFACtx ()
@@ -462,10 +460,10 @@ addNullPtrTrans1 (from , to, l@(I.TranStat (I.SAssign e1 e2))) = do
     case cond of
          I.EConst (I.BoolVal False) -> return ()
          _ -> do modify $ \ctx -> ctx {ctxCFA = G.delLEdge (from, to, l) $ ctxCFA ctx}
-                 fromok  <- ctxInsTrans' from (I.TranStat $ I.SAssume $ I.neg cond)
+                 from' <- ctxInsTrans' from (I.TranStat $ I.SAssume $ I.neg cond)
                  fromerr <- ctxInsTrans' from (I.TranStat $ I.SAssume cond)
-                 ctxInsTrans fromok to l
-                 ctxErrTrans fromerr
+                 ctxInsTrans from' to l
+                 ctxErrTrans fromerr from'
    
 addNullPtrTrans1 (_    , _, _)                             = return ()
 

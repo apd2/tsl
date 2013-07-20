@@ -241,7 +241,7 @@ statToCFA' before after (SAssert _ cond) = do
     cond' <- exprToIExprDet cond
     ctxInsTrans before after (I.TranStat $ I.SAssume cond')
     aftcond <- ctxInsTrans' before (I.TranStat $ I.SAssume $ I.EUnOp Not cond')
-    ctxErrTrans aftcond 
+    ctxErrTrans aftcond after
 
 statToCFA' before after (SAssume _ cond) = do
     cond' <- exprToIExprDet cond
