@@ -53,7 +53,7 @@ import Text.PrettyPrint
 import Name
 import PP
 import Ops
-import Util hiding (name,trace)
+import Util hiding (name)
 import TSLUtil
 import IExpr
 import IType
@@ -99,6 +99,9 @@ instance PP LocAction where
     pp (ActStat s) = pp s
     pp (ActExpr e) = pp e
     pp ActNone     = empty
+
+instance Show LocAction where
+    show = render . pp
 
 -- Stack frame
 data Frame = Frame { fScope :: F.Scope
@@ -221,13 +224,10 @@ cfaLocLabel :: Loc -> CFA -> LocLabel
 cfaLocLabel loc cfa = fromJustMsg "cfaLocLabel" $ G.lab cfa loc
 
 cfaLocSetAct :: Loc -> LocAction -> CFA -> CFA
-cfaLocSetAct loc act cfa = G.gmap (\(to, lid, n, from) -> 
-                                    (to, lid, if lid == loc then n {locAct = act} else n, from)) cfa
-
-
+cfaLocSetAct loc act cfa = graphUpdNode loc (\n -> n {locAct = act}) cfa 
+          
 cfaLocSetStack :: Loc -> Stack -> CFA -> CFA
-cfaLocSetStack loc stack cfa = G.gmap (\(to, lid, n, from) -> 
-                                      (to, lid, if lid == loc then n {locStack = stack} else n, from)) cfa
+cfaLocSetStack loc stack cfa = graphUpdNode loc (\n -> n {locStack = stack}) cfa
 
 cfaLocInline :: CFA -> Loc -> CFA -> CFA
 cfaLocInline cfa loc inscfa = inlineBetween cfa2 loc loc' inscfa

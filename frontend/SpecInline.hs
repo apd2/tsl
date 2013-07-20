@@ -147,7 +147,7 @@ mkWires | (null $ tmWire tmMain) = return Nothing
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                                ctxPause aft I.true I.ActNone) ctx
-    return $ Just $ I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ ctxCFA ctx'
+    return $ Just $ {-I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ -} ctxCFA ctx'
 
 
 -- Build total order of wires so that for each wire, all wires that
@@ -185,7 +185,7 @@ mkAlways | (null $ tmAlways tmMain) = return Nothing
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                                ctxPause aft I.true I.ActNone) ctx
-    return $ Just $ I.cfaTraceFile (ctxCFA ctx') "always_cfa" $ ctxCFA ctx'
+    return $ Just $ {-I.cfaTraceFile (ctxCFA ctx') "always_cfa" $-} ctxCFA ctx'
 
 ----------------------------------------------------------------------
 -- Fair sets
@@ -258,7 +258,7 @@ mkCond descr s extra = do
         -- precondition
     return $ case trans of
                   [t] -> let res = foldl' tranAppend t (map I.SAssume extra)
-                         in I.cfaTraceFile (I.tranCFA res) descr $ res
+                         in {-I.cfaTraceFile (I.tranCFA res) descr $-} res
                   _   -> error $ "mkCond " ++ show s ++ ": Invalid condition"
 
 ----------------------------------------------------------------------
@@ -271,7 +271,7 @@ contGuard = I.SAssume $ I.conj $ [mkMagicVar I.=== I.true, mkContVar I.=== I.tru
 
 -- generate CFA that represents all possible controllable transitions
 mkCTran :: (?spec::Spec, ?solver::SMTSolver) => (I.CFA, [I.Var])
-mkCTran = I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
+mkCTran = {-I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar ctx')
     where sc   = ScopeTemplate tmMain
           ctasks = filter ((== Task Controllable) . methCat) $ tmMethod tmMain
           stats = SMagExit nopos : 
@@ -340,7 +340,7 @@ mkVars = mkErrVarDecl : mkContVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires
 
 -- Convert normal or forked process to CFA
 procToCFA :: (?spec::Spec, ?procs::[I.Process], ?solver::SMTSolver) => PrID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
-procToCFA pid@(PrID _ ps) lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (show pid) $ (ctxCFA ctx', ctxVar ctx')
+procToCFA pid@(PrID _ ps) lmap parscope stat = {-I.cfaTraceFile (ctxCFA ctx') (show pid) $ -} (ctxCFA ctx', ctxVar ctx')
     where -- top-level processes are not guarded
           guarded = not $ null ps
           guard = if guarded 
@@ -451,14 +451,14 @@ forkedProcsRec s stat =
 
 cfaToITransition :: I.CFA -> String -> I.Transition
 cfaToITransition cfa fname = case trans of
-                                  [t] -> I.cfaTraceFile (I.tranCFA t) fname $ t
+                                  [t] -> {- I.cfaTraceFile (I.tranCFA t) fname $-} t
                                   _   -> error $ "cfaToITransition: Invalid CFA:\n" ++ (intercalate "\n\n" $ map show trans)
       where trans = locTrans cfa I.cfaInitLoc
 
 -- Convert CFA to a list of transitions.
 -- Assume that unreachable states have already been pruned.
 cfaToITransitions :: EPID -> I.CFA -> [I.Transition]
-cfaToITransitions epid cfa = I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ show epid) trans'
+cfaToITransitions epid cfa = {-I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ show epid)-} trans'
     where
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa

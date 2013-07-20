@@ -80,8 +80,9 @@ readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
 -- Graph operations --
 
 graphUpdNode :: Node -> (a -> a) -> Gr a b -> Gr a b
-graphUpdNode n f g = gmap (\(pre, n', lab, suc) -> (pre, n', if' (n'==n) (f lab) lab, suc)) g
-
+graphUpdNode n f g = (pre, n', f x, suc) & g' 
+    where (Just (pre, n', x, suc), g') = match n g 
+    
 -- Graph visualisation --
 
 sanitize :: String -> String
