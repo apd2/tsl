@@ -21,14 +21,15 @@ module IExpr(LVal(..),
              true,
              false,
              Slice,
-             exprSimplify,
+             isConstExpr,
              evalConstExpr,
              evalLExpr,
+             isMemExpr,
              exprPtrSubexpr) where
 
 import Data.Maybe
 import Data.List
-import Data.Bits
+import Data.Bits hiding (isSigned)
 import Text.PrettyPrint
 import Control.Monad.Error
 import qualified Text.Parsec as P
@@ -175,7 +176,7 @@ instance (?spec::Spec) => Typed Expr where
     typ (EUnOp op e) | isArithUOp op           = if s 
                                                     then SInt w
                                                     else UInt w
-                                                 where (s,w) = arithUOpType op (typeSigned e, typeWidth e)
+                                                 where (s,w) = arithUOpType op (isSigned e, typeWidth e)
     typ (EUnOp Not _)                          = Bool
     typ (EUnOp Deref e)                        = t where Ptr t = typ e
     typ (EUnOp AddrOf e)                       = Ptr $ typ e
@@ -186,8 +187,8 @@ instance (?spec::Spec) => Typed Expr where
                                                     then SInt w
                                                     else UInt w
                                                  where (s,w) = arithBOpType op (s1,w1) (s2,w2)
-                                                       (s1,w1) = (typeSigned e1, typeWidth e1)
-                                                       (s2,w2) = (typeSigned e1, typeWidth e2)
+                                                       (s1,w1) = (isSigned e1, typeWidth e1)
+                                                       (s2,w2) = (isSigned e1, typeWidth e2)
     typ (ESlice _ (l,h))                       = UInt $ h - l + 1
 
 -- TODO: optimise slicing of concatenations
@@ -207,13 +208,16 @@ exprScalars e _            = [e]
 
 -- Variables involved in the expression
 exprVars :: (?spec::Spec) => Expr -> [Var]
-exprVars (EVar n)         = [getVar n]
-exprVars (EConst _)       = []
-exprVars (EField e _)     = exprVars e
-exprVars (EIndex a i)     = exprVars a ++ exprVars i
-exprVars (EUnOp _ e)      = exprVars e
-exprVars (EBinOp _ e1 e2) = exprVars e1 ++ exprVars e2
-exprVars (ESlice e _)     = exprVars e
+exprVars = nub . exprVars'
+
+exprVars' :: (?spec::Spec) => Expr -> [Var]
+exprVars' (EVar n)         = [getVar n]
+exprVars' (EConst _)       = []
+exprVars' (EField e _)     = exprVars' e
+exprVars' (EIndex a i)     = exprVars' a ++ exprVars' i
+exprVars' (EUnOp _ e)      = exprVars' e
+exprVars' (EBinOp _ e1 e2) = exprVars' e1 ++ exprVars' e2
+exprVars' (ESlice e _)     = exprVars' e
 
 (===) :: Expr -> Expr -> Expr
 e1 === e2 = EBinOp Eq e1 e2
@@ -256,9 +260,20 @@ exprPtrSubexpr (EBinOp _ e1 e2) = exprPtrSubexpr e1 ++ exprPtrSubexpr e2
 exprPtrSubexpr (ESlice e _)     = exprPtrSubexpr e
 exprPtrSubexpr _                = []
 
--- TODO
-exprSimplify :: Expr -> Expr
-exprSimplify = id
+isConstExpr :: Expr -> Bool
+isConstExpr (EVar _)         = False
+isConstExpr (EConst _)       = True
+isConstExpr (EField e _)     = isConstExpr e
+isConstExpr (EIndex a i)     = isConstExpr a && isConstExpr i
+isConstExpr (EUnOp AddrOf e) = isConstLExpr e
+isConstExpr (EUnOp _ e)      = isConstExpr e
+isConstExpr (EBinOp _ e1 e2) = isConstExpr e1 && isConstExpr e2
+isConstExpr (ESlice e _)     = isConstExpr e
+
+isConstLExpr :: Expr -> Bool
+isConstLExpr (EVar _)     = True
+isConstLExpr (EField s _) = isConstLExpr s
+isConstLExpr (EIndex a i) = isConstLExpr a && isConstExpr i
 
 evalConstExpr :: Expr -> Val
 evalConstExpr (EConst v)                         = v
@@ -305,8 +320,16 @@ evalConstExpr (EBinOp op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] =
                                                          i2 = ivalVal v2
 evalConstExpr (ESlice e s)     = valSlice (evalConstExpr e) s
 
-
 evalLExpr :: Expr -> LVal
 evalLExpr (EVar n)     = LVar n
 evalLExpr (EField s f) = LField (evalLExpr s) f
 evalLExpr (EIndex a i) = LIndex (evalLExpr a) (ivalVal $ evalConstExpr i)
+
+isMemExpr :: (?spec::Spec) => Expr -> Bool
+isMemExpr (EVar n)     = varMem $ getVar n
+isMemExpr (EField s _) = isMemExpr s
+isMemExpr (EIndex a _) = isMemExpr a
+isMemExpr (ESlice e _) = isMemExpr e
+isMemExpr _            = False
+
+

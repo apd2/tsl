@@ -2,9 +2,12 @@ module IType(Field(..),
              Type(..),
              Typed(..),
              typeWidth,
-             typeSigned,
-             isTypeInt,
-             isTypeScalar,
+             isSigned,
+             isInt,
+             isBool,
+             isPtr,
+             isEnum,
+             isScalar,
              Enumeration(..)) where
 
 import Text.PrettyPrint
@@ -54,26 +57,39 @@ instance Typed Type where
 typeWidth :: (Typed a) => a -> Int
 typeWidth = twidth . typ
 
-typeSigned :: (Typed a) => a -> Bool
-typeSigned x = case typ x of
-                    SInt _ -> True
-                    UInt _ -> False
+isSigned :: (Typed a) => a -> Bool
+isSigned x = case typ x of
+                  SInt _ -> True
+                  UInt _ -> False
 
 
-isTypeInt :: (Typed a) => a -> Bool
-isTypeInt x = case typ x of
-                   SInt _ -> True
-                   UInt _ -> True
-                   _      -> False
+isInt :: (Typed a) => a -> Bool
+isInt x = case typ x of
+               SInt _ -> True
+               UInt _ -> True
+               _      -> False
 
-isTypeScalar :: (Typed a) => a -> Bool
-isTypeScalar x = case typ x of
-                      Bool   -> True
-                      SInt _ -> True
-                      UInt _ -> True
-                      Enum _ -> True
-                      Ptr _  -> True
-                      _      -> False
+isEnum :: (Typed a) => a -> Bool
+isEnum x = case typ x of
+                Enum _ -> True
+                _      -> False
+
+isPtr :: (Typed a) => a -> Bool
+isPtr x = case typ x of
+               Ptr _ -> True
+               _     -> False
+
+isBool :: (Typed a) => a -> Bool
+isBool x = typ x == Bool 
+
+isScalar :: (Typed a) => a -> Bool
+isScalar x = case typ x of
+                  Bool   -> True
+                  SInt _ -> True
+                  UInt _ -> True
+                  Enum _ -> True
+                  Ptr _  -> True
+                  _      -> False
 
 data Enumeration = Enumeration { enumName  :: String
                                , enumEnums :: [String]

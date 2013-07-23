@@ -34,10 +34,9 @@ import Method
 import Process
 import Type
 import Inline
-import SMTSolver
 
 -- Main function
-spec2Internal :: (?solver::SMTSolver) => Spec -> I.Spec
+spec2Internal :: Spec -> I.Spec
 spec2Internal s = 
     let -- preprocessing
         ?spec = specSimplify s in
@@ -131,7 +130,7 @@ methSimplify tm m = let ?scope = ScopeMethod tm m
 
 -- Generate transition that assigns all wire variables.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkWires :: (?spec::Spec, ?solver::SMTSolver) => NameGen (Maybe I.CFA)
+mkWires :: (?spec::Spec) => NameGen (Maybe I.CFA)
 mkWires | (null $ tmWire tmMain) = return Nothing
         | otherwise              = do
     let wires = orderWires
@@ -171,7 +170,7 @@ orderWires' g | G.noNodes g == 0  = []
 
 -- Generate transition that performs all always-actions.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkAlways :: (?spec::Spec, ?solver::SMTSolver) => NameGen (Maybe I.CFA)
+mkAlways :: (?spec::Spec) => NameGen (Maybe I.CFA)
 mkAlways | (null $ tmAlways tmMain) = return Nothing
          | otherwise                = do
     stat <- let ?scope = ScopeTemplate tmMain
@@ -216,7 +215,7 @@ mkFair ispec = mkFairSched : (map mkFairProc $ I.specAllProcs ispec)
 -- Init and goal conditions
 ----------------------------------------------------------------------
 
-mkInit :: (?spec::Spec, ?solver::SMTSolver) => NameGen I.Transition
+mkInit :: (?spec::Spec) => NameGen I.Transition
 mkInit = do 
     -- conjunction of initial variable assignments
     let ass = SSeq nopos
@@ -231,16 +230,16 @@ mkInit = do
 noerror :: I.Expr
 noerror = I.EUnOp Not mkErrVar
 
-mkGoal :: (?spec::Spec, ?solver::SMTSolver) => Goal -> NameGen I.Goal
+mkGoal :: (?spec::Spec) => Goal -> NameGen I.Goal
 mkGoal g = -- Add $err==false to the goal condition
            (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos $ goalCond g) [I.EUnOp Not mkMagicVar, noerror]
 
 -- In addition to regular goals, we are required to be outside a magic block
 -- infinitely often
-mkMagicGoal :: (?spec::Spec, ?solver::SMTSolver) => NameGen I.Goal
+mkMagicGoal :: (?spec::Spec) => NameGen I.Goal
 mkMagicGoal = (liftM $ I.Goal "$magic_goal") $ mkCond "$magic_goal" (SAssume nopos $ EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
 
-mkCond :: (?spec::Spec, ?solver::SMTSolver) => String -> Statement -> [I.Expr] -> NameGen I.Transition
+mkCond :: (?spec::Spec) => String -> Statement -> [I.Expr] -> NameGen I.Transition
 mkCond descr s extra = do
     -- simplify and convert into a statement
     stat <- let ?scope = ScopeTemplate tmMain 
@@ -270,7 +269,7 @@ mkCond descr s extra = do
 contGuard = I.SAssume $ I.conj $ [mkMagicVar I.=== I.true, mkContVar I.=== I.true]
 
 -- generate CFA that represents all possible controllable transitions
-mkCTran :: (?spec::Spec, ?solver::SMTSolver) => (I.CFA, [I.Var])
+mkCTran :: (?spec::Spec) => (I.CFA, [I.Var])
 mkCTran = I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
     where sc   = ScopeTemplate tmMain
           ctasks = filter ((== Task Controllable) . methCat) $ tmMethod tmMain
@@ -339,7 +338,7 @@ mkVars = mkErrVarDecl : mkContVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires
 ----------------------------------------------------------------------
 
 -- Convert normal or forked process to CFA
-procToCFA :: (?spec::Spec, ?procs::[I.Process], ?solver::SMTSolver) => PrID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
+procToCFA :: (?spec::Spec, ?procs::[I.Process]) => PrID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
 procToCFA pid@(PrID _ ps) lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (show pid) $ (ctxCFA ctx', ctxVar ctx')
     where -- top-level processes are not guarded
           guarded = not $ null ps
@@ -362,10 +361,10 @@ procToCFA pid@(PrID _ ps) lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (sho
                                ctxPruneUnreachable) ctx
 
 -- Recursively construct CFA's for the process and its children
-procToCProc :: (?spec::Spec, ?solver::SMTSolver) => Process -> (I.Process, [I.Var])
+procToCProc :: (?spec::Spec) => Process -> (I.Process, [I.Var])
 procToCProc p = fprocToCProc Nothing ((ScopeProcess tmMain p), (sname p, (procStatement p)))
 
-fprocToCProc :: (?spec::Spec, ?solver::SMTSolver) => Maybe PrID -> (Scope, (String, Statement)) -> (I.Process, [I.Var])
+fprocToCProc :: (?spec::Spec) => Maybe PrID -> (Scope, (String, Statement)) -> (I.Process, [I.Var])
 fprocToCProc mparpid (sc, (n,stat)) = (I.Process{..}, pvs ++ concat cvs)
     where lmap                = scopeLMap mparpid sc 
           pid                 = maybe (PrID n []) (\parpid -> childPID parpid n) mparpid

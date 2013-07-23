@@ -16,9 +16,11 @@ import qualified Term              as DP
 --import LogicClasses
 import Util
 import qualified CuddExplicitDeref as C
+import Ops
 import ISpec
 import IVar
 import IType
+import IExpr
 import EUF
 import Predicate
 import BFormula
@@ -92,14 +94,14 @@ eqUnsatCoreStateLabel spec sps lps =
             _         -> Nothing
 
 mkALit :: (?spec::Spec) => (AbsVar,[Bool]) -> DP.PLit
-mkALit (AVarPred (PAtom op t1 t2), [val]) = DP.PLit (mkOp op val) (mkTerm t1) (mkTerm t2)
-mkALit (AVarTerm t               , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
+mkALit (AVarPred (PAtom op t1 t2), [val]) = DP.PLit (mkOp op val) (mkTerm $ ptermTerm t1) (mkTerm $ ptermTerm t2)
+mkALit (AVarBool t               , [val]) = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe [val]) 1)
+mkALit (AVarInt  t               , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
+mkALit (AVarEnum t               , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
 
-mkOp :: RelOp -> Bool -> DP.BinOpTyp
-mkOp REq  True  = DP.Eq
-mkOp REq  False = DP.Neq
-mkOp RNeq True  = DP.Neq
-mkOp RNeq False = DP.Eq
+mkOp :: PredOp -> Bool -> DP.BinOpTyp
+mkOp PEq  True  = DP.Eq
+mkOp PEq  False = DP.Neq
 mkOp op   _     = error $ "EqSMT.mkOp: " ++ show op ++ " is not supported"
 
 mkTerm :: (?spec::Spec) => Term -> DP.Term
@@ -126,19 +128,19 @@ mkType Bool        = DP.Bool
 mkType t           = error $ "EqSMT.mkType " ++ show t
 
 dnfToForm :: (?spec::Spec) => DP.DNF -> Formula
-dnfToForm (DP.DNF dnf) = fdisj $ map (fconj . map plitToPred) dnf
+dnfToForm (DP.DNF dnf) = fdisj $ map (fconj . map plitToFormula) dnf
 
-plitToPred :: (?spec::Spec) => DP.PLit -> Formula
-plitToPred (DP.PLit op t1 t2) = fAtom (opToRelOp op) (dpTermToTerm t1) (dpTermToTerm t2)
+plitToFormula :: (?spec::Spec) => DP.PLit -> Formula
+plitToFormula (DP.PLit op t1 t2) = fRel (opToRelOp op) (dpTermToExpr t1) (dpTermToExpr t2)
 
 opToRelOp :: DP.BinOpTyp -> RelOp
 opToRelOp DP.Eq  = REq
 opToRelOp DP.Neq = RNeq
 
-dpTermToTerm :: (?spec::Spec) => DP.Term -> Term
-dpTermToTerm (DP.TVar (DP.Var [(n,Nothing)] _ _))          = TVar n
-dpTermToTerm (DP.TVar (DP.Var ns            t c))          = TField (dpTermToTerm $ DP.TVar $ DP.Var (init ns) t c) (fst $ last ns)
-dpTermToTerm (DP.TLit i w)                                 = TUInt w i
-dpTermToTerm (DP.TSlice s t)                               = TSlice (dpTermToTerm t) s
-dpTermToTerm (DP.TFunc (DP.FBuiltin DP.FConcat) [t1,t2] _) = TBinOp ABConcat (dpTermToTerm t1) (dpTermToTerm t2)
-dpTermToTerm (DP.TFunc (DP.FBuiltin DP.FConcat) (t1:ts) w) = TBinOp ABConcat (dpTermToTerm t1) (dpTermToTerm $ DP.TFunc (DP.FBuiltin DP.FConcat) ts (w - DP.tWidth t1))
+dpTermToExpr :: (?spec::Spec) => DP.Term -> Expr
+dpTermToExpr (DP.TVar (DP.Var [(n,Nothing)] _ _))          = EVar n
+dpTermToExpr (DP.TVar (DP.Var ns            t c))          = EField (dpTermToExpr $ DP.TVar $ DP.Var (init ns) t c) (fst $ last ns)
+dpTermToExpr (DP.TLit i w)                                 = EConst $ UIntVal w i
+dpTermToExpr (DP.TSlice s t)                               = ESlice (dpTermToExpr t) s
+dpTermToExpr (DP.TFunc (DP.FBuiltin DP.FConcat) [t1,t2] _) = EBinOp BConcat (dpTermToExpr t1) (dpTermToExpr t2)
+dpTermToExpr (DP.TFunc (DP.FBuiltin DP.FConcat) (t1:ts) w) = EBinOp BConcat (dpTermToExpr t1) (dpTermToExpr $ DP.TFunc (DP.FBuiltin DP.FConcat) ts (w - DP.tWidth t1))

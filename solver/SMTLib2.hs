@@ -133,11 +133,15 @@ addrofVarName :: Term -> String
 addrofVarName t = mkIdent $ "addrof-" ++ show t
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Formula where
-    smtpp FTrue             = text "true"
-    smtpp FFalse            = text "false"
-    smtpp (FPred p)         = smtpp p
-    smtpp (FBinOp op f1 f2) = parens $ smtpp op <+> smtpp f1 <+> smtpp f2
-    smtpp (FNot f)          = parens $ text "not" <+> smtpp f
+    smtpp FTrue                       = text "true"
+    smtpp FFalse                      = text "false"
+    smtpp (FBoolAVar (AVarPred p))    = smtpp p
+    smtpp (FBoolAVar (AVarBool t))    = smtpp t
+    smtpp (FEq v1 v2)                 = parens $ smtpp REq <+> smtpp v1 <+> smtpp v2
+    smtpp (FEqConst v@(AVarEnum t) i) = parens $ smtpp REq <+> smtpp v <+> (text $ mkIdent $ (enumEnums $ getEnumeration n) !! i) where Enum n = typ t
+    smtpp (FEqConst v@(AVarInt _) i)  = parens $ smtpp REq <+> smtpp v <+> (text $ "(_ bv" ++ show i ++ " " ++ (show $ avarWidth v) ++ ")")
+    smtpp (FBinOp op f1 f2)           = parens $ smtpp op <+> smtpp f1 <+> smtpp f2
+    smtpp (FNot f)                    = parens $ text "not" <+> smtpp f
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Predicate where
     smtpp (PAtom op t1 t2) = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
@@ -156,6 +160,15 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TBinOp op t1 t2)      = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
     smtpp (TSlice t (l,h))       = parens $ (parens $ char '_' <+> text "extract" <+> int h <+> int l) <+> smtpp t
 
+instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP PTerm where
+    smtpp = smtpp . ptermTerm
+
+instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP AbsVar where
+    smtpp (AVarPred p) = smtpp p
+    smtpp (AVarBool t) = smtpp t
+    smtpp (AVarInt  t) = smtpp t
+    smtpp (AVarEnum t) = smtpp t
+
 instance SMTPP RelOp where
     smtpp REq  = text "="
     smtpp RNeq = text "distinct"
@@ -163,7 +176,9 @@ instance SMTPP RelOp where
     smtpp RGt  = text "bvsgt"
     smtpp RLte = text "bvsle"
     smtpp RGte = text "bvsge"
-    
+
+instance SMTPP PredOp where
+    smtpp = smtpp . bopToRelOp . predOpToBOp 
 
 instance SMTPP ArithUOp where
     smtpp AUMinus = text "bvneg"
@@ -218,11 +233,16 @@ mkAddrofVar t = parens $ text "declare-const"
                      <+> text (ptrTypeName ?typemap t)
 
 faddrofTerms :: (?spec::Spec, ?typemap::M.Map Type String) => Formula -> [Term]
-faddrofTerms FTrue                   = []
-faddrofTerms FFalse                  = []
-faddrofTerms (FPred (PAtom _ t1 t2)) = taddrofTerms t1 ++ taddrofTerms t2
-faddrofTerms (FBinOp _ f1 f2)        = faddrofTerms f1 ++ faddrofTerms f2
-faddrofTerms (FNot f)                = faddrofTerms f
+faddrofTerms = nub . faddrofTerms'
+
+faddrofTerms' :: (?spec::Spec, ?typemap::M.Map Type String) => Formula -> [Term]
+faddrofTerms' FTrue            = []
+faddrofTerms' FFalse           = []
+faddrofTerms' (FBoolAVar av)   = concatMap taddrofTerms $ avarTerms av
+faddrofTerms' (FEq av1 av2)    = concatMap taddrofTerms $ avarTerms av1 ++ avarTerms av2
+faddrofTerms' (FEqConst av _)  = concatMap taddrofTerms $ avarTerms av
+faddrofTerms' (FBinOp _ f1 f2) = faddrofTerms' f1 ++ faddrofTerms' f2
+faddrofTerms' (FNot f)         = faddrofTerms' f
 
 taddrofTerms :: Term -> [Term]
 taddrofTerms (TAddr t) = [t]
@@ -230,11 +250,11 @@ taddrofTerms _         = []
 
 ptrEqConstr :: (?spec::Spec, ?typemap::M.Map Type String) => (Term, Term) -> Formula
 ptrEqConstr (t1, t2) = case ptrEqCond t1 t2 of
-                           FFalse -> neq (TAddr t1) (TAddr t2)
-                           f      -> FBinOp Equiv (eq (TAddr t1) (TAddr t2)) f
+                            FFalse -> neq (TAddr t1) (TAddr t2)
+                            f      -> FBinOp Equiv (eq (TAddr t1) (TAddr t2)) f
 
-eq  t1 t2 = FPred $ PAtom REq t1 t2
-neq t1 t2 = FNot $ eq t1 t2
+eq  t1 t2 = fRel REq (termToExpr t1) (termToExpr t2)
+neq t1 t2 = fnot $ eq t1 t2
 
 ptrEqCond :: (?spec::Spec, ?typemap::M.Map Type String) => Term -> Term -> Formula
 ptrEqCond (TField s1 f1) (TField s2 f2) | f1 == f2 = ptrEqCond s1 s2

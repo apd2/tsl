@@ -9,7 +9,7 @@ module Predicate(PVarOps,
                  avarIsPred,
                  avarCategory,
                  avarVar,
-                 avarAsnToPred,
+                 avarTerms,
                  avarToExpr,
                  ArithUOp(..),
                  uopToArithOp,
@@ -18,26 +18,31 @@ module Predicate(PVarOps,
                  bopToArithOp,
                  arithOpToBOp,
                  Term(..),
+                 PTerm(..),
+                 ptermTerm,
                  termWidth,
                  termCategory,
                  termVar,
-                 termSimplify,
-                 isConstTerm,
-                 evalConstTerm,
-                 isMemTerm,
+                 --evalConstTerm,
                  RelOp(..),
                  bopToRelOp,
                  relOpToBOp,
+                 relOpNeg,
+                 relOpSwap,
+                 PredOp(..),
+                 relOpToPredOp,
+                 predOpToBOp,
                  Predicate(..),
                  predCategory,
                  predTerm,
                  predVar,
                  predToExpr,
-                 exprToTerm,
+                 scalarExprToTerm,
                  valToTerm,
                  termToExpr) where
 
 import Text.PrettyPrint
+import Data.List
 
 import TSLUtil
 import PP
@@ -62,18 +67,24 @@ avarBAVar :: (?spec::Spec) => AbsVar -> BAVar AbsVar AbsVar
 avarBAVar av | avarCategory av == VarTmp   = LabelVar av (avarWidth av)
 avarBAVar av | avarCategory av == VarState = StateVar av (avarWidth av)
 
-data AbsVar = AVarPred Predicate      -- predicate variable
-            | AVarTerm Term           -- unabstracted Bool or Enum scalar variable
+data AbsVar = AVarPred Predicate   -- predicate variable
+            | AVarEnum Term        -- unabstracted Enum scalar variable
+            | AVarBool Term        -- unabstracted Bool variable
+            | AVarInt  Term        -- unabstracted integral variable
 --            | AVarEnum String [I.Val]   -- variable with several interesting values
             deriving(Eq, Ord)
 
 avarWidth :: (?spec::Spec) => AbsVar -> Int
 avarWidth (AVarPred _) = 1
-avarWidth (AVarTerm t) = termWidth t
+avarWidth (AVarEnum t) = termWidth t
+avarWidth (AVarBool _) = 1
+avarWidth (AVarInt  t) = termWidth t
 
 avarCategory :: (?spec::Spec) => AbsVar -> VarCategory
 avarCategory (AVarPred p) = predCategory p
-avarCategory (AVarTerm t) = termCategory t
+avarCategory (AVarEnum t) = termCategory t
+avarCategory (AVarBool t) = termCategory t
+avarCategory (AVarInt  t) = termCategory t
 
 avarIsPred :: AbsVar -> Bool
 avarIsPred (AVarPred _) = True
@@ -81,29 +92,33 @@ avarIsPred _            = False
 
 avarVar :: (?spec::Spec) => AbsVar -> [Var]
 avarVar (AVarPred p) = predVar p
-avarVar (AVarTerm t) = termVar t
+avarVar (AVarEnum t) = termVar t
+avarVar (AVarBool t) = termVar t
+avarVar (AVarInt  t) = termVar t
 
-avarAsnToPred :: (?spec::Spec) => AbsVar -> Integer -> Predicate
-avarAsnToPred (AVarPred (PAtom op t1 t2)) 0 = PAtom (relOpNeg op) t1 t2
-avarAsnToPred (AVarPred p)                1 = p
-avarAsnToPred (AVarTerm t)                i = 
-    case typ t of
-         Bool   -> if i==0 then PAtom RNeq t TTrue else PAtom REq t TTrue
-         Enum n -> PAtom REq t $ TEnum $ (enumEnums $ getEnumeration n) !! (fromInteger i)
-         SInt w -> PAtom REq t $ TSInt w i
-         UInt w -> PAtom REq t $ TUInt w i
+avarTerms :: AbsVar -> [Term]
+avarTerms = nub . avarTerms' 
+
+avarTerms' :: AbsVar -> [Term]
+avarTerms' (AVarPred p) = predTerm p
+avarTerms' (AVarEnum t) = [t]
+avarTerms' (AVarInt  t) = [t]
+avarTerms' (AVarBool t) = [t]
 
 avarToExpr :: (?spec::Spec) => AbsVar -> Expr
 avarToExpr (AVarPred p) = predToExpr p
-avarToExpr (AVarTerm t) = termToExpr t
+avarToExpr (AVarEnum t) = termToExpr t
+avarToExpr (AVarBool t) = termToExpr t
+avarToExpr (AVarInt  t) = termToExpr t
+
+instance PP AbsVar where
+    pp (AVarPred p) = pp p
+    pp (AVarEnum t) = pp t
+    pp (AVarBool t) = pp t
+    pp (AVarInt  t) = pp t
 
 instance Show AbsVar where
-    show (AVarPred p) = show p
-    show (AVarTerm t) = show t
-
--- Objects with canonical form
-class Canonical a where
-    norm :: a -> a
+    show = render . pp
 
 -- Arithmetic operations
 data ArithUOp = AUMinus 
@@ -163,9 +178,6 @@ data Term = TVar    String
           | TSlice  Term (Int,Int)
           deriving (Eq,Ord)
 
-instance Canonical Term where
-    norm = id
-
 instance (?spec::Spec) => Typed Term where
     typ = typ . termToExpr
 
@@ -175,44 +187,14 @@ instance PP Term where
 instance Show Term where
     show = render . pp
 
-isMemTerm :: (?spec::Spec) => Term -> Bool
-isMemTerm (TVar n)     = varMem $ getVar n
-isMemTerm (TField t _) = isMemTerm t
-isMemTerm (TIndex t _) = isMemTerm t
-isMemTerm (TSlice t _) = isMemTerm t
-isMemTerm _        = False
-
 termVar :: (?spec::Spec) => Term -> [Var]
-termVar (TVar n)         = [getVar n]
-termVar (TSInt _ _)      = []
-termVar (TUInt _ _)      = []
-termVar (TEnum _)        = []
-termVar TTrue            = []
-termVar (TAddr t)        = termVar t
-termVar (TField t _)     = termVar t
-termVar (TIndex a i)     = termVar a ++ termVar i
-termVar (TUnOp _ t)      = termVar t
-termVar (TBinOp _ t1 t2) = termVar t1 ++ termVar t2
-termVar (TSlice t _)     = termVar t
+termVar = exprVars . termToExpr
 
-isConstTerm :: Term -> Bool
-isConstTerm (TVar n)         = False
-isConstTerm (TSInt _ _)      = True
-isConstTerm (TUInt _ _)      = True
-isConstTerm (TEnum _)        = True
-isConstTerm TTrue            = True
-isConstTerm (TAddr t)        = isConstTerm t
-isConstTerm (TField t _)     = isConstTerm t
-isConstTerm (TIndex a i)     = isConstTerm a && isConstTerm i
-isConstTerm (TUnOp _ t)      = isConstTerm t
-isConstTerm (TBinOp _ t1 t2) = isConstTerm t1 && isConstTerm t2
-isConstTerm (TSlice t _)     = isConstTerm t
+--evalConstTerm :: Term -> Term
+--evalConstTerm = scalarExprToTerm . EConst . evalConstExpr . termToExpr
 
-evalConstTerm :: Term -> Term
-evalConstTerm = exprToTerm . EConst . evalConstExpr . termToExpr
-
-termSimplify :: Term -> Term
-termSimplify = exprToTerm . exprSimplify . termToExpr
+--termSimplify :: Term -> Term
+--termSimplify = scalarExprToTerm . exprSimplify . termToExpr
 
 termCategory :: (?spec::Spec) => Term -> VarCategory
 termCategory t = if any ((==VarTmp) . varCat) $ termVar t
@@ -225,6 +207,26 @@ termWidth t = case typ t of
                    Enum n   -> bitWidth $ (length $ enumEnums $ getEnumeration n) - 1
                    (UInt w) -> w
                    (SInt w) -> w
+
+-- Subset of terms that can be used in a predicate: int's, and pointers
+-- (no structs, arrays, or bools)
+data PTerm = PTInt Term
+           | PTPtr Term
+           deriving (Eq, Ord)
+
+ptermTerm :: PTerm -> Term
+ptermTerm (PTInt t) = t
+ptermTerm (PTPtr t) = t
+
+instance (?spec::Spec) => Typed PTerm where
+    typ = typ . ptermTerm
+
+instance PP PTerm where
+    pp = pp . ptermTerm
+
+instance Show PTerm where
+    show = render . pp
+
 
 -- Relational operations
 data RelOp = REq
@@ -265,8 +267,41 @@ relOpNeg RGt  = RLte
 relOpNeg RLte = RGt
 relOpNeg RGte = RLt
 
+-- swap sides
+relOpSwap :: RelOp -> RelOp
+relOpSwap REq  = REq
+relOpSwap RNeq = RNeq
+relOpSwap RLt  = RGt
+relOpSwap RGt  = RLt
+relOpSwap RLte = RGte
+relOpSwap RGte = RLte
+
+data PredOp = PEq
+            | PLt
+            | PLte
+            deriving (Eq, Ord)
+
+predOpToBOp :: PredOp -> BOp
+predOpToBOp PEq  = Eq
+predOpToBOp PLt  = Lt
+predOpToBOp PLte = Lte
+
+relOpToPredOp :: RelOp -> (Bool, PredOp)
+relOpToPredOp REq  = (True,  PEq)
+relOpToPredOp RNeq = (False, PEq)
+relOpToPredOp RLt  = (True,  PLt)
+relOpToPredOp RGt  = (False, PLt)
+relOpToPredOp RLte = (True,  PLte)
+relOpToPredOp RGte = (False, PLte)
+
+instance PP PredOp where
+    pp = pp . predOpToBOp
+
+instance Show PredOp where
+    show = render . pp
+
 -- Predicates
-data Predicate = PAtom {pOp :: RelOp, pTerm1 :: Term, pTerm2 :: Term} deriving (Eq, Ord)
+data Predicate = PAtom {pOp :: PredOp, pTerm1 :: PTerm, pTerm2 :: PTerm} deriving (Eq, Ord)
 
 instance PP Predicate where
     pp (PAtom op t1 t2) = pp t1 <> pp op <> pp t2
@@ -275,7 +310,7 @@ instance Show Predicate where
     show = render . pp
 
 predTerm :: Predicate -> [Term]
-predTerm (PAtom _ t1 t2) = [t1,t2]
+predTerm (PAtom _ t1 t2) = [ptermTerm t1, ptermTerm t2]
 
 predVar :: (?spec::Spec) => Predicate -> [Var]
 predVar = concatMap termVar . predTerm
@@ -285,25 +320,22 @@ predCategory p = if any ((==VarTmp) . termCategory) $ predTerm p
                     then VarTmp
                     else VarState
 
--- Convert scalar expression without pointers and boolean operators to a term
-exprToTerm :: Expr -> Term
-exprToTerm = norm . exprToTerm'
-
-exprToTerm' :: Expr -> Term
-exprToTerm' (EVar n)                = TVar   n
-exprToTerm' (EConst (BoolVal True)) = TTrue
-exprToTerm' (EConst (SIntVal w i))  = TSInt w i
-exprToTerm' (EConst (UIntVal w i))  = TUInt w i
-exprToTerm' (EConst (EnumVal e))    = TEnum  e
-exprToTerm' (EField s f)            = TField (exprToTerm' s) f
-exprToTerm' (EIndex a i)            = TIndex (exprToTerm' a) (exprToTerm' i)
-exprToTerm' (EUnOp AddrOf e)        = TAddr  (exprToTerm' e)
-exprToTerm' (EUnOp op e)            = TUnOp  (uopToArithOp op) (exprToTerm' e)
-exprToTerm' (EBinOp op e1 e2)       = TBinOp (bopToArithOp op) (exprToTerm' e1) (exprToTerm' e2)
-exprToTerm' (ESlice e s)            = TSlice (exprToTerm' e) s
+-- Convert scalar expression without pointer dereferences and boolean operators to a term
+scalarExprToTerm :: Expr -> Term
+scalarExprToTerm (EVar n)                = TVar n
+scalarExprToTerm (EConst (BoolVal True)) = TTrue
+scalarExprToTerm (EConst (SIntVal w i))  = TSInt w i
+scalarExprToTerm (EConst (UIntVal w i))  = TUInt w i
+scalarExprToTerm (EConst (EnumVal e))    = TEnum  e
+scalarExprToTerm (EField s f)            = TField (scalarExprToTerm s) f
+scalarExprToTerm (EIndex a i)            = TIndex (scalarExprToTerm a) (scalarExprToTerm i)
+scalarExprToTerm (EUnOp AddrOf e)        = TAddr  (scalarExprToTerm e)
+scalarExprToTerm (EUnOp op e)            = TUnOp  (uopToArithOp op) (scalarExprToTerm e)
+scalarExprToTerm (EBinOp op e1 e2)       = TBinOp (bopToArithOp op) (scalarExprToTerm e1) (scalarExprToTerm e2)
+scalarExprToTerm (ESlice e s)            = TSlice (scalarExprToTerm e) s
 
 valToTerm :: Val -> Term
-valToTerm = exprToTerm . EConst
+valToTerm = scalarExprToTerm . EConst
 
 termToExpr :: Term -> Expr
 termToExpr (TVar n)          = EVar   n
@@ -318,5 +350,8 @@ termToExpr (TUnOp op t)      = EUnOp (arithOpToUOp op) (termToExpr t)
 termToExpr (TBinOp op t1 t2) = EBinOp (arithOpToBOp op) (termToExpr t1) (termToExpr t2)
 termToExpr (TSlice t s)      = ESlice (termToExpr t) s
 
+ptermToExpr :: PTerm -> Expr 
+ptermToExpr = termToExpr . ptermTerm
+
 predToExpr :: Predicate -> Expr
-predToExpr (PAtom op t1 t2) = EBinOp (relOpToBOp op) (termToExpr t1) (termToExpr t2)
+predToExpr (PAtom op t1 t2) = EBinOp (predOpToBOp op) (ptermToExpr t1) (ptermToExpr t2)
