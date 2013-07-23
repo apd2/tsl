@@ -100,7 +100,7 @@ tranPrecondition _                        = FTrue
 
 -- Compute variable updates for an individual CFA edge
 varUpdateTran :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> AbsVar -> ECascade
-varUpdateTran (TranStat (SAssign e1 e2)) v = updateExprAsn e1 e2 (avarToExpr v)
+varUpdateTran (TranStat (SAssign e1 e2)) v = fmap (\e -> if' (isConstExpr e) (EConst $ evalConstExpr e) e) $ updateExprAsn e1 e2 (avarToExpr v)
 varUpdateTran _                          v = CasLeaf $ avarToExpr v
 
 updateExprAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> ECascade
