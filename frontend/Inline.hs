@@ -432,9 +432,9 @@ ctxSuffix loc after pc = do mepid  <- gets ctxEPID
                                 (do let Just (EPIDProc pid) = mepid
                                     aftpc    <- ctxInsTrans' aftepid $ I.TranStat  $ mkPCVar pid I.=: mkPC pid pc
                                     aftucont <- ctxInsTrans' aftpc $ I.TranStat    $ I.SAssume $ mkContVar I.=== I.false
-                                    ifmagic  <- ctxInsTrans' aftucont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
-                                    ctxInsTrans ifmagic after $ I.TranStat         $ mkContVar I.=: mkContLVar
-                                    ctxInsTrans aftucont after $ I.TranStat        $ I.SAssume $ mkMagicVar I.=== I.false) $
+                                    --ifmagic  <- ctxInsTrans' aftucont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
+                                    ctxInsTrans aftucont after $ I.TranStat        $ mkContVar I.=: mkContLVar) $
+                                    --ctxInsTrans aftucont after $ I.TranStat        $ I.SAssume $ mkMagicVar I.=== I.false) $
                                 if' (mepid == Just EPIDCont)
                                     (ctxInsTrans aftepid after $ I.TranStat $ mkContVar I.=: I.false)
                                     (ctxInsTrans aftepid after I.TranNop)

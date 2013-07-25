@@ -25,6 +25,7 @@ import qualified HAST.HAST   as H
 import qualified HAST.BDD    as H
 import ACFA
 import ACFACompile
+import BFormula
 
 -----------------------------------------------------------------------
 -- Interface
@@ -97,6 +98,18 @@ tslContAbs spec m ops = do
         ?pred = p
     H.compileBDD m ops $ bexprAbstract $ mkContVar === true
 
+--tslConstraint :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+--tslConstraint spec m ops = do
+--    let ?ops = ops
+--    p <- pdbPred
+--    let ?spec = spec
+--        ?m    = m
+--        ?pred = p
+--    let constr = H.Disj 
+--                 $ mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) 
+--                 $ (tsUTran $ specTran spec) ++ (tsCTran $ specTran spec)
+--    H.compileBDD m ops constr    
+
 tslUpdateAbs :: Spec -> C.STDdManager s u -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslUpdateAbs spec m avars ops = do
     trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
@@ -105,17 +118,28 @@ tslUpdateAbs spec m avars ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    let pervar = map (\av -> let trans = mapIdx (\tr i -> varUpdateTrans (show i) [av] tr) $ (tsUTran $ specTran spec) ++ (tsCTran $ specTran spec)
-                                 (upds, pres) = unzip $ catMaybes trans
-                                 -- generate condition when variable value does not change
-                                 ident = H.EqVar (H.NVar $ avarBAVar $ fst av) (H.FVar $ snd av)
-                                 unchanged = H.And (H.Conj $ map H.Not pres) ident
-                             in H.Disj (unchanged:upds))
-                     avars
---    _ <- mapIdxM (\tr i -> cfaTraceFile (tranCFA tr) ("cfa" ++ show i) $ return ()) $ tsUTran $ specTran spec
-    mapM (\(ast, (av,_)) -> trace ("compiling " ++ show av) $ H.compileBDD m ops ast) $ zip pervar avars
---    (liftM concat)  mapM (\(asts, (av,_)) -> trace ("compiling " ++ show av) $ mapIdxM (\ast i -> trace ("compiling transition " ++ show (i-1)) $ H.compileBDD m ops ast) asts) $ zip pervar avars
-
+    mapM tslUpdateAbsVar avars
+ 
+tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
+tslUpdateAbsVar (av, n) | (show av) == mkContVarName = do
+    -- handle $cont variable in a special way:
+    -- $cont is false under controllable transition, 
+    -- $cont can only be true after uncontrollable transition if we are inside a magic block.
+    let x  = H.Var $ H.NVar $ avarBAVar av 
+        x' = H.Var $ H.FVar n
+        lcont = compileFormula $ ptrFreeBExprToFormula mkContLVar
+        magic = compileFormula $ ptrFreeBExprToFormula mkMagicVar
+    H.compileBDD ?m ?ops $ (x `H.Imp` (H.Not x')) `H.And` 
+                           (x' `H.Imp` magic) `H.And` 
+                           (((H.Not x) `H.And` magic) `H.Imp` (x' `H.XNor` lcont))
+tslUpdateAbsVar (av, n) = do
+    let trans = mapIdx (\tr i -> varUpdateTrans (show i) [(av,n)] tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
+        (upds, pres) = unzip $ catMaybes trans
+        -- generate condition when variable value does not change
+        ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
+        unchanged = H.And (H.Conj $ map H.Not pres) ident
+    trace ("compiling " ++ show av) $ H.compileBDD ?m ?ops $ H.Disj (unchanged:upds)
+    
 ----------------------------------------------------------------------------
 -- PDB operations
 ----------------------------------------------------------------------------
@@ -153,8 +177,8 @@ varUpdateTrans trname vs Transition{..} = if G.isEmpty cfa
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA. 
 varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar, f)] -> Loc -> CFA -> TAST f e c
-varUpdateLoc trname vs loc cfa ={- acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
-                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") -} ast
+varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
+                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
     where
     acfa = tranCFAToACFA (map fst vs) loc cfa
     ast  = compileACFA vs acfa
