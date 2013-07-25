@@ -158,7 +158,7 @@ pdbPred = do
 bexprAbstract :: (?spec::Spec, ?pred::[Predicate]) => Expr -> TAST f e c
 bexprAbstract = compileFormula . bexprToFormula
 
--- Compute precondition of transition without taking always blocks and wires into account
+-- Compute precondition of transition without taking prefix blocks and wires into account
 tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => String -> Transition -> TAST f e c
 tranPrecondition trname tran = varUpdateLoc trname [] (tranFrom tran) (tranCFA tran)
 
@@ -171,7 +171,7 @@ varUpdateTrans trname vs Transition{..} = if G.isEmpty cfa
                                              then Nothing
                                              else Just (varUpdateLoc trname vs tranFrom cfa, varUpdateLoc (trname ++ "_pre") [] tranFrom cfa)
     where cfa' = pruneCFAVar (map fst vs) tranCFA
-          cfa  = cfaLocInlineWireAlways ?spec cfa' tranFrom
+          cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
 
 
 -- Compute update functions for a list of variables for a location inside

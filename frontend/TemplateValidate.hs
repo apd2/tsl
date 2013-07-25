@@ -4,7 +4,7 @@ module TemplateValidate(checkConcreteTemplate,
                         validateTmInstances,
                         validateTmInstances2,
                         validateTmInit2,
-                        validateTmAlways2,
+                        validateTmPrefix2,
                         validateTmPorts,
                         validateTmDerives,
                         validateTmNS,
@@ -133,20 +133,20 @@ validateTmDerives :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmDerives tm = do {mapM (validateDerive tm) (tmDerive tm); return()}
 
 ------------------------------------------------------------------------------
--- Validate init blocks 
+-- Validate prefix blocks
 ------------------------------------------------------------------------------
 
-validateAlways2 :: (?spec::Spec, MonadError String me) => Template -> Always -> me ()
-validateAlways2 t a = do
+validatePrefix2 :: (?spec::Spec, MonadError String me) => Template -> Prefix -> me ()
+validatePrefix2 t a = do
     let ?scope = ScopeTemplate t
         ?privoverride = False
-    validateStat' False (alwBody a)
+    validateStat' False (prefBody a)
 
-validateTmAlways2 :: (?spec::Spec, MonadError String me) => Template -> me ()
-validateTmAlways2 t = do {mapM (validateAlways2 t) (tmAlways t); return ()}
+validateTmPrefix2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmPrefix2 t = do {mapM (validatePrefix2 t) (tmPrefix t); return ()}
 
 ------------------------------------------------------------------------------
--- Validate always blocks 
+-- Validate init blocks 
 ------------------------------------------------------------------------------
 
 validateInit2 :: (?spec::Spec, MonadError String me) => Template -> Init -> me ()

@@ -1,10 +1,10 @@
-module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst, tmGoal, tmWire, tmInit, tmAlways), 
+module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst, tmGoal, tmWire, tmInit, tmPrefix), 
                 Port(Port,portTemplate), 
                 Instance(Instance, instPort, instTemplate),
                 GVar(GVar,gvarExport, gvarVar),
                 Goal(Goal, goalCond, goalName),
                 Init(Init,initBody),
-                Always(Always,alwBody),
+                Prefix(Prefix,prefBody),
                 Wire(Wire,wireExport,wireRHS,wireType,wireName),
                 Derive(Derive,drvTemplate),
                 mergeTemplate) where
@@ -83,16 +83,16 @@ instance WithPos Init where
     pos       = inpos
     atPos i p = i{inpos = p}
 
--- always-statement
-data Always = Always { alpos   :: Pos
-                     , alwBody :: Statement}
+-- transition prefix
+data Prefix = Prefix { prefpos   :: Pos
+                     , prefBody :: Statement}
 
-instance PP Always where
-    pp (Always _ s) = text "always" $+$ pp s
+instance PP Prefix where
+    pp (Prefix _ s) = text "prefix" $+$ pp s
 
-instance WithPos Always where
-    pos       = alpos
-    atPos a p = a{alpos = p}
+instance WithPos Prefix where
+    pos       = prefpos
+    atPos a p = a{prefpos = p}
 
 -- Goal
 data Goal = Goal { gpos     :: Pos
@@ -162,7 +162,7 @@ data Template = Template { tpos       :: Pos
                          , tmWire     :: [Wire]
                          , tmInst     :: [Instance]
                          , tmInit     :: [Init]
-                         , tmAlways   :: [Always]
+                         , tmPrefix   :: [Prefix]
                          , tmProcess  :: [Process]
                          , tmMethod   :: [Method]
                          , tmGoal     :: [Goal]}
@@ -176,7 +176,7 @@ instance PP Template where
                                ppitems (tmVar t)      $+$
                                ppitems (tmWire t)     $+$
                                ppitems (tmInit t)     $+$
-                               ppitems (tmAlways t)   $+$
+                               ppitems (tmPrefix t)   $+$
                                ppitems (tmProcess t)  $+$
                                ppitems (tmMethod t)   $+$
                                ppitems (tmGoal t)     $+$
@@ -207,7 +207,7 @@ mergeTemplate tm1 tm2 = Template { tpos       = tpos tm1
                                  , tmWire     = tmWire tm1 ++ tmWire tm2
                                  , tmInst     = tmInst tm1 ++ tmInst tm2
                                  , tmInit     = tmInit tm1 ++ tmInit tm2
-                                 , tmAlways   = tmAlways tm1 ++ tmAlways tm2
+                                 , tmPrefix   = tmPrefix tm1 ++ tmPrefix tm2
                                  , tmProcess  = tmProcess tm1 ++ tmProcess tm2
                                  , tmMethod   = tmMethod tm1 ++ tmMethod tm2
                                  , tmGoal     = tmGoal tm1 ++ tmGoal tm2}

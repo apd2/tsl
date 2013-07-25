@@ -30,7 +30,8 @@ import Name
 import Expr
 import Statement
 import Process
-import Template
+import Template hiding (Prefix)
+import qualified Template
 import TVar
 import Type
 import Method
@@ -42,7 +43,7 @@ boolParser = ((True <$ reserved "true") <|> (False <$ reserved "false"))
 
 reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "...", "::", "->"]
 reservedNames = ["after",
-                 "always",
+                 "prefix",
                  "assert",
                  "assign",
                  "assume", 
@@ -225,7 +226,7 @@ data TemplateItem = TDerive        Derive
                   | TVarDecl       GVar
                   | TWire          Wire
                   | TInitBlock     Init
-                  | TAlways        Always
+                  | TPrefix        Template.Prefix
                   | TProcessDecl   Process
                   | TMethod        Method
                   | TGoalDecl      Goal
@@ -251,7 +252,7 @@ mkTemplate n ps is = Template nopos n ps drvs consts types vars wires insts init
                                         TInitBlock init -> Just init
                                         _ -> Nothing) is
           als    = mapMaybe (\i -> case i of 
-                                        TAlways al -> Just al
+                                        TPrefix al -> Just al
                                         _ -> Nothing) is
           wires  = mapMaybe (\i -> case i of 
                                         TWire w -> Just w
@@ -275,7 +276,7 @@ templateItem =  TDerive      <$> tderive
             <|> TConstDecl   <$> constant
             <|> TVarDecl     <$> try tvarDecl
             <|> TInitBlock   <$> tinitBlock
-            <|> TAlways      <$> talways
+            <|> TPrefix      <$> tprefix
             <|> TProcessDecl <$> tprocessDecl
             <|> TMethod      <$> tmethodDecl
             <|> TGoalDecl    <$> tgoalDecl
@@ -296,7 +297,7 @@ twire        = withPos $ Wire nopos <$> (option False (True <$ reserved "export"
                                     <*> ident 
                                     <*> optionMaybe (reservedOp "=" *> detexpr)
 tinitBlock   = withPos $ Init nopos <$ reserved "init" <*> detexpr
-talways      = withPos $ Always nopos <$ reserved "always" <*> statement
+tprefix      = withPos $ Template.Prefix nopos <$ reserved "prefix" <*> statement
 tprocessDecl = withPos $ Process nopos <$  reserved "process" 
                                        <*> ident 
                                        <*> statement
@@ -359,6 +360,7 @@ sreturn  = SReturn nopos <$ reserved "return" <*> (optionMaybe expr)
 sseq     = SSeq nopos <$> (braces statements)
 spar     = SPar nopos <$ reserved "fork" <*> (braces $ many $ (,) <$> (ident <* reservedOp ":") <*> statement <* semi)
 sforever = SForever nopos <$ reserved "forever" <*> statement
+
 sdo      = SDo nopos <$ reserved "do" <*> statement <* reserved "while" <*> (parens expr)
 swhile   = SWhile nopos <$ reserved "while" <*> (parens expr) <*> statement
 sfor     = SFor nopos <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe statement <* semi) <*> (detexpr <* semi) <*> statement) <*> statement

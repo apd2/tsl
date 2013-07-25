@@ -347,46 +347,6 @@ methInline before after meth args mlhs act = do
     -- restore context
     ctxPopBrkLoc
 
-
---taskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
---taskCall before after meth args mlhs st = do
---    Just cid <- gets ctxCID
---    if' (cid == CCID) (contTaskCall  before after meth args) 
---                      (ucontTaskCall before after meth args mlhs st)
---
---contTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> State CFACtx ()
---contTaskCall before after meth args = do
---    -- set tag
---    afttag <- ctxInsTrans' before $ I.TranStat $ mkTagVar I.=: tagMethod meth
---    -- set input arguments
---    aftarg <- setArgs afttag meth args
---    -- switch to uncontrollable state
---    ctxInsTrans aftarg after $ I.TranStat $ mkContVar I.=: I.false
---    -- $pid = $pidcont
---    --ctxInsTrans aftcont after $ I.TranStat $ mkPIDVar I.=: mkPIDEnum pidCont
---
---ucontTaskCall :: (?spec::Spec) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> Statement -> State CFACtx ()
---ucontTaskCall before after meth args mlhs st = do
---    Just (UCID pid _) <- gets ctxCID
---    let envar = mkEnVar pid (Just meth)
---    -- set input arguments
---    aftarg <- setArgs before meth args
---    -- trigger task
---    afttag <- ctxInsTrans' aftarg $ I.TranStat $ envar I.=: I.true
---    -- pause and wait for task to complete
---    aftwait <- ctxPause afttag (mkWaitForTask pid meth) (I.ActStat st)
---    -- copy out arguments and retval
---    aftout <- copyOutArgs aftwait meth args
---    case (mlhs, mkRetVar (Just pid) meth) of
---         (Nothing, _)          -> ctxInsTrans aftout after I.TranNop
---         (Just lhs, Just rvar) -> do let t = mkType $ Type (ScopeTemplate tmMain) (fromJust $ methRettyp meth)
---                                     lhs' <- exprToIExprDet lhs
---                                     ctxInsTransMany aftout after $ map I.TranStat
---                                                                  $ zipWith I.SAssign (I.exprScalars lhs' t) 
---                                                                                      (I.exprScalars rvar t)
-
--- Common part of methInline and taskCall
-
 -- assign input arguments to a method
 setArgs :: (?spec::Spec) => I.Loc -> Method -> [Expr] -> State CFACtx I.Loc 
 setArgs before meth args = do
@@ -419,5 +379,4 @@ procStatToCFA :: (?spec::Spec, ?procs::[I.Process]) => Statement -> I.Loc -> Sta
 procStatToCFA stat before = do
     after <- statToCFA before stat
     ctxAddNullPtrTrans
-    --modify (\ctx -> ctx {ctxCFA = I.cfaAddNullPtrTrans (ctxCFA ctx)})
     return after

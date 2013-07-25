@@ -9,8 +9,8 @@ module ISpec(Spec(..),
              specAllProcs,
              specGetCFA,
              specMapCFA,
-             specInlineWireAlways,
-             cfaLocInlineWireAlways,
+             specInlineWirePrefix,
+             cfaLocInlineWirePrefix,
              lookupVar,
              getVar,
              lookupEnumerator,
@@ -41,7 +41,7 @@ data Spec = Spec {
     specEnum   :: [Enumeration],
     specVar    :: [Var],
     specWire   :: Maybe CFA,   -- wire assignment
-    specAlways :: Maybe CFA,   -- always blocks
+    specPrefix :: Maybe CFA,   -- prefix blocks
     specProc   :: [Process],   -- processes
     specCAct   :: CFA,         -- controllable transitions
     specTran   :: TranSpec     -- info required for variable update
@@ -121,11 +121,11 @@ procMapCFA f proc =
          , procChildren = map (procMapCFA f) $ procChildren proc
          }
 
-specInlineWireAlways :: Spec -> Spec
-specInlineWireAlways spec = specMapCFA (cfaInlineWireAlways spec) spec
+specInlineWirePrefix :: Spec -> Spec
+specInlineWirePrefix spec = specMapCFA (cfaInlineWirePrefix spec) spec
 
-cfaInlineWireAlways :: Spec -> CFA -> CFA
-cfaInlineWireAlways spec cfa = foldl' (\cfa0 loc -> let cfa1 = case specAlways spec of
+cfaInlineWirePrefix :: Spec -> CFA -> CFA
+cfaInlineWirePrefix spec cfa = foldl' (\cfa0 loc -> let cfa1 = case specPrefix spec of
                                                                     Nothing -> cfa0
                                                                     Just a  -> cfaLocInline cfa0 loc a
                                                     in case specWire spec of
@@ -136,9 +136,9 @@ cfaInlineWireAlways spec cfa = foldl' (\cfa0 loc -> let cfa1 = case specAlways s
     where locs = filter (\loc -> (isDelayLabel $ cfaLocLabel loc cfa) && (G.suc cfa loc /= []))
                         $ G.nodes cfa
 
-cfaLocInlineWireAlways :: Spec -> CFA -> Loc -> CFA
-cfaLocInlineWireAlways spec cfa loc =
-    let cfa1 = case specAlways spec of
+cfaLocInlineWirePrefix :: Spec -> CFA -> Loc -> CFA
+cfaLocInlineWirePrefix spec cfa loc =
+    let cfa1 = case specPrefix spec of
                     Nothing -> cfa
                     Just a  -> cfaLocInline cfa loc a
                in case specWire spec of

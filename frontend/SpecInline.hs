@@ -57,13 +57,13 @@ spec2Internal s =
         vars               = mkVars
         (tvar, tenum)      = mkTagVarDecl
 
-        ((specWire, specAlways, inittran, goals), (_, extratmvars)) = 
+        ((specWire, specPrefix, inittran, goals), (_, extratmvars)) = 
             runState (do wire      <- mkWires
-                         always    <- mkAlways
+                         prefix    <- mkPrefix
                          inittr    <- mkInit
                          usergoals <- mapM mkGoal $ tmGoal tmMain
                          maggoal   <- mkMagicGoal
-                         return (wire, always, inittr, if' (not $ null usergoals) usergoals [maggoal]))
+                         return (wire, prefix, inittr, if' (not $ null usergoals) usergoals [maggoal]))
                      (0,[])
         extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) (NSID Nothing Nothing) v) extratmvars
         (specProc, tmppvs) = unzip $ (map procToCProc $ tmProcess tmMain) 
@@ -93,7 +93,7 @@ spec2Internal s =
         spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransitions EPIDCont ctran 
                                        , I.tsUTran  = utran
                                        , I.tsWire   = cfaToITransition (fromMaybe I.cfaNop (I.specWire spec'))   "wires"
-                                       , I.tsAlways = cfaToITransition (fromMaybe I.cfaNop (I.specAlways spec')) "always"
+                                       , I.tsPrefix = cfaToITransition (fromMaybe I.cfaNop (I.specPrefix spec')) "prefix"
                                        , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ [errinit, maginit, continit]))
                                        , I.tsGoal   = goals
                                        , I.tsFair   = mkFair spec'
@@ -165,18 +165,18 @@ orderWires' g | G.noNodes g == 0  = []
                             (g,[]) (G.nodes g)
 
 ----------------------------------------------------------------------
--- Always-block
+-- Prefix-block
 ----------------------------------------------------------------------
 
--- Generate transition that performs all always-actions.  It will be
+-- Generate transition that performs all prefix actions.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkAlways :: (?spec::Spec) => NameGen (Maybe I.CFA)
-mkAlways | (null $ tmAlways tmMain) = return Nothing
+mkPrefix :: (?spec::Spec) => NameGen (Maybe I.CFA)
+mkPrefix | (null $ tmPrefix tmMain) = return Nothing
          | otherwise                = do
     stat <- let ?scope = ScopeTemplate tmMain
-            in statSimplify $ SSeq nopos $ map alwBody $ tmAlways tmMain
+            in statSimplify $ SSeq nopos $ map prefBody $ tmPrefix tmMain
     let ctx = CFACtx { ctxEPID    = Nothing
-                     , ctxStack   = [(ScopeTemplate tmMain, error "return from an always-block", Nothing, M.empty)]
+                     , ctxStack   = [(ScopeTemplate tmMain, error "return from an prefix-block", Nothing, M.empty)]
                      , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
                      , ctxBrkLocs = [error "break outside a loop"]
                      , ctxGNMap   = globalNMap
@@ -184,7 +184,7 @@ mkAlways | (null $ tmAlways tmMain) = return Nothing
                      , ctxVar     = []}
         ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                                ctxPause aft I.true I.ActNone) ctx
-    return $ Just $ I.cfaTraceFile (ctxCFA ctx') "always_cfa" $ ctxCFA ctx'
+    return $ Just $ I.cfaTraceFile (ctxCFA ctx') "prefix_cfa" $ ctxCFA ctx'
 
 ----------------------------------------------------------------------
 -- Fair sets
