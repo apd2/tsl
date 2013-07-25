@@ -31,12 +31,10 @@ tranCFAToACFA vs loc cfa =
     let ?initloc = loc 
         ?cfa = cfaPruneUnreachable cfa [loc] in 
     let -- prefill ACFA for final states
-        acfa0 = foldl' (\g l -> addUseDefVar g l $ map (,l) vs) G.empty
+        acfa0 = foldl' (\g l -> addUseDefVar g l $ map (\v -> (v, varRecomputedLoc loc v)) vs) G.empty
                 $ filter ((==0) . G.outdeg ?cfa)
                 $ G.nodes ?cfa
-    in mkACFA acfa0 []
-
-
+    in simplifyACFA $ mkACFA acfa0 []
 
 mkACFA :: (?spec::Spec, ?initloc::Loc, ?pred::[Predicate], ?cfa::CFA) => ACFA -> [Loc] -> ACFA
 mkACFA acfa added = 
@@ -48,7 +46,7 @@ mkACFA acfa added =
         -- compute variable updates along all outgoing transitions
         updates = map (\(loc', tran) -> (loc', tranPrecondition tran, map (varUpdateTran tran) $ fst $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
         -- extract the list of abstract variables from transitions
-        vs = nub $ concatMap (\(_,pre,upd) -> fAbsVars pre ++ concatMap acasAbsVars upd) updates
+        vs = nub $ concatMap (\(_,mpre,upd) -> maybe [] fAbsVars mpre ++ concatMap acasAbsVars upd) updates
         acfa'  = addUseDefVar acfa loc $ map (\v -> (v, varRecomputedLoc loc v)) vs
         acfa'' = foldIdx (\gr (l, pre, upds) i -> G.insEdge (loc, l, (i,pre,upds)) gr) acfa' updates
     in if loc == ?initloc
@@ -79,6 +77,65 @@ isVarRecomputedByTran v tr = case varUpdateTran tr v of
                                   CasLeaf e -> e /= avarToExpr v
                                   _         -> True
 
+
+simplifyACFA :: ACFA -> ACFA
+simplifyACFA acfa = if' (b1 || b2 || b3) (simplifyACFA acfa3) acfa
+    where (acfa1, b1) = simplifyACFA1 acfa
+          (acfa2, b2) = simplifyACFA2 acfa1
+          (acfa3, b3) = simplifyACFA3 acfa2
+          -- TODO: after simplifyACFA3 some variable updates
+          -- may be redundant.
+
+-- Find and delete a location that
+-- * has a single outgoing transition that does not contain any variable
+--   updates or preconditions
+-- * does not contain any variable updates
+simplifyACFA1 :: ACFA -> (ACFA, Bool)
+simplifyACFA1 acfa = maybe (acfa, False) ((, True) . rm acfa) mcand
+    where mcand = find ((\(_, mpre, upds) -> isNothing mpre && null upds) . snd . head . G.lsuc acfa)
+                  $ filter ((==1) . length . G.lsuc acfa)
+                  $ filter ((>0)  . length . G.pre acfa)  -- not initial location
+                  $ filter (null  . fst . fromJust . G.lab acfa)
+                  $ G.nodes acfa
+          rm :: ACFA -> Loc -> ACFA
+          rm g c = foldl' (\g' (c'', l) -> G.insEdge (c'',c', l) g') (G.delNode c g) (G.lpre g c)
+              where c' = head $ G.suc g c
+
+-- Find a location that
+-- * has a single outgoing edge to a location that only has one predecessor
+-- * this edge does not contain preconditions or variable updates
+-- and delete this successor location
+simplifyACFA2 :: ACFA -> (ACFA, Bool)
+simplifyACFA2 acfa = maybe (acfa, False) ((, True) . rm acfa) mcand
+    where mcand = find ((\(_, mpre, upds) -> isNothing mpre && null upds) . snd . head . G.lsuc acfa)
+                  $ filter ((==1) . length . G.pre acfa . head . G.suc acfa)
+                  $ filter ((==1) . length . G.lsuc acfa)
+                  $ filter ((>0)  . length . G.pre acfa)
+                  $ G.nodes acfa
+          rm :: ACFA -> Loc -> ACFA
+          rm g c = foldl' (\g' (c'', l) -> G.insEdge (c,c'', l) g') (G.delNode c' g0) (G.lsuc g0 c')
+              where (def,_) = fromJust $ G.lab g c
+                    c' = head $ G.suc g c
+                    (_,use) = fromJust $ G.lab g c' 
+                    g0 = graphUpdNode c (\_ -> (def,use)) g
+
+
+-- eliminate conditional nodes (i.e., nodes that have >1 outgoing edges labelled 
+-- with preconditions, but no var updates) in case they only have a single successor.
+-- The assumption here is that all branches are of the form if-then-else, i.e., 
+-- disjunction of branch conditions is true.
+simplifyACFA3 :: ACFA -> (ACFA, Bool)
+simplifyACFA3 acfa = maybe (acfa, False) ((,True) . rm acfa) mcand
+    where mcand = find     (all ((\(_,mpre,upd) -> null upd && isJust mpre) . snd) . G.lsuc acfa)
+                  $ filter ((==1) . length . nub . G.suc acfa)
+                  $ filter ((>1)  . length . G.lsuc acfa)
+                  $ G.nodes acfa     
+          rm :: ACFA -> Loc -> ACFA
+          rm g c = graphUpdNode c (\(def, _) -> (def,M.empty))
+                   $ G.insEdge (c, c', (0, Nothing, [])) 
+                   $ G.delEdge (c,c') g
+                   where c' = head $ G.suc g c
+
 -- Takes a location and a list of variables used in this location and updates
 -- the corresponding use and defined lists.
 addUseDefVar :: ACFA -> Loc -> [(AbsVar, Loc)] -> ACFA
@@ -94,9 +151,9 @@ addUseDefVar acfa useloc defs =
                  Just _  -> acfa
 
 -- Precondition of a transition
-tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> Formula
-tranPrecondition (TranStat (SAssume e))   = ptrFreeBExprToFormula e
-tranPrecondition _                        = FTrue
+tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> Maybe Formula
+tranPrecondition (TranStat (SAssume e))   = Just $ ptrFreeBExprToFormula e
+tranPrecondition _                        = Nothing
 
 -- Compute variable updates for an individual CFA edge
 varUpdateTran :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> AbsVar -> ECascade

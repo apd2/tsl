@@ -40,10 +40,10 @@ conj xs  = H.Conj xs
 -- with variable update functions and states--with sets of abstract
 -- vars to be recomputed in this state and a map from abstract vars to
 -- locations where these vars are recomputed
-type ACFA = G.Gr ([AbsVar], M.Map AbsVar Loc) (Int,Formula,[ECascade])
+type ACFA = G.Gr ([AbsVar], M.Map AbsVar Loc) (Int,Maybe Formula,[ECascade])
 
 acfaTraceFile :: ACFA -> String -> a -> a
-acfaTraceFile acfa title = graphTraceFile (G.emap (\_ -> "") acfa) title
+acfaTraceFile acfa title = graphTraceFile (G.emap (\(id, mpre, upd) -> show id ++ ": " ++ (maybe "" show mpre)  ++ ": " ++ (show $ length upd)) acfa) title
 
 compileACFA :: (?spec::Spec, ?pred::[Predicate]) => [(AbsVar, f)] -> ACFA -> TAST f e c
 compileACFA nxtvs acfa = --trace ("ord: " ++ show ord) 
@@ -102,8 +102,8 @@ mkAST' (vmap, tmap) (l:ord) =
                            pre -> conj $ map (\(l', tr) -> compileTransition emap l' l tr fl) pre
 
 
-compileTransition :: (?spec::Spec, ?acfa::ACFA) => EMap f e c -> Loc -> Loc -> (Int, Formula, [ECascade]) -> TAST f e c -> TAST f e c
-compileTransition emap from to (idx, pre, upd) tovar = trvar `H.XNor` (preast `H.And` updast `H.And` tovar)
+compileTransition :: (?spec::Spec, ?acfa::ACFA) => EMap f e c -> Loc -> Loc -> (Int, Maybe Formula, [ECascade]) -> TAST f e c -> TAST f e c
+compileTransition emap from to (idx, mpre, upd) tovar = trvar `H.XNor` (preast `H.And` updast `H.And` tovar)
     where trvar  = (snd emap) M.! (from,idx)
           tovs   = fst $ fromJust $ G.lab ?acfa to
           updast = let ?emap = emap
@@ -112,7 +112,7 @@ compileTransition emap from to (idx, pre, upd) tovar = trvar `H.XNor` (preast `H
                    conj $ map compileTransition1 $ zip upd tovs
           preast = let ?loc = from 
                        ?emap = emap in 
-                   compileFormulaLoc pre
+                   maybe H.T compileFormulaLoc mpre
 
 acasAbsVars :: (?spec::Spec) => ECascade -> [AbsVar]
 acasAbsVars = nub . acasAbsVars'
