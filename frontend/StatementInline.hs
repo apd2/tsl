@@ -151,14 +151,17 @@ statToCFA' before after s@(SPar _ ps) = do
     let pids  = map (childPID pid . sname . fst) ps
     -- enable child processes
     aften <- ctxInsTransMany' before $ map (\pid' -> I.TranStat $ mkEnVar pid' Nothing I.=: I.true) pids
-    let mkFinalCheck (n,_) = I.disj $ map (\loc -> mkPCVar pid' I.=== mkPC pid' loc) $ I.cfaFinal $ I.procCFA p
+    let mkFinalCheck (n,_) = I.disj $ map (\loc -> mkPCEq pcfa pid' (mkPC pid' loc)) $ I.cfaFinal pcfa
                              where pid' = childPID pid $ sname n
                                    p = fromJustMsg ("mkFinalCheck: process " ++ show pid' ++ " unknown") 
                                        $ find ((== sname n) . I.procName) ?procs
+                                   pcfa = I.procCFA p
     -- pause and wait for all of them to reach final states
     aftwait <- ctxPause aften (I.conj $ map mkFinalCheck ps) (I.ActStat s)
     -- Disable forked processes and bring them back to initial states
-    aftreset <- ctxInsTransMany' aftwait $ map (\pid' -> I.TranStat $ mkPCVar pid' I.=: mkPC pid' I.cfaInitLoc) pids
+    aftreset <- ctxInsTransMany' aftwait $ map (\(n,_) -> let pid' = childPID pid $ sname n
+                                                              pcfa = I.procCFA $ fromJust $ find ((== sname n) . I.procName) ?procs
+                                                          in mkPCAsn pcfa pid' (mkPC pid' I.cfaInitLoc)) ps
     aftdisable <- ctxInsTransMany' aftreset $ map  (\pid' -> I.TranStat $ mkEnVar pid' Nothing I.=: I.false) pids
     ctxInsTrans aftdisable after I.TranNop
 

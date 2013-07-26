@@ -121,14 +121,22 @@ mkPCVarName pid = mkVarNameS (NSID (Just pid) Nothing) "$pc"
 mkPCEnumName :: PrID -> String
 mkPCEnumName pid = mkVarNameS (NSID (Just pid) Nothing) "$pcenum"
 
-mkPCVar :: PrID -> I.Expr
-mkPCVar pid = I.EVar $ mkPCVarName pid
+--mkPCVar :: PrID -> I.Expr
+--mkPCVar pid = I.EVar $ mkPCVarName pid
 
 mkPCEnum :: PrID -> I.Loc -> String
 mkPCEnum pid loc = mkVarNameS (NSID (Just pid) Nothing) $ "$pc" ++ show loc
 
 mkPC :: PrID -> I.Loc -> I.Expr
 mkPC pid loc = I.EConst $ I.EnumVal $ mkPCEnum pid loc 
+
+mkPCEq :: I.CFA -> PrID -> I.Expr -> I.Expr
+mkPCEq cfa pid e | (length $ I.cfaDelayLocs cfa) <= 1 = I.true
+                 | otherwise                          = (I.EVar $ mkPCVarName pid) I.=== e
+
+mkPCAsn :: I.CFA -> PrID -> I.Expr -> I.TranLabel
+mkPCAsn cfa pid e | (length $ I.cfaDelayLocs cfa) <= 1 = I.TranNop
+                  | otherwise                          = I.TranStat $ (I.EVar $ mkPCVarName pid) I.=: e
 
 pcEnumToLoc :: String -> I.Loc
 pcEnumToLoc str = read 
@@ -434,7 +442,7 @@ insertSuffix pid cfa loc | (null $ G.pre cfa loc) = cfa
     (cfa1, befepid)  = I.cfaInsTrans' loc' (I.TranStat $ I.SAssume $ mkEPIDLVar I.=== (mkEPIDEnum $ EPIDProc pid)) cfa0
     (cfa2, aftepid)  = I.cfaInsTrans' befepid (I.TranStat $ mkEPIDVar I.=: mkEPIDLVar)                   cfa1
     -- pc
-    (cfa3, aftpc)    = I.cfaInsTrans' aftepid (I.TranStat $ mkPCVar pid I.=: mkPC pid loc)               cfa2
+    (cfa3, aftpc)    = I.cfaInsTrans' aftepid (mkPCAsn cfa pid (mkPC pid loc))                           cfa2
     -- cont
     (cfa4, aftucont) = I.cfaInsTrans' aftpc   (I.TranStat $ I.SAssume $ mkContVar I.=== I.false)         cfa3
     cfa5             = I.cfaInsTrans  aftucont loc (I.TranStat        $ mkContVar I.=: mkContLVar)       cfa4

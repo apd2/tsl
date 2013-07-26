@@ -46,7 +46,9 @@ spec2Internal s =
         (pcvars, pcenums) = unzip 
                             $ map (\(EPIDProc pid,cfa) -> let enum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) $ I.cfaDelayLocs cfa
                                                               var  = I.Var False I.VarState (mkPCVarName pid) (I.Enum $ I.enumName enum)
-                                                          in (var, enum)) $ filter ((/= EPIDCont) . fst) cfas
+                                                          in (var, enum)) 
+                            $ filter ((/=1) . length . I.cfaDelayLocs . snd)
+                            $ filter ((/= EPIDCont) . fst) cfas
         -- built-in enums used in translating choice{} statements
         nctasks = length $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain
         choiceenum = map mkChoiceEnumDecl [0..(max 9 nctasks)]
@@ -81,9 +83,9 @@ spec2Internal s =
                           $ filter ((/= EPIDCont) . fst)
                           $ I.specAllCFAs spec'
         -- initialise PC variables.
-        pcinit = map (\(EPIDProc pid) -> mkPCVar pid I.=== mkPC pid I.cfaInitLoc) 
-                 $ filter (/= EPIDCont) 
-                 $ map fst $ I.specAllCFAs spec'
+        pcinit = map (\(EPIDProc pid, cfa) -> mkPCEq cfa pid (mkPC pid I.cfaInitLoc)) 
+                 $ filter ((/= EPIDCont) . fst) 
+                 $ I.specAllCFAs spec'
         -- initialise $en vars to false
         peninit = concatMap (mapPTreeFProc (\pid _ -> mkEnVar pid Nothing  I.=== I.false)) $ tmProcess tmMain
         maginit  = mkMagicVar I.=== I.false
@@ -207,7 +209,7 @@ mkFair ispec = mkFairSched : (map mkFairProc $ I.specAllProcs ispec)
     mkFairCFA :: I.CFA -> PrID -> I.Expr
     mkFairCFA cfa pid = 
         (mkEPIDVar I./== mkEPIDEnum (EPIDProc pid)) `I.land`
-        (I.disj $ map (\loc -> (mkPCVar pid I.=== mkPC pid loc) `I.land` (I.cfaLocWaitCond cfa loc)) 
+        (I.disj $ map (\loc -> mkPCEq cfa pid (mkPC pid loc) `I.land` (I.cfaLocWaitCond cfa loc)) 
                 $ filter (not . I.isDeadendLoc cfa) 
                 $ I.cfaDelayLocs cfa)
 
@@ -359,9 +361,11 @@ procToCFA pid@(PrID _ ps) lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (sho
                                               else return I.cfaInitLoc
                                aft <- procStatToCFA stat aftguard
                                _   <- ctxFinal aft
+                               modify $ \c -> c {ctxCFA = cfaShortcut $ ctxCFA c}
                                ctxUContInsertSuffixes
                                ctxPruneUnreachable) ctx
 
+-- Shortcut initial transition of the CFA if it does not do anything
 cfaShortcut :: I.CFA -> I.CFA
 cfaShortcut cfa = cfaShortcut' cfa I.cfaInitLoc
 
@@ -506,7 +510,7 @@ extractTransition epid (I.Transition from to cfa) =
             EPIDCont -> I.Transition from lfinal cfa1
             EPIDProc pid -> -- check PC value before the transition
                             let (cfa2, befpc) = I.cfaInsLoc (I.LInst I.ActNone) cfa1
-                                cfa3 = I.cfaInsTrans befpc from (I.TranStat $ I.SAssume $ mkPCVar pid I.=== mkPC pid from) cfa2
+                                cfa3 = I.cfaInsTrans befpc from (I.TranStat $ I.SAssume $ mkPCEq cfa pid (mkPC pid from)) cfa2
                             in I.Transition befpc lfinal cfa3
 
 tranAppend :: I.Transition -> I.Statement -> I.Transition
