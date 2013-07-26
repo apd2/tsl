@@ -39,7 +39,8 @@ module CFA(Statement(..),
            cfaTraceFile,
            cfaTraceFileMany,
            cfaShow,
-           cfaSave) where
+           cfaSave,
+           cfaSplitLoc) where
 
 import qualified Data.Graph.Inductive as G
 import Data.Maybe
@@ -125,7 +126,7 @@ data LocLabel = LInst  {locAct :: LocAction}
 
 instance PP LocLabel where
     pp (LInst  a)     = pp a
-    pp (LPause a _ e) = text "wait" <> (parens $ pp e) $$ pp a
+    pp (LPause a _ e) = text "WAIT" <> (parens $ pp e) $$ pp a
     pp (LFinal a _)   = text "F"                       $$ pp a
 
 instance Show LocLabel where
@@ -315,3 +316,12 @@ cfaReachInst' cfa found frontier = if S.null frontier'
 cfaPrune :: CFA -> S.Set Loc -> CFA
 cfaPrune cfa locs = foldl' (\g l -> if S.member l locs then g else G.delNode l g) cfa (G.nodes cfa)
 
+
+-- Split location into 2, one containing all outgoing edges and one containing
+-- all incoming edges of the original location
+cfaSplitLoc :: Loc -> CFA -> (Loc, CFA)
+cfaSplitLoc loc cfa = (loc', cfa3)
+    where i            = G.inn cfa loc
+          cfa1         = foldl' (\cfa0 (f,t,_) -> G.delEdge (f,t) cfa0) cfa i 
+          (cfa2, loc') = cfaInsLoc (LInst ActNone) cfa1
+          cfa3         = foldl' (\cfa0 (f,_,l) -> G.insEdge (f,loc',l) cfa0) cfa2 i

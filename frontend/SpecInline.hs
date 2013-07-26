@@ -286,11 +286,12 @@ mkCTran = I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
                         , ctxLastVar = 0
                         , ctxVar     = []}
           ctx' = let ?procs = [] in execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.TranStat contGuard
-                                                  after <- ctxInsLoc
+                                                  after   <- ctxInsLoc
+                                                  aftcont <- ctxInsTrans' after $ I.TranStat $ mkContVar I.=: I.false
                                                   _ <- mapM (\(t,s) -> do afttag <- ctxInsTrans' aftguard $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
                                                                           aftcall <- procStatToCFA s afttag
                                                                           ctxInsTrans aftcall after $ I.TranNop) $ zip mkTagList stats'
-                                                  ctxFinal after) ctx
+                                                  ctxFinal aftcont) ctx
 
 ----------------------------------------------------------------------
 -- Variables
@@ -358,6 +359,7 @@ procToCFA pid@(PrID _ ps) lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (sho
                                               else return I.cfaInitLoc
                                aft <- procStatToCFA stat aftguard
                                _   <- ctxFinal aft
+                               ctxUContInsertSuffixes
                                ctxPruneUnreachable) ctx
 
 -- Recursively construct CFA's for the process and its children
@@ -488,25 +490,17 @@ pruneTrans cfa from to = if G.noNodes cfa'' == G.noNodes cfa then cfa'' else pru
 extractTransition :: EPID -> I.Transition -> I.Transition
 extractTransition epid (I.Transition from to cfa) = 
     let -- If this is a loop transition, split the initial node
-        (linit, lfinal, cfa1) = if from == to
-                                   then splitLoc from cfa
-                                   else (from, to, cfa)
+        (lfinal, cfa1) = if from == to
+                            then I.cfaSplitLoc from cfa
+                            else (to, cfa)
     in case epid of 
-            EPIDCont -> I.Transition linit lfinal cfa1
+            EPIDCont -> I.Transition from lfinal cfa1
             EPIDProc pid -> -- check PC value before the transition
                             let (cfa2, befpc) = I.cfaInsLoc (I.LInst I.ActNone) cfa1
-                                cfa3 = I.cfaInsTrans befpc linit (I.TranStat $ I.SAssume $ mkPCVar pid I.=== mkPC pid from) cfa2
+                                cfa3 = I.cfaInsTrans befpc from (I.TranStat $ I.SAssume $ mkPCVar pid I.=== mkPC pid from) cfa2
                             in I.Transition befpc lfinal cfa3
 
 tranAppend :: I.Transition -> I.Statement -> I.Transition
 tranAppend (I.Transition from to cfa) s = I.Transition from to' cfa'
     where (cfa', to') = I.cfaInsTrans' to (I.TranStat s) cfa
 
--- Split location into 2, one containing all outgoing edges and one containing
--- all incoming edges of the original location
-splitLoc :: I.Loc -> I.CFA -> (I.Loc, I.Loc, I.CFA)
-splitLoc loc cfa = (loc, loc', cfa3)
-    where i            = G.inn cfa loc
-          cfa1         = foldl' (\cfa0 (f,t,_) -> G.delEdge (f,t) cfa0) cfa i 
-          (cfa2, loc') = I.cfaInsLoc (I.LInst I.ActNone) cfa1
-          cfa3         = foldl' (\cfa0 (f,_,l) -> G.insEdge (f,loc',l) cfa0) cfa2 i
