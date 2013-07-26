@@ -362,6 +362,15 @@ procToCFA pid@(PrID _ ps) lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (sho
                                ctxUContInsertSuffixes
                                ctxPruneUnreachable) ctx
 
+cfaShortcut :: I.CFA -> I.CFA
+cfaShortcut cfa = cfaShortcut' cfa I.cfaInitLoc
+
+cfaShortcut' :: I.CFA -> I.Loc -> I.CFA
+cfaShortcut' cfa l | (I.isDelayLabel $ fromJust $ G.lab cfa l) && (l /= I.cfaInitLoc) = graphChangeNodeID l I.cfaInitLoc $ G.delNode I.cfaInitLoc cfa
+                   | (length $ G.lsuc cfa l) /= 1                                     = cfa
+                   | (snd $ head $ G.lsuc cfa l) /= I.TranNop                         = cfa
+                   | otherwise                                                        = cfaShortcut' cfa $ head $ G.suc cfa l
+
 -- Recursively construct CFA's for the process and its children
 procToCProc :: (?spec::Spec) => Process -> (I.Process, [I.Var])
 procToCProc p = fprocToCProc Nothing ((ScopeProcess tmMain p), (sname p, (procStatement p)))

@@ -31,7 +31,7 @@ tranCFAToACFA vs loc cfa =
     let ?initloc = loc 
         ?cfa = cfaPruneUnreachable cfa [loc] in 
     let -- prefill ACFA for final states
-        acfa0 = foldl' (\g l -> addUseDefVar g l $ map (\v -> (v, varRecomputedLoc loc v)) vs) G.empty
+        acfa0 = foldl' (\g l -> addUseDefVar g l $ map (\v -> (v, l)) vs) G.empty
                 $ filter ((==0) . G.outdeg ?cfa)
                 $ G.nodes ?cfa
     in simplifyACFA $ mkACFA acfa0 []

@@ -9,6 +9,7 @@ module TSLUtil(fromLeft,
                bitWidth,
                readBin,
                graphUpdNode,
+               graphChangeNodeID,
                graphTrace,
                graphTraceFile,
                graphTraceFileMany,
@@ -82,6 +83,12 @@ readBin s = foldl' (\acc c -> (acc `shiftL` 1) +
 graphUpdNode :: Node -> (a -> a) -> Gr a b -> Gr a b
 graphUpdNode n f g = (pre, n', f x, suc) & g' 
     where (Just (pre, n', x, suc), g') = match n g 
+    
+graphChangeNodeID :: Node -> Node -> Gr a b -> Gr a b
+graphChangeNodeID n n' g = (pre', n', x, suc') & g' 
+    where (Just (pre, _, x, suc), g') = match n g 
+          pre' = map (\(l,m) -> if' (m==n) (l,n') (l,m)) pre
+          suc' = map (\(l,m) -> if' (m==n) (l,n') (l,m)) suc
     
 -- Graph visualisation --
 
