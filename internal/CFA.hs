@@ -4,6 +4,7 @@ module CFA(Statement(..),
            Frame(..),
            frameMethod,
            Stack,
+           stackSetLoc,
            (=:),
            Loc,
            LocAction(..),
@@ -120,6 +121,9 @@ type Stack = [Frame]
 instance PP Stack where
     pp stack = vcat $ map pp stack
 
+stackSetLoc :: Stack -> Loc -> Stack
+stackSetLoc ((Frame sc l):frs) l' = (Frame sc l') : frs
+
 data LocLabel = LInst  {locAct :: LocAction}
               | LPause {locAct :: LocAction, locStack :: Stack, locExpr :: Expr}
               | LFinal {locAct :: LocAction, locStack :: Stack}
@@ -217,7 +221,7 @@ cfaInsLoc lab cfa = (G.insNode (loc,lab) cfa, loc)
    where loc = (snd $ G.nodeRange cfa) + 1
 
 cfaLocLabel :: Loc -> CFA -> LocLabel
-cfaLocLabel loc cfa = fromJustMsg "cfaLocLabel" $ G.lab cfa loc
+cfaLocLabel loc cfa = trace ("cfaLocLabel " ++ show loc) $ fromJustMsg "cfaLocLabel" $ G.lab cfa loc
 
 cfaLocSetAct :: Loc -> LocAction -> CFA -> CFA
 cfaLocSetAct loc act cfa = graphUpdNode loc (\n -> n {locAct = act}) cfa 
