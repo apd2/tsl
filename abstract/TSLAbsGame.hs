@@ -19,6 +19,7 @@ import IExpr hiding (disj)
 import CFA
 import Predicate
 import Inline
+import PID
 import qualified Interface   as Abs
 import qualified TermiteGame as Abs
 import qualified HAST.HAST   as H
@@ -132,6 +133,13 @@ tslUpdateAbsVar (av, n) | (show av) == mkContVarName = do
     H.compileBDD ?m ?ops $ (x `H.Imp` (H.Not x')) `H.And` 
                            (x' `H.Imp` magic) `H.And` 
                            (((H.Not x) `H.And` magic) `H.Imp` (x' `H.XNor` lcont))
+
+tslUpdateAbsVar (av, n) | (show av) == mkEPIDVarName = do
+    let eqcont  = H.EqConst (H.FVar n) (enumToInt $ mkEPIDEnumeratorName EPIDCont)
+        eqlepid = H.EqVar   (H.FVar n) (H.NVar $ avarBAVar $ AVarEnum $ TVar mkEPIDLVarName)
+        cont = compileFormula $ ptrFreeBExprToFormula mkContVar
+    H.compileBDD ?m ?ops $ (cont `H.And` eqcont) `H.Or` ((H.Not cont) `H.And` eqlepid)
+    
 tslUpdateAbsVar (av, n) = do
     let trans = mapIdx (\tr i -> varUpdateTrans (show i) [(av,n)] tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
         (upds, pres) = unzip $ catMaybes trans
