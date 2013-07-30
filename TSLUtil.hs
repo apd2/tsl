@@ -106,6 +106,7 @@ sanitize title = replace "("  ""
                $ replace "."  "_"
                $ replace "["  "_"
                $ replace "]"  "_"
+               $ replace "&"  "_"
                title
 
 graphTrace :: (Show b, Show c) => Gr b c -> String -> a -> a

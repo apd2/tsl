@@ -1,6 +1,8 @@
 {-# LANGUAGE ImplicitParams, ScopedTypeVariables, RecordWildCards #-}
 
-module TSLAbsGame(tslAbsGame, bexprToFormula) where
+module TSLAbsGame(tslAbsGame, 
+                  bexprToFormula, 
+                  tslUpdateAbsVarAST) where
 
 import Prelude hiding (and)
 import Data.List hiding (and)
@@ -120,33 +122,40 @@ tslUpdateAbs spec m avars ops = do
         ?m    = m
         ?pred = p
     mapM tslUpdateAbsVar avars
- 
-tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
-tslUpdateAbsVar (av, n) | (show av) == mkContVarName = do
-    -- handle $cont variable in a special way:
-    -- $cont is false under controllable transition, 
-    -- $cont can only be true after uncontrollable transition if we are inside a magic block.
-    let x  = H.Var $ H.NVar $ avarBAVar av 
-        x' = H.Var $ H.FVar n
-        lcont = compileFormula $ ptrFreeBExprToFormula mkContLVar
-        magic = compileFormula $ ptrFreeBExprToFormula mkMagicVar
-    H.compileBDD ?m ?ops $ (x `H.Imp` (H.Not x')) `H.And` 
-                           (x' `H.Imp` magic) `H.And` 
-                           (((H.Not x) `H.And` magic) `H.Imp` (x' `H.XNor` lcont))
 
-tslUpdateAbsVar (av, n) | (show av) == mkEPIDVarName = do
-    let eqcont  = H.EqConst (H.FVar n) (enumToInt $ mkEPIDEnumeratorName EPIDCont)
-        eqlepid = H.EqVar   (H.FVar n) (H.NVar $ avarBAVar $ AVarEnum $ TVar mkEPIDLVarName)
-        cont = compileFormula $ ptrFreeBExprToFormula mkContVar
-    H.compileBDD ?m ?ops $ (cont `H.And` eqcont) `H.Or` ((H.Not cont) `H.And` eqlepid)
-    
+tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbsVar (av, n) = do
-    let trans = mapIdx (\tr i -> varUpdateTrans (show i) [(av,n)] tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
-        (upds, pres) = unzip $ catMaybes trans
-        -- generate condition when variable value does not change
-        ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
-        unchanged = H.And (H.Conj $ map H.Not pres) ident
-    trace ("compiling " ++ show av) $ H.compileBDD ?m ?ops $ H.Disj (unchanged:upds)
+    trace ("compiling " ++ show av)
+    $ H.compileBDD ?m ?ops $ tslUpdateAbsVarAST (av,n)
+
+
+tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
+
+-- handle $cont variable in a special way:
+-- $cont is false under controllable transition, 
+-- $cont can only be true after uncontrollable transition if we are inside a magic block.
+tslUpdateAbsVarAST (av, n) | (show av) == mkContVarName = (x `H.Imp` (H.Not x')) `H.And` 
+                                                          (x' `H.Imp` magic) `H.And` 
+                                                          (((H.Not x) `H.And` magic) `H.Imp` (x' `H.XNor` lcont))
+    where 
+    x  = H.Var $ H.NVar $ avarBAVar av 
+    x' = H.Var $ H.FVar n
+    lcont = compileFormula $ ptrFreeBExprToFormula mkContLVar
+    magic = compileFormula $ ptrFreeBExprToFormula mkMagicVar
+
+tslUpdateAbsVarAST (av, n) | (show av) == mkEPIDVarName = (cont `H.And` eqcont) `H.Or` ((H.Not cont) `H.And` eqlepid)
+    where 
+    eqcont  = H.EqConst (H.FVar n) (enumToInt $ mkEPIDEnumeratorName EPIDCont)
+    eqlepid = H.EqVar   (H.FVar n) (H.NVar $ avarBAVar $ AVarEnum $ TVar mkEPIDLVarName)
+    cont = compileFormula $ ptrFreeBExprToFormula mkContVar
+    
+tslUpdateAbsVarAST (av, n)                              = H.Disj (unchanged:upds)
+    where
+    trans = mapIdx (\tr i -> varUpdateTrans (show i) [(av,n)] tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
+    (upds, pres) = unzip $ catMaybes trans
+    -- generate condition when variable value does not change
+    ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
+    unchanged = H.And (H.Conj $ map H.Not pres) ident
     
 ----------------------------------------------------------------------------
 -- PDB operations
