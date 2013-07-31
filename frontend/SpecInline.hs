@@ -36,8 +36,8 @@ import Type
 import Inline
 
 -- Main function
-spec2Internal :: Spec -> I.Spec
-spec2Internal s = 
+spec2Internal :: Spec -> Bool -> I.Spec
+spec2Internal s dofair = 
     let -- preprocessing
         ?spec = specSimplify s in
     let cfas = I.specAllCFAs spec
@@ -98,7 +98,7 @@ spec2Internal s =
                                        , I.tsPrefix = cfaToITransition (fromMaybe I.cfaNop (I.specPrefix spec')) "prefix"
                                        , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ [errinit, maginit, continit]))
                                        , I.tsGoal   = goals
-                                       , I.tsFair   = mkFair spec'
+                                       , I.tsFair   = if' dofair (mkFair spec') [I.FairRegion "dummy" I.false]
                                        }}
 
 
@@ -342,7 +342,7 @@ mkVars = mkErrVarDecl : mkContVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires
 
 -- Convert normal or forked process to CFA
 procToCFA :: (?spec::Spec, ?procs::[I.Process]) => PrID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
-procToCFA pid@(PrID _ ps) lmap parscope stat = {-I.cfaTraceFile (ctxCFA ctx') (show pid) $-} (ctxCFA ctx', ctxVar ctx')
+procToCFA pid@(PrID _ ps) lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (show pid) $ (ctxCFA ctx', ctxVar ctx')
     where -- top-level processes are not guarded
           guarded = not $ null ps
           guard = if guarded 
@@ -474,12 +474,12 @@ cfaToITransition cfa fname = case trans of
 -- Convert CFA to a list of transitions.
 -- Assume that unreachable states have already been pruned.
 cfaToITransitions :: EPID -> I.CFA -> [I.Transition]
-cfaToITransitions epid cfa = {-I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ show epid)-} trans'
+cfaToITransitions epid cfa = I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ show epid) trans'
     where
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa
     trans = concatMap (locTrans cfa) states
-    trans' = map (extractTransition epid) trans
+    trans' = map (extractTransition epid cfa) trans
 
 locTrans :: I.CFA -> I.Loc -> [I.Transition]
 locTrans cfa loc =
@@ -502,12 +502,12 @@ pruneTrans cfa from to = if G.noNodes cfa'' == G.noNodes cfa then cfa'' else pru
           cfa'' = foldl' (\g loc -> if loc /= to && null (G.suc g loc) then G.delNode loc g else g) cfa' (G.nodes cfa') 
 
 -- Extract transition into a separate CFA
-extractTransition :: EPID -> I.Transition -> I.Transition
-extractTransition epid (I.Transition from to cfa) = 
+extractTransition :: EPID -> I.CFA -> I.Transition -> I.Transition
+extractTransition epid cfa (I.Transition from to tcfa) = 
     let -- If this is a loop transition, split the initial node
         (lfinal, cfa1) = if from == to
-                            then I.cfaSplitLoc from cfa
-                            else (to, cfa)
+                            then I.cfaSplitLoc from tcfa
+                            else (to, tcfa)
     in case epid of 
             EPIDCont -> I.Transition from lfinal cfa1
             EPIDProc pid -> -- check PC value before the transition
