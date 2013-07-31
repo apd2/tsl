@@ -34,14 +34,14 @@ import BFormula
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: Spec -> C.STDdManager s u -> Abs.Abstractor s u AbsVar AbsVar
-tslAbsGame spec m = Abs.Abstractor { Abs.goalAbs   = tslGoalAbs   spec m
-                                   , Abs.fairAbs   = tslFairAbs   spec m
-                                   , Abs.initAbs   = tslInitAbs   spec m
-                                   , Abs.contAbs   = tslContAbs   spec m
-                                   --, gameConsistent  = tslGameConsistent  spec
-                                   , Abs.updateAbs = tslUpdateAbs spec m
-                                   }
+tslAbsGame :: Spec -> C.STDdManager s u -> Bool -> Abs.Abstractor s u AbsVar AbsVar
+tslAbsGame spec m dofair = Abs.Abstractor { Abs.goalAbs   = tslGoalAbs   spec m
+                                          , Abs.fairAbs   = tslFairAbs   spec m
+                                          , Abs.initAbs   = tslInitAbs   spec m
+                                          , Abs.contAbs   = tslContAbs   spec m
+                                          --, gameConsistent  = tslGameConsistent  spec
+                                          , Abs.updateAbs = tslUpdateAbs spec m dofair
+                                          }
 
 tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslGoalAbs spec m ops = do
@@ -101,47 +101,47 @@ tslContAbs spec m ops = do
         ?pred = p
     H.compileBDD m ops $ bexprAbstract $ mkContVar === true
 
---tslConstraint :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
---tslConstraint spec m ops = do
---    let ?ops = ops
---    p <- pdbPred
---    let ?spec = spec
---        ?m    = m
---        ?pred = p
---    let constr = H.Disj 
---                 $ mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) 
---                 $ (tsUTran $ specTran spec) ++ (tsCTran $ specTran spec)
---    H.compileBDD m ops constr    
+tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
+tslConstraint = H.Disj 
+                $ mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) 
+                $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
 
-tslUpdateAbs :: Spec -> C.STDdManager s u -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
-tslUpdateAbs spec m avars ops = do
+tslUpdateAbs :: Spec -> C.STDdManager s u -> Bool -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
+tslUpdateAbs spec m dofair avars ops = do
     trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
-    let ?ops  = ops
+    let ?ops    = ops
     p <- pdbPred
-    let ?spec = spec
-        ?m    = m
-        ?pred = p
+    let ?spec   = spec
+        ?m      = m
+        ?pred   = p
+        ?dofair = dofair
     mapM tslUpdateAbsVar avars
 
-tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
-tslUpdateAbsVar (av, n) = do
-    trace ("compiling " ++ show av)
-    $ H.compileBDD ?m ?ops $ tslUpdateAbsVarAST (av,n)
+tslUpdateAbsVar :: (?dofair::Bool, ?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
+tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
+                          $ H.compileBDD ?m ?ops $ tslUpdateAbsVarAST (av,n)
 
 
-tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
+tslUpdateAbsVarAST :: (?dofair::Bool, ?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
 
 -- handle $cont variable in a special way:
 -- $cont is false under controllable transition, 
 -- $cont can only be true after uncontrollable transition if we are inside a magic block.
-tslUpdateAbsVarAST (av, n) | (show av) == mkContVarName = (x `H.Imp` (H.Not x')) `H.And` 
-                                                          (x' `H.Imp` magic) `H.And` 
-                                                          (((H.Not x) `H.And` magic) `H.Imp` (x' `H.XNor` lcont))
+tslUpdateAbsVarAST (av, n) | (show av) == mkContVarName && ?dofair = tslConstraint `H.And`
+                                                                     (x `H.Imp` (H.Not x')) `H.And` 
+                                                                     (x' `H.Imp` magic) `H.And` 
+                                                                     (((H.Not x) `H.And` magic) `H.Imp` (x' `H.XNor` lcont))
+                           | (show av) == mkContVarName && (not ?dofair) = tslConstraint `H.And`
+                                                                           (x `H.Imp` (H.Not x')) `H.And` 
+                                                                           (x' `H.Imp` magic) `H.And` 
+                                                                           (((H.Not x) `H.And` magic) `H.Imp` ((x' `H.XNor` lcont) `H.And` x')) `H.And`
+                                                                           ((H.Not magic) `H.Imp` notidle)
     where 
     x  = H.Var $ H.NVar $ avarBAVar av 
     x' = H.Var $ H.FVar n
     lcont = compileFormula $ ptrFreeBExprToFormula mkContLVar
     magic = compileFormula $ ptrFreeBExprToFormula mkMagicVar
+    notidle = H.Not $ H.EqConst (H.NVar $ avarBAVar $ AVarEnum $ TVar mkEPIDLVarName) (enumToInt $ mkEPIDEnumeratorName $ EPIDProc $ PrID "_idle_" [])
 
 tslUpdateAbsVarAST (av, n) | (show av) == mkEPIDVarName = (cont `H.And` eqcont) `H.Or` ((H.Not cont) `H.And` eqlepid)
     where 

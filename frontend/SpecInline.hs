@@ -342,7 +342,7 @@ mkVars = mkErrVarDecl : mkContVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires
 
 -- Convert normal or forked process to CFA
 procToCFA :: (?spec::Spec, ?procs::[I.Process]) => PrID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
-procToCFA pid@(PrID _ ps) lmap parscope stat = I.cfaTraceFile (ctxCFA ctx') (show pid) $ (ctxCFA ctx', ctxVar ctx')
+procToCFA pid@(PrID _ ps) lmap parscope stat = {-I.cfaTraceFile (ctxCFA ctx') (show pid) $-} (ctxCFA ctx', ctxVar ctx')
     where -- top-level processes are not guarded
           guarded = not $ null ps
           guard = if guarded 
@@ -474,7 +474,7 @@ cfaToITransition cfa fname = case trans of
 -- Convert CFA to a list of transitions.
 -- Assume that unreachable states have already been pruned.
 cfaToITransitions :: EPID -> I.CFA -> [I.Transition]
-cfaToITransitions epid cfa = I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ show epid) trans'
+cfaToITransitions epid cfa = {-I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ show epid)-} trans'
     where
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa
