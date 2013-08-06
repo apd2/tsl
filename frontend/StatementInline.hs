@@ -298,8 +298,9 @@ statToCFA' before after (SCase _ e cs mdef) = do
 
 statToCFA' before after s@(SMagic _ _ constr) = do
     -- magic block flag
-    aftcheck <- ctxInsTrans' before $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.false
-    aftmag <- ctxInsTrans' aftcheck $ I.TranStat $ mkMagicVar I.=: I.true
+    -- if this check is to be re-introduced, it should 
+    ---aftcheck <- ctxInsTrans' before $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.false
+    aftmag <- ctxInsTrans' before $ I.TranStat $ mkMagicVar I.=: I.true
     -- wait for magic flag to be false
     let p = case constr of
                  Left  i -> pos i

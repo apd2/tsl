@@ -234,7 +234,7 @@ noerror = I.EUnOp Not mkErrVar
 
 mkGoal :: (?spec::Spec) => Goal -> NameGen I.Goal
 mkGoal g = -- Add $err==false to the goal condition
-           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos $ goalCond g) [I.EUnOp Not mkMagicVar, noerror]
+           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos $ goalCond g) [{-I.EUnOp Not mkMagicVar,-} noerror]
 
 -- In addition to regular goals, we are required to be outside a magic block
 -- infinitely often
@@ -266,13 +266,14 @@ mkCond descr s extra = do
 -- Controllable transitions
 ----------------------------------------------------------------------
 
--- only allow controllable transitions when inside a magic block and in
--- a controllable state
-contGuard = I.SAssume $ I.conj $ [mkMagicVar I.=== I.true, mkContVar I.=== I.true]
+-- only allow controllable transitions in a controllable state
+--contGuard = I.SAssume $ I.conj [mkContVar I.=== I.true]
+--contGuard = I.SAssume $ I.conj $ [mkMagicVar I.=== I.true, mkContVar I.=== 
+--I.true]
 
 -- generate CFA that represents all possible controllable transitions
 mkCTran :: (?spec::Spec) => (I.CFA, [I.Var])
-mkCTran = {-I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar ctx')
+mkCTran = I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
     where sc   = ScopeTemplate tmMain
           ctasks = filter ((== Task Controllable) . methCat) $ tmMethod tmMain
           stats = SMagExit nopos : 
@@ -287,10 +288,10 @@ mkCTran = {-I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar ct
                         , ctxGNMap   = globalNMap
                         , ctxLastVar = 0
                         , ctxVar     = []}
-          ctx' = let ?procs = [] in execState (do aftguard <- ctxInsTrans' I.cfaInitLoc $ I.TranStat contGuard
+          ctx' = let ?procs = [] in execState (do --aftguard <- ctxInsTrans' I.cfaInitLoc $ I.TranStat contGuard
                                                   after   <- ctxInsLoc
                                                   aftcont <- ctxInsTrans' after $ I.TranStat $ mkContVar I.=: I.false
-                                                  _ <- mapM (\(t,s) -> do afttag <- ctxInsTrans' aftguard $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
+                                                  _ <- mapM (\(t,s) -> do afttag <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
                                                                           aftcall <- procStatToCFA s afttag
                                                                           ctxInsTrans aftcall after $ I.TranNop) $ zip mkTagList stats'
                                                   ctxFinal aftcont) ctx
@@ -474,7 +475,7 @@ cfaToITransition cfa fname = case trans of
 -- Convert CFA to a list of transitions.
 -- Assume that unreachable states have already been pruned.
 cfaToITransitions :: EPID -> I.CFA -> [I.Transition]
-cfaToITransitions epid cfa = {-I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ show epid)-} trans'
+cfaToITransitions epid cfa = I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ show epid) trans'
     where
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa

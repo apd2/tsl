@@ -170,9 +170,12 @@ mkEPIDEnum = I.EConst . I.EnumVal . mkEPIDEnumeratorName
 mkEPIDEnumName :: String
 mkEPIDEnumName = "$epidenum" 
 
+mkEPIDNone :: String
+mkEPIDNone = "$epidnone"
+
 mkEPIDVarDecl :: [EPID] -> (I.Var, I.Enumeration)
 mkEPIDVarDecl epids = (I.Var False I.VarState mkEPIDVarName (I.Enum mkEPIDEnumName), enum)
-    where enum = I.Enumeration mkEPIDEnumName $ map mkEPIDEnumeratorName epids
+    where enum = I.Enumeration mkEPIDEnumName $ mkEPIDNone : map mkEPIDEnumeratorName epids
 
 mkEPIDLVarDecl :: I.Var
 mkEPIDLVarDecl = I.Var False I.VarTmp mkEPIDLVarName (I.Enum mkEPIDEnumName)
@@ -222,7 +225,8 @@ mkTagVarName = "$tag"
 mkTagVar :: I.Expr
 mkTagVar = I.EVar mkTagVarName
 
-mkTagIdle = "$idle"
+mkTagIdle = "$tagidle"
+mkTagNone = "$tagnone"
 
 mkTagVarDecl :: (?spec::Spec) => (I.Var, I.Enumeration)
 mkTagVarDecl = (I.Var False I.VarTmp mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" mkTagList)
@@ -231,7 +235,8 @@ mkTagList :: (?spec::Spec) => [String]
 mkTagList = mkTagIdle :
             (map sname
              $ filter ((== Task Controllable) . methCat)
-             $ tmMethod tmMain)
+             $ tmMethod tmMain) ++
+            [mkTagNone]
 
 mkChoiceTypeName :: Int -> String
 mkChoiceTypeName n = "$choice" ++ show n
@@ -435,7 +440,7 @@ ctxUContInsertSuffixes = do
 
 insertSuffix :: PrID -> I.CFA -> I.Loc -> I.CFA
 insertSuffix pid cfa loc | (null $ G.pre cfa loc) = cfa
-                         | otherwise =              cfa5
+                         | otherwise =              cfa4
     where
     (loc', cfa0) = I.cfaSplitLoc loc cfa
     -- pid
@@ -444,8 +449,8 @@ insertSuffix pid cfa loc | (null $ G.pre cfa loc) = cfa
     -- pc
     (cfa3, aftpc)    = I.cfaInsTrans' aftepid (mkPCAsn cfa pid (mkPC pid loc))                           cfa2
     -- cont
-    (cfa4, aftucont) = I.cfaInsTrans' aftpc   (I.TranStat $ I.SAssume $ mkContVar I.=== I.false)         cfa3
-    cfa5             = I.cfaInsTrans  aftucont loc (I.TranStat        $ mkContVar I.=: mkContLVar)       cfa4
+    --(cfa4, aftucont) = I.cfaInsTrans' aftpc   (I.TranStat $ I.SAssume $ mkContVar I.=== I.false)         cfa3
+    cfa4             = I.cfaInsTrans  aftpc loc (I.TranStat        $ mkContVar I.=: mkContLVar)          cfa3
 
 ---- common code of ctxPause, ctxFinal
 --ctxSuffix :: I.Loc -> I.Loc -> I.Loc -> State CFACtx ()

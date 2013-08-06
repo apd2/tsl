@@ -35,12 +35,13 @@ import BFormula
 -----------------------------------------------------------------------
 
 tslAbsGame :: Spec -> C.STDdManager s u -> Bool -> Abs.Abstractor s u AbsVar AbsVar
-tslAbsGame spec m dofair = Abs.Abstractor { Abs.goalAbs   = tslGoalAbs   spec m
-                                          , Abs.fairAbs   = tslFairAbs   spec m
-                                          , Abs.initAbs   = tslInitAbs   spec m
-                                          , Abs.contAbs   = tslContAbs   spec m
+tslAbsGame spec m dofair = Abs.Abstractor { Abs.goalAbs                 = tslGoalAbs                 spec m
+                                          , Abs.fairAbs                 = tslFairAbs                 spec m
+                                          , Abs.initAbs                 = tslInitAbs                 spec m
+                                          , Abs.contAbs                 = tslContAbs                 spec m
                                           --, gameConsistent  = tslGameConsistent  spec
-                                          , Abs.updateAbs = tslUpdateAbs spec m dofair
+                                          , Abs.stateLabelConstraintAbs = (\_ -> return $ C.bone m) -- tslStateLabelConstraintAbs spec m
+                                          , Abs.updateAbs               = tslUpdateAbs               spec m dofair
                                           }
 
 tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
@@ -77,20 +78,27 @@ tslInitAbs spec m ops = do
 
 -- TODO: where should this go?
 
---tslGameConsistent :: Spec -> C.STDdManager s u -> PDB s u (C.DDNode s u)
---tslGameConsistent spec m = do
---    let ?m = m
---    -- Enum vars can take values between 0 and n-1 (where n is the size of the enumeration)
---    evars  <- pdbGetEnumVars
---    constr <- mapM (\(av,sz) -> do v <- pdbGetVar av
---                                   constrs <- lift $ mapM (C.eqConst m v) [0..sz-1]
---                                   res <- lift $ C.disj m constrs
---                                   lift $ mapM (C.deref m) constrs
---                                   return res) 
---                   $ M.toList evars
---    res <- lift $ C.conj m constr
---    lift $ mapM (C.deref m) constr
---    return res
+tslStateLabelConstraintAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslStateLabelConstraintAbs spec m ops = do
+    let ?ops    = ops
+    p <- pdbPred
+    let ?spec   = spec
+        ?m      = m
+        ?pred   = p
+    H.compileBDD ?m ?ops $ tslConstraint
+
+tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
+tslConstraint = H.Conj [nolepid, notag, pre]
+    where 
+    -- $cont  <-> $lepid == $nolepid
+    cont = compileFormula $ ptrFreeBExprToFormula mkContVar
+    nolepid = cont `H.XNor` (H.EqConst (H.NVar $ avarBAVar $ AVarEnum $ TVar mkEPIDLVarName) (enumToInt mkEPIDNone))
+    -- !$cont <-> $tag == $tagnone
+    notag = (H.Not cont) `H.XNor` (H.EqConst (H.NVar $ avarBAVar $ AVarEnum $ TVar mkTagVarName) (enumToInt mkTagNone))
+    -- precondition of at least one transition must hold   
+    pre = H.Disj 
+          $ mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) 
+          $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
 
 tslContAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
 tslContAbs spec m ops = do 
@@ -100,11 +108,6 @@ tslContAbs spec m ops = do
         ?m    = m
         ?pred = p
     H.compileBDD m ops $ bexprAbstract $ mkContVar === true
-
-tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
-tslConstraint = H.Disj 
-                $ mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) 
-                $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
 
 tslUpdateAbs :: Spec -> C.STDdManager s u -> Bool -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslUpdateAbs spec m dofair avars ops = do
