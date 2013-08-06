@@ -26,8 +26,8 @@ import qualified Interface   as Abs
 import qualified TermiteGame as Abs
 import qualified HAST.HAST   as H
 import qualified HAST.BDD    as H
-import ACFA
-import ACFACompile
+import CFA2ACFA
+import ACFA2HAST
 import BFormula
 
 -----------------------------------------------------------------------

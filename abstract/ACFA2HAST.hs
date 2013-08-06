@@ -1,11 +1,10 @@
 {-# LANGUAGE ImplicitParams #-}
 
-module ACFACompile(TAST,
-                   ACFA,
-                   acfaTraceFile,
-                   compileACFA,
-                   compileFormula,
-                   acasAbsVars) where
+module ACFA2HAST(TAST,
+                 ACFA,
+                 acfaTraceFile,
+                 compileACFA,
+                 compileFormula) where
 
 import qualified Data.Graph.Inductive as G
 import qualified Data.Map             as M
@@ -14,7 +13,6 @@ import Data.Maybe
 import Debug.Trace
 import GHC.Exts
 
-import TSLUtil
 import Util hiding (trace)
 import qualified HAST.HAST as H
 import Cascade
@@ -24,6 +22,7 @@ import ISpec
 import IType
 import CFA
 import Interface
+import ACFA
 
 type TAST f e c  = H.AST f e c (BAVar AbsVar AbsVar)
 type TASTVar f e = H.ASTVar f e (BAVar AbsVar AbsVar)
@@ -36,14 +35,6 @@ conj []  = H.T
 conj [x] = x
 conj xs  = H.Conj xs
 
--- Abstract CFA - has the same topology as CFA, but labels transitions
--- with variable update functions and states--with sets of abstract
--- vars to be recomputed in this state and a map from abstract vars to
--- locations where these vars are recomputed
-type ACFA = G.Gr ([AbsVar], M.Map AbsVar Loc) (Int,Maybe Formula,[ECascade])
-
-acfaTraceFile :: ACFA -> String -> a -> a
-acfaTraceFile acfa title = graphTraceFile (G.emap (\(id, mpre, upd) -> show id ++ ": " ++ (maybe "" show mpre)  ++ ": " ++ (show $ length upd)) acfa) title
 
 compileACFA :: (?spec::Spec, ?pred::[Predicate]) => [(AbsVar, f)] -> ACFA -> TAST f e c
 compileACFA nxtvs acfa = --trace ("ord: " ++ show ord) 
@@ -114,17 +105,6 @@ compileTransition emap from to (idx, mpre, upd) tovar = trvar `H.XNor` (preast `
                        ?emap = emap in 
                    maybe H.T compileFormulaLoc mpre
 
-acasAbsVars :: (?spec::Spec) => ECascade -> [AbsVar]
-acasAbsVars = nub . acasAbsVars'
-
-acasAbsVars' :: (?spec::Spec) => ECascade -> [AbsVar]
-acasAbsVars' (CasTree bs)             = concatMap (\(f,cas') -> fAbsVars f ++ acasAbsVars' cas') bs
-acasAbsVars' (CasLeaf e)  | isBool e  = fAbsVars $ ptrFreeBExprToFormula e
-                          | otherwise = case scalarExprToTerm e of 
-                                             (TEnum _)   -> []
-                                             (TUInt _ _) -> []
-                                             (TSInt _ _) -> []
-                                             t           -> if' (isInt t) [AVarInt t] [AVarEnum t]
 
 compileTransition1 :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e c, ?from::Loc, ?to::Loc) => (ECascade, AbsVar) -> TAST f e c
 compileTransition1 (cas, av) = 

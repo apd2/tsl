@@ -24,7 +24,7 @@ import IExpr
 import EUF
 import Predicate
 import BFormula
-import ACFACompile
+import ACFA2HAST
 import RefineCommon
 import qualified HAST.BDD  as H
 

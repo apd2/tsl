@@ -1,9 +1,9 @@
 {-# LANGUAGE ImplicitParams, TupleSections #-}
 
-module ACFA(tranCFAToACFA,
-            bexprToFormula,
-            bexprToFormulaPlus,
-            pruneCFAVar) where
+module CFA2ACFA(tranCFAToACFA,
+                bexprToFormula,
+                bexprToFormulaPlus,
+                pruneCFAVar) where
 
 import qualified Data.Graph.Inductive as G
 import Data.List
@@ -22,7 +22,20 @@ import IExpr
 import IType
 import CFA
 import Ops
-import ACFACompile
+import ACFA
+
+ecasAbsVars :: (?spec::Spec) => ECascade -> [AbsVar]
+ecasAbsVars = nub . ecasAbsVars'
+
+ecasAbsVars' :: (?spec::Spec) => ECascade -> [AbsVar]
+ecasAbsVars' (CasTree bs)             = concatMap (\(f,cas') -> fAbsVars f ++ ecasAbsVars' cas') bs
+ecasAbsVars' (CasLeaf e)  | isBool e  = fAbsVars $ ptrFreeBExprToFormula e
+                          | otherwise = case scalarExprToTerm e of 
+                                             (TEnum _)   -> []
+                                             (TUInt _ _) -> []
+                                             (TSInt _ _) -> []
+                                             t           -> if' (isInt t) [AVarInt t] [AVarEnum t]
+
 
 -- Compute ACFA for a list of abstract variables for a location inside
 -- transition CFA. 
@@ -46,7 +59,7 @@ mkACFA acfa added =
         -- compute variable updates along all outgoing transitions
         updates = map (\(loc', tran) -> (loc', tranPrecondition tran, map (varUpdateTran tran) $ fst $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
         -- extract the list of abstract variables from transitions
-        vs = nub $ concatMap (\(_,mpre,upd) -> maybe [] fAbsVars mpre ++ concatMap acasAbsVars upd) updates
+        vs = nub $ concatMap (\(_,mpre,upd) -> maybe [] fAbsVars mpre ++ concatMap ecasAbsVars upd) updates
         acfa'  = addUseDefVar acfa loc $ map (\v -> (v, varRecomputedLoc loc v)) vs
         acfa'' = foldIdx (\gr (l, pre, upds) i -> G.insEdge (loc, l, (i,pre,upds)) gr) acfa' updates
     in if loc == ?initloc
