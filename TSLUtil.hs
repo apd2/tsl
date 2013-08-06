@@ -122,7 +122,7 @@ graphTraceFile g title x = unsafePerformIO $ do
 graphTraceFileMany :: (Show b, Show c) => [Gr b c] -> String -> a -> a
 graphTraceFileMany gs title x = unsafePerformIO $ do
     fnames <- mapM (\(g,n) -> graphSave g (title++show n) True) $ zip gs ([1..]::[Int])
-    _ <- readProcess "psmerge" (["-o" ++ (sanitize title) ++ ".ps"]++fnames) ""
+    _ <- readProcess "pdftk" (fnames ++ ["cat", "output", (sanitize title) ++ ".pdf"]) ""
     return x
 
 graphShow :: (Show b, Show c) => Gr b c -> String -> IO ()
@@ -135,10 +135,10 @@ graphSave :: (Show b, Show c) => Gr b c -> String -> Bool -> IO String
 graphSave g title tmp = do
     let -- Convert graph to dot format
         title' = sanitize title
-        fname = (if tmp then "/tmp/" else "") ++ title' ++ ".ps"
+        fname = (if tmp then "/tmp/" else "") ++ title' ++ ".pdf"
         graphstr = graphToDot g title'
     writeFile (fname++".dot") graphstr
-    _ <- readProcess "dot" ["-Tps", "-o" ++ fname] graphstr 
+    _ <- readProcess "dot" ["-Tpdf", "-o" ++ fname] graphstr 
     return fname
 
 graphToDot :: (Show b, Show c) => Gr b c -> String -> String
