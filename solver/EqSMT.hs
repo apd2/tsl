@@ -34,10 +34,11 @@ import qualified HAST.BDD  as H
 --                             --, equant    = eqEquant    spec
 --                             }
 
-eqTheorySolver :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar
+eqTheorySolver :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var
 eqTheorySolver spec m = TheorySolver { unsatCoreState      = eqUnsatCore           spec
                                      , unsatCoreStateLabel = eqUnsatCoreStateLabel spec
                                      , eQuant              = eqEquantTmp           spec m
+                                     , getVarsLabel        = let ?spec = spec in (\av -> filter ((==VarTmp) . varCat) $ avarVar av)
                                      }
 
 
