@@ -2,7 +2,8 @@
 
 module TSLAbsGame(tslAbsGame, 
                   bexprToFormula, 
-                  tslUpdateAbsVarAST) where
+                  tslUpdateAbsVarAST,
+                  autoConstr) where
 
 import Prelude hiding (and)
 import Data.List hiding (and)
@@ -42,7 +43,7 @@ tslAbsGame spec m dofair = Abs.Abstractor { Abs.goalAbs                 = tslGoa
                                           , Abs.initAbs                 = tslInitAbs                 spec m
                                           , Abs.contAbs                 = tslContAbs                 spec m
                                           --, gameConsistent  = tslGameConsistent  spec
-                                          , Abs.stateLabelConstraintAbs = (\_ -> return $ C.bone m) -- tslStateLabelConstraintAbs spec m
+                                          , Abs.stateLabelConstraintAbs = tslStateLabelConstraintAbs spec m dofair
                                           , Abs.updateAbs               = tslUpdateAbs               spec m dofair
                                           }
 
@@ -80,17 +81,17 @@ tslInitAbs spec m ops = do
 
 -- TODO: where should this go?
 
-tslStateLabelConstraintAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
-tslStateLabelConstraintAbs spec m ops = do
+tslStateLabelConstraintAbs :: Spec -> C.STDdManager s u -> Bool -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslStateLabelConstraintAbs spec m dofair ops = do
     let ?ops    = ops
     p <- pdbPred
     let ?spec   = spec
         ?m      = m
         ?pred   = p
-    H.compileBDD ?m ?ops $ tslConstraint
+    H.compileBDD ?m ?ops $ tslConstraint dofair
 
-tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
-tslConstraint = H.Conj [compileFormula autoConstr, pre]
+tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => Bool ->TAST f e c
+tslConstraint fair = H.Conj [compileFormula $ autoConstr fair, pre]
     where 
     -- precondition of at least one transition must hold   
     pre = H.Disj 
@@ -127,10 +128,8 @@ tslUpdateAbsVarAST :: (?dofair::Bool, ?spec::Spec, ?pred::[Predicate]) => (AbsVa
 -- handle $cont variable in a special way:
 -- $cont is false under controllable transition, 
 -- $cont can only be true after uncontrollable transition if we are inside a magic block.
-tslUpdateAbsVarAST (av, n) | (show av) == mkContVarName && ?dofair       = tslConstraint `H.And`
-                                                                           compileFCas contUpdFair   (H.FVar n)
-                           | (show av) == mkContVarName && (not ?dofair) = tslConstraint `H.And`
-                                                                           compileFCas contUpdUnfair (H.FVar n)
+tslUpdateAbsVarAST (av, n) | (show av) == mkContVarName && ?dofair       = compileFCas contUpdFair   (H.FVar n)
+                           | (show av) == mkContVarName && (not ?dofair) = compileFCas contUpdUnfair (H.FVar n)
 
 tslUpdateAbsVarAST (av, n) | (show av) == mkEPIDVarName = compileTCas epidUpd (H.FVar n)
     
@@ -168,8 +167,8 @@ epidUpd = CasTree [ (cont     , CasLeaf $ scalarExprToTerm $ EConst $ EnumVal $ 
           lepid = scalarExprToTerm mkEPIDLVar
 
 -- additional constraints over automatic variables
-autoConstr :: (?spec::Spec) => Formula
-autoConstr = fconj $ map ptrFreeBExprToFormula [nolepid, notag, noidle]
+autoConstr :: (?spec::Spec) => Bool -> Formula
+autoConstr fair = fconj $ map ptrFreeBExprToFormula $ [nolepid, notag]  ++ if' fair [] [noidle]
     where 
     -- $cont  <-> $lepid == $nolepid
     nolepid = EBinOp Eq mkContVar (EBinOp Eq mkEPIDLVar (EConst $ EnumVal mkEPIDNone))
