@@ -29,6 +29,8 @@ import qualified HAST.BDD    as H
 import CFA2ACFA
 import ACFA2HAST
 import BFormula
+import Cascade
+import Ops
 
 -----------------------------------------------------------------------
 -- Interface
@@ -88,17 +90,13 @@ tslStateLabelConstraintAbs spec m ops = do
     H.compileBDD ?m ?ops $ tslConstraint
 
 tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
-tslConstraint = H.Conj [nolepid, notag, pre]
+tslConstraint = H.Conj [compileFormula autoConstr, pre]
     where 
-    -- $cont  <-> $lepid == $nolepid
-    cont = compileFormula $ ptrFreeBExprToFormula mkContVar
-    nolepid = cont `H.XNor` (H.EqConst (H.NVar $ avarBAVar $ AVarEnum $ TVar mkEPIDLVarName) (enumToInt mkEPIDNone))
-    -- !$cont <-> $tag == $tagnone
-    notag = (H.Not cont) `H.XNor` (H.EqConst (H.NVar $ avarBAVar $ AVarEnum $ TVar mkTagVarName) (enumToInt mkTagNone))
     -- precondition of at least one transition must hold   
     pre = H.Disj 
           $ mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) 
           $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
+    
 
 tslContAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
 tslContAbs spec m ops = do 
@@ -126,31 +124,15 @@ tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
 
 
 tslUpdateAbsVarAST :: (?dofair::Bool, ?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
-
 -- handle $cont variable in a special way:
 -- $cont is false under controllable transition, 
 -- $cont can only be true after uncontrollable transition if we are inside a magic block.
-tslUpdateAbsVarAST (av, n) | (show av) == mkContVarName && ?dofair = tslConstraint `H.And`
-                                                                     (x `H.Imp` (H.Not x')) `H.And` 
-                                                                     (x' `H.Imp` magic) `H.And` 
-                                                                     (((H.Not x) `H.And` magic) `H.Imp` (x' `H.XNor` lcont))
+tslUpdateAbsVarAST (av, n) | (show av) == mkContVarName && ?dofair       = tslConstraint `H.And`
+                                                                           compileFCas contUpdFair   (H.FVar n)
                            | (show av) == mkContVarName && (not ?dofair) = tslConstraint `H.And`
-                                                                           (x `H.Imp` (H.Not x')) `H.And` 
-                                                                           (x' `H.Imp` magic) `H.And` 
-                                                                           (((H.Not x) `H.And` magic) `H.Imp` ((x' `H.XNor` lcont) `H.And` x')) `H.And`
-                                                                           ((H.Not magic) `H.Imp` notidle)
-    where 
-    x  = H.Var $ H.NVar $ avarBAVar av 
-    x' = H.Var $ H.FVar n
-    lcont = compileFormula $ ptrFreeBExprToFormula mkContLVar
-    magic = compileFormula $ ptrFreeBExprToFormula mkMagicVar
-    notidle = H.Not $ H.EqConst (H.NVar $ avarBAVar $ AVarEnum $ TVar mkEPIDLVarName) (enumToInt $ mkEPIDEnumeratorName $ EPIDProc $ PrID "_idle_" [])
+                                                                           compileFCas contUpdUnfair (H.FVar n)
 
-tslUpdateAbsVarAST (av, n) | (show av) == mkEPIDVarName = (cont `H.And` eqcont) `H.Or` ((H.Not cont) `H.And` eqlepid)
-    where 
-    eqcont  = H.EqConst (H.FVar n) (enumToInt $ mkEPIDEnumeratorName EPIDCont)
-    eqlepid = H.EqVar   (H.FVar n) (H.NVar $ avarBAVar $ AVarEnum $ TVar mkEPIDLVarName)
-    cont = compileFormula $ ptrFreeBExprToFormula mkContVar
+tslUpdateAbsVarAST (av, n) | (show av) == mkEPIDVarName = compileTCas epidUpd (H.FVar n)
     
 tslUpdateAbsVarAST (av, n)                              = H.Disj (unchanged:upds)
     where
@@ -159,7 +141,43 @@ tslUpdateAbsVarAST (av, n)                              = H.Disj (unchanged:upds
     -- generate condition when variable value does not change
     ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
     unchanged = H.And (H.Conj $ map H.Not pres) ident
-    
+
+----------------------------------------------------------------------------
+-- Shared with Spec2ASL
+----------------------------------------------------------------------------
+
+
+contUpdUnfair :: (?spec::Spec) => FCascade
+contUpdUnfair = CasTree [ (       FBinOp Conj (FNot cont) magic, CasLeaf FTrue)
+                        , (FNot $ FBinOp Conj (FNot cont) magic, CasLeaf FFalse)]
+    where cont  = ptrFreeBExprToFormula mkContVar
+          magic = ptrFreeBExprToFormula mkMagicVar
+
+contUpdFair :: (?spec::Spec) => FCascade
+contUpdFair = CasTree [ (       FBinOp Conj (FNot cont) magic, CasLeaf lcont)
+                      , (FNot $ FBinOp Conj (FNot cont) magic, CasLeaf FFalse)]
+    where cont  = ptrFreeBExprToFormula mkContVar
+          lcont = ptrFreeBExprToFormula mkContLVar
+          magic = ptrFreeBExprToFormula mkMagicVar
+
+
+epidUpd :: (?spec::Spec) => TCascade
+epidUpd = CasTree [ (cont     , CasLeaf $ scalarExprToTerm $ EConst $ EnumVal $ mkEPIDEnumeratorName EPIDCont)
+                  , (FNot cont, CasLeaf lepid)]
+    where cont  = ptrFreeBExprToFormula mkContVar
+          lepid = scalarExprToTerm mkEPIDLVar
+
+-- additional constraints over automatic variables
+autoConstr :: (?spec::Spec) => Formula
+autoConstr = fconj $ map ptrFreeBExprToFormula [nolepid, notag, noidle]
+    where 
+    -- $cont  <-> $lepid == $nolepid
+    nolepid = EBinOp Eq mkContVar (EBinOp Eq mkEPIDLVar (EConst $ EnumVal mkEPIDNone))
+    -- !$cont <-> $tag == $tagnone
+    notag   = EBinOp Eq (EUnOp Not mkContVar) (EBinOp Eq mkTagVar (EConst $ EnumVal mkTagNone))
+    -- !$magic -> $lepid != _idle_
+    noidle  = EBinOp Imp (EUnOp Not mkMagicVar) $ EBinOp Neq mkEPIDLVar (EConst $ EnumVal $ mkEPIDEnumeratorName $ EPIDProc $ PrID "_idle_" [])
+
 ----------------------------------------------------------------------------
 -- PDB operations
 ----------------------------------------------------------------------------
@@ -187,7 +205,7 @@ tranPrecondition trname tran = varUpdateLoc trname [] (tranFrom tran) (tranCFA t
 -- can be used to generate complementary condition when variable value remains 
 -- unchanged.  
 varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar,f)] -> Transition -> Maybe (TAST f e c, TAST f e c)
-varUpdateTrans trname vs Transition{..} = if G.isEmpty cfa
+varUpdateTrans trname vs Transition{..} = if G.isEmpty cfa'
                                              then Nothing
                                              else Just (varUpdateLoc trname vs tranFrom cfa, varUpdateLoc (trname ++ "_pre") [] tranFrom cfa)
     where cfa' = pruneCFAVar (map fst vs) tranCFA

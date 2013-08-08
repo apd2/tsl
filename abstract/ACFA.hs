@@ -17,5 +17,5 @@ import TSLUtil
 type ACFA = G.Gr ([AbsVar], M.Map AbsVar Loc) (Int,Maybe Formula,[ECascade])
 
 acfaTraceFile :: ACFA -> String -> a -> a
-acfaTraceFile acfa title = graphTraceFile (G.emap (\(id, mpre, upd) -> show id ++ ": " ++ (maybe "" show mpre)  ++ ": " ++ (show $ length upd)) acfa) title
+acfaTraceFile acfa title = graphTraceFile (G.emap (\(num, mpre, upd) -> show num ++ ": " ++ (maybe "" show mpre)  ++ ": " ++ (show $ length upd)) acfa) title
 

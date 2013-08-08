@@ -7,6 +7,7 @@ module BFormula(BoolBOp(..),
                 fnot,
                 fVar,
                 fAbsVars,
+                formToExpr,
                 bopToBoolOp,
                 boolOpToBOp,
                 avarAsnToFormula,
@@ -211,3 +212,11 @@ fAbsVars' (FEqConst av _)  = [av]
 fAbsVars' (FBinOp _ f1 f2) = fAbsVars' f1 ++ fAbsVars' f2         
 fAbsVars' (FNot f)         = fAbsVars' f
 
+formToExpr :: (?spec::Spec) => Formula -> Expr
+formToExpr FTrue             = true
+formToExpr FFalse            = false
+formToExpr (FBoolAVar av)    = avarToExpr av
+formToExpr (FEq av1 av2)     = EBinOp Eq (avarToExpr av1) (avarToExpr av2)
+formToExpr (FEqConst av i)   = EBinOp Eq (avarToExpr av) (EConst $ avarValToConst av i)
+formToExpr (FBinOp op f1 f2) = EBinOp (boolOpToBOp op) (formToExpr f1) (formToExpr f2)
+formToExpr (FNot f)          = EUnOp Not $ formToExpr f

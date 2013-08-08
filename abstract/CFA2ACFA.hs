@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, TupleSections #-}
 
-module CFA2ACFA(tranCFAToACFA,
+module CFA2ACFA(ecasAbsVars,
+                tranCFAToACFA,
                 bexprToFormula,
                 bexprToFormulaPlus,
                 pruneCFAVar) where
@@ -35,7 +36,6 @@ ecasAbsVars' (CasLeaf e)  | isBool e  = fAbsVars $ ptrFreeBExprToFormula e
                                              (TUInt _ _) -> []
                                              (TSInt _ _) -> []
                                              t           -> if' (isInt t) [AVarInt t] [AVarEnum t]
-
 
 -- Compute ACFA for a list of abstract variables for a location inside
 -- transition CFA. 

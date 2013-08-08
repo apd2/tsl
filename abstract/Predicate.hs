@@ -11,6 +11,7 @@ module Predicate(PVarOps,
                  avarVar,
                  avarTerms,
                  avarToExpr,
+                 avarValToConst,
                  ArithUOp(..),
                  uopToArithOp,
                  arithOpToUOp,
@@ -110,6 +111,13 @@ avarToExpr (AVarPred p) = predToExpr p
 avarToExpr (AVarEnum t) = termToExpr t
 avarToExpr (AVarBool t) = termToExpr t
 avarToExpr (AVarInt  t) = termToExpr t
+
+avarValToConst :: (?spec::Spec) => AbsVar -> Int -> Val
+avarValToConst av i = case typ $ avarToExpr av of
+                           UInt w -> UIntVal w (fromIntegral i)
+                           SInt w -> SIntVal w (fromIntegral i)
+                           Enum n -> EnumVal $ (enumEnums $ getEnumeration n) !! i
+
 
 instance PP AbsVar where
     pp (AVarPred p) = pp p
