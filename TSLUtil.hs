@@ -15,7 +15,8 @@ module TSLUtil(fromLeft,
                graphTraceFileMany,
                graphShow,
                graphSave,
-               traceFile) where
+               traceFile,
+               sanitize) where
 
 import Control.Monad.Error
 import Data.List

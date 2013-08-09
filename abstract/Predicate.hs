@@ -45,6 +45,7 @@ module Predicate(PVarOps,
 import Text.PrettyPrint
 import Data.List
 
+import Util
 import TSLUtil
 import PP
 import Ops
@@ -114,6 +115,7 @@ avarToExpr (AVarInt  t) = termToExpr t
 
 avarValToConst :: (?spec::Spec) => AbsVar -> Int -> Val
 avarValToConst av i = case typ $ avarToExpr av of
+                           Bool   -> if' (i==0) (BoolVal False) (BoolVal True)
                            UInt w -> UIntVal w (fromIntegral i)
                            SInt w -> SIntVal w (fromIntegral i)
                            Enum n -> EnumVal $ (enumEnums $ getEnumeration n) !! i

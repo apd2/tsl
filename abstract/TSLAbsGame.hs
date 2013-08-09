@@ -3,7 +3,10 @@
 module TSLAbsGame(tslAbsGame, 
                   bexprToFormula, 
                   tslUpdateAbsVarAST,
-                  autoConstr) where
+                  autoConstr,
+                  contUpdFair,
+                  contUpdUnfair,
+                  epidUpd) where
 
 import Prelude hiding (and)
 import Data.List hiding (and)
@@ -171,9 +174,11 @@ autoConstr :: (?spec::Spec) => Bool -> Formula
 autoConstr fair = fconj $ map ptrFreeBExprToFormula $ [nolepid, notag]  ++ if' fair [] [noidle]
     where 
     -- $cont  <-> $lepid == $nolepid
-    nolepid = EBinOp Eq mkContVar (EBinOp Eq mkEPIDLVar (EConst $ EnumVal mkEPIDNone))
+    nolepid = EBinOp Or (EBinOp And mkContVar (EBinOp Eq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
+                        (EBinOp And (EUnOp Not mkContVar) (EBinOp Neq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
     -- !$cont <-> $tag == $tagnone
-    notag   = EBinOp Eq (EUnOp Not mkContVar) (EBinOp Eq mkTagVar (EConst $ EnumVal mkTagNone))
+    notag   = EBinOp Or (EBinOp And (EUnOp Not mkContVar) (EBinOp Eq mkTagVar (EConst $ EnumVal mkTagNone)))
+                        (EBinOp And mkContVar             (EBinOp Neq mkTagVar (EConst $ EnumVal mkTagNone)))
     -- !$magic -> $lepid != _idle_
     noidle  = EBinOp Imp (EUnOp Not mkMagicVar) $ EBinOp Neq mkEPIDLVar (EConst $ EnumVal $ mkEPIDEnumeratorName $ EPIDProc $ PrID "_idle_" [])
 
