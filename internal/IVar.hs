@@ -25,5 +25,8 @@ instance Ord Var where
 instance PP Var where
     pp (Var mem cat n t) = (text $ if cat == VarTmp then "temp" else "state") <+> (if mem then text "mem" else empty) <+> pp t <+> text n
 
+instance Show Var where
+    show = render . pp
+
 instance Typed Var where
     typ = varType
