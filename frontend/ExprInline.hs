@@ -176,6 +176,7 @@ exprToIExpr' (ETerm _ ssym) _ = do
                  ObjWire     _ w -> name w
                  ObjArg      _ a -> name a
                  ObjEnum     _ e -> name e
+                 ObjConst    _ c -> name c
     return $ case M.lookup n gmap of
                   Just e -> e
                   Nothing -> case M.lookup n lmap of

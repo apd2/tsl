@@ -26,6 +26,8 @@ import Type
 import TypeOps
 import ExprOps
 import Ops
+import Const
+import Val
 
 -- Extract template from flattened spec (that only has one template)
 tmMain :: (?spec::Spec) => Template
@@ -274,7 +276,7 @@ scopeLMap mpid sc =
          ScopeTemplate _      -> M.empty
          
 globalNMap :: (?spec::Spec) => NameMap
-globalNMap = M.fromList $ gvars ++ wires ++ enums
+globalNMap = M.fromList $ gvars ++ wires ++ enums ++ consts
     where -- global variables
           gvars  = map (\v -> (name v, mkVar (NSID Nothing Nothing) v)) $ tmVar tmMain
           -- wires
@@ -284,16 +286,24 @@ globalNMap = M.fromList $ gvars ++ wires ++ enums
                                             EnumSpec _ es -> map (\e -> (name e, I.EConst $ I.EnumVal $ sname e)) es
                                             _             -> []) 
                              $ specType ?spec
---          -- consts
---          consts = let ?scope = ScopeTop
---                   in mapMaybe (\c -> case constVal c of
---                                           Just (StructVal _) -> Nothing
---                                           v                  -> (name c, I.EConst $ mkVal $ val $ eval v))
---                          $ specConst ?spec
+          -- consts
+          consts = let ?scope = ScopeTop
+                   in mapMaybe (\c -> case eval $ constVal c of
+                                           TVal _ (StructVal _) -> Nothing
+                                           v                    -> Just (name c, I.EConst $ valToIVal v))
+                      $ specConst ?spec
 
 ----------------------------------------------------------------------
 -- Types
 ----------------------------------------------------------------------
+
+valToIVal :: (?spec::Spec) => TVal -> I.Val
+valToIVal (TVal _ (BoolVal True))  = I.BoolVal True
+valToIVal (TVal _ (BoolVal False)) = I.BoolVal False
+valToIVal (TVal t (IntVal i))      = case tspec $ typ' t of 
+                                          SIntSpec _ w -> I.SIntVal w i
+                                          UIntSpec _ w -> I.UIntVal w i
+valToIVal (TVal _ (EnumVal n))     = I.EnumVal $ sname n
 
 mkType :: (?spec::Spec) => Type -> I.Type
 mkType t = 
