@@ -240,9 +240,9 @@ statToCFA' before after s@(SInvoke _ mref as) = do
 
 statToCFA' before after (SAssert _ cond) = do
     cond' <- exprToIExprDet cond
-    ctxInsTrans before after (I.TranStat $ I.SAssume cond')
-    aftcond <- ctxInsTrans' before (I.TranStat $ I.SAssume $ I.EUnOp Not cond')
-    ctxErrTrans aftcond after
+    when (cond' /= I.false) $ ctxInsTrans before after (I.TranStat $ I.SAssume cond')
+    when (cond' /= I.true)  $ do aftcond <- ctxInsTrans' before (I.TranStat $ I.SAssume $ I.EUnOp Not cond')
+                                 ctxErrTrans aftcond after
 
 statToCFA' before after (SAssume _ cond) = do
     cond' <- exprToIExprDet cond
