@@ -71,7 +71,7 @@ spec2ASL spec =
     $+$ text "" $+$
     text "TRANS"
     $+$
-    (vcat $ map (<> semi) upds)
+    (vcat $ map (($+$ text "") . (<> semi)) upds)
 
 mkAllPreconditions :: (?spec::Spec) => Doc
 mkAllPreconditions = parens $ vcat $ punctuate (text "||")
@@ -164,12 +164,12 @@ acfa2ECas' :: (?spec::Spec,?acfa::ACFA,?me::Maybe Expr) => Loc -> ECascade
 acfa2ECas' l | (null $ G.suc ?acfa l)        = CasLeaf $ maybe true id ?me
              | (length (G.lsuc ?acfa l) > 1) = CasTree $ map (\(l', (_, Just pre,_)) -> (pre, acfa2ECas' l'))
                                                        $ G.lsuc ?acfa l
-             | otherwise                     = case head $ G.lsuc ?acfa l of
-                                                    -- non-branching assume statements are taken into account in
-                                                    -- the precondition of the entire state transition
-                                                    (l', (_, Just pre, []))   -> maybe (CasTree [(pre, acfa2ECas' l')]) (\_ -> acfa2ECas' l') ?me
-                                                    (l', (_, Nothing,  upds)) -> ecasSubst (acfa2ECas' l') 
-                                                                                 $ zip (fst $ fromJust $ G.lab ?acfa l') upds
+             | otherwise                     = let [(l', (_, mpre, upds))] = G.lsuc ?acfa l
+                                                   ecas' = ecasSubst (acfa2ECas' l') 
+                                                           $ zip (fst $ fromJust $ G.lab ?acfa l') upds
+                                               -- non-branching assume statements are taken into account in
+                                               -- the precondition of the entire state transition
+                                               in maybe ecas' (\pre -> maybe (CasTree [(pre, ecas')]) (\_ -> ecas') ?me) mpre
 
 
 ecasSubst :: (?spec::Spec) => ECascade -> [(AbsVar, ECascade)] -> ECascade

@@ -445,8 +445,18 @@ ctxFinal loc = do
 ctxUContInsertSuffixes :: State CFACtx ()
 ctxUContInsertSuffixes = do
     Just (EPIDProc pid) <- gets ctxEPID
-    cfa   <- gets ctxCFA
-    modify $ \ctx -> ctx {ctxCFA = foldl' (insertSuffix pid) cfa (I.cfaDelayLocs cfa)}
+    cfa0   <- gets ctxCFA
+    modify $ \ctx -> ctx {ctxCFA = foldl' (insertSuffix pid) cfa0 (I.cfaDelayLocs cfa0)}
+    cfa1   <- gets ctxCFA
+    modify $ \ctx -> ctx {ctxCFA = foldl' (insertPrefix pid) cfa1 (I.cfaDelayLocs cfa1)}
+
+insertPrefix :: PrID -> I.CFA -> I.Loc -> I.CFA
+insertPrefix pid cfa loc | (null $ G.lsuc cfa loc) = cfa
+                         | otherwise               = I.cfaInsTrans loc loc' (I.TranStat $ I.SAssume lepid) cfa1
+    where (Just (pre, _, lab, suc), cfa0) = G.match loc cfa 
+          loc' = (snd $ G.nodeRange cfa) + 1
+          cfa1 = (pre, loc, lab, []) G.& (([], loc', I.LInst I.ActNone, suc) G.& cfa0)
+          lepid = mkEPIDLVar I.=== (mkEPIDEnum $ EPIDProc pid)
 
 insertSuffix :: PrID -> I.CFA -> I.Loc -> I.CFA
 insertSuffix pid cfa loc | (null $ G.pre cfa loc) = cfa
@@ -454,8 +464,8 @@ insertSuffix pid cfa loc | (null $ G.pre cfa loc) = cfa
     where
     (loc', cfa0) = I.cfaSplitLoc loc cfa
     -- pid
-    (cfa1, befepid)  = I.cfaInsTrans' loc' (I.TranStat $ I.SAssume $ mkEPIDLVar I.=== (mkEPIDEnum $ EPIDProc pid)) cfa0
-    (cfa2, aftepid)  = I.cfaInsTrans' befepid (I.TranStat $ mkEPIDVar I.=: mkEPIDLVar)                   cfa1
+    --(cfa1, befepid)  = I.cfaInsTrans' loc' (I.TranStat $ I.SAssume $ mkEPIDLVar I.=== (mkEPIDEnum $ EPIDProc pid)) cfa0
+    (cfa2, aftepid)  = I.cfaInsTrans' loc' (I.TranStat $ mkEPIDVar I.=: mkEPIDLVar)                   cfa0
     -- pc
     (cfa3, aftpc)    = I.cfaInsTrans' aftepid (mkPCAsn cfa pid (mkPC pid loc))                           cfa2
     -- cont

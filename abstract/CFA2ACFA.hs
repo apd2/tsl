@@ -72,10 +72,9 @@ pruneCFAVar avs cfa = foldl' (\g l -> if' (elem l keep) g (G.delNode l g)) cfa (
     -- Find all transitions that update variable values
     trs = filter (\(_,_,tr) -> any (\av -> isVarRecomputedByTran av tr) avs) 
           $ G.labEdges cfa
-    -- Find all predecessors and successors of these transitions
-    reach = concatMap (\(_,to,_) -> G.dfs  [to] cfa) trs
-    preds = concatMap (\(fr,_,_) -> G.rdfs [fr] cfa) trs
-    keep  = nub $ reach ++ preds
+    -- Find all predecessors of these transitions
+    --reach = concatMap (\(_,to,_) -> G.dfs  [to] cfa) trs
+    keep = nub $ concatMap (\(fr,to,_) -> to : G.rdfs [fr] cfa) trs
 
 
 varRecomputedLoc :: (?spec::Spec, ?pred::[Predicate], ?cfa::CFA) => Loc -> AbsVar -> Loc
