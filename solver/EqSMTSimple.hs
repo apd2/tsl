@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
+
 module EqSMTSimple(Var,
                    Pred(..),
                    checkSat,
@@ -19,9 +21,17 @@ import qualified Term              as DP
 import EUF
 
 type Var = (String, Int, (Int, Int))
+
+showVar :: Var -> String
+showVar (n,_,(l,h)) = n ++ "[" ++ show l ++ ":" ++ show h ++ "]"
+
 data Pred = EqPred Var Var
           | EqConst Var Int
           deriving (Eq,Ord)
+
+instance Show Pred where
+    show (EqPred v1 v2) = showVar v1 ++ "==" ++ showVar v2
+    show (EqConst v i)  = showVar v  ++ "==" ++ show i
 
 checkSat :: [(Pred, Bool)] -> Bool
 checkSat ps = DP.dpSAT (DP.dpContext::EUF) (DP.DNF [map mkLit ps])
@@ -37,7 +47,8 @@ mkTerm :: Var -> DP.Term
 mkTerm v = DP.TSlice s' (DP.TVar v') where (v',s') = mkVS v
 
 unsatCore :: [(Pred, Bool)] -> Maybe [(Pred, Bool)]
-unsatCore ps = if' res Nothing (Just (S.toList core))
+unsatCore ps = -- trace ("unsatCore " ++ intercalate ", " (map (\(p, b) -> "(" ++ show p  ++ ": " ++ show b ++ ")") ps))$
+               if' res Nothing (Just (S.toList core))
     where
     res = checkSat ps
     core = foldl' (\pset p -> if' (checkSat (S.toList $ S.delete p pset)) pset (S.delete p pset))
