@@ -91,12 +91,11 @@ isVarRecomputedByTran v tr = case varUpdateTran tr v of
 
 
 simplifyACFA :: ACFA -> ACFA
-simplifyACFA acfa = if' (b1 || b2 || b3) (simplifyACFA acfa3) acfa
+simplifyACFA acfa = if' (b1 || b2 || b3 || b4) (simplifyACFA acfa4) acfa
     where (acfa1, b1) = simplifyACFA1 acfa
           (acfa2, b2) = simplifyACFA2 acfa1
           (acfa3, b3) = simplifyACFA3 acfa2
-          -- TODO: after simplifyACFA3 some variable updates
-          -- may be redundant.
+          (acfa4, b4) = simplifyACFA4 acfa3
 
 -- Find and delete a location that
 -- * has a single outgoing transition that does not contain any variable
@@ -147,6 +146,22 @@ simplifyACFA3 acfa = maybe (acfa, False) ((,True) . rm acfa) mcand
                    $ G.insEdge (c, c', (0, Nothing, [])) 
                    $ G.delEdge (c,c') g
                    where c' = head $ G.suc g c
+
+-- Detemine variables recomputed at different locations that are still used somewhere else
+-- and don't recompute variables that are not needed.
+simplifyACFA4 :: ACFA -> (ACFA, Bool)
+simplifyACFA4 acfa = (G.gmap rm acfa, f)
+    where
+    used = concatMap (M.toList . snd . snd) $ G.labNodes acfa
+    getCands loc avs = findIndices (\av -> notElem (av,loc) used) avs
+    f = any (\(loc, (recomp,_)) -> not $ null $ getCands loc recomp) $ G.labNodes acfa
+    rm (pre, loc, (recomp, defs), suc) = (pre', loc, (recomp',defs), suc)
+        where
+        del = getCands loc recomp 
+        delIndices is lst = catMaybes $ mapIdx (\x i -> if' (elem i is) Nothing (Just x)) lst
+        recomp' = delIndices del recomp
+        pre' = map (mapFst (mapTrd3 (delIndices del))) pre
+
 
 -- Takes a location and a list of variables used in this location and updates
 -- the corresponding use and defined lists.
