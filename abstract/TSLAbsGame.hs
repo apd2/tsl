@@ -93,13 +93,13 @@ tslStateLabelConstraintAbs spec m dofair ops = do
         ?pred   = p
     H.compileBDD ?m ?ops $ tslConstraint dofair
 
-tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => Bool ->TAST f e c
+tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => Bool -> TAST f e c
 tslConstraint fair = H.Conj [compileFormula $ autoConstr fair, pre]
     where 
     -- precondition of at least one transition must hold   
-    pre = H.Disj 
-          $ mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) 
-          $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
+    pre = H.Disj
+          $ (compileFormula $ ptrFreeBExprToFormula $ mkTagVar /== (EConst $ EnumVal mkTagNone)) :
+            (mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) $ (tsUTran $ specTran ?spec)) -- ++ (tsCTran $ specTran ?spec)
     
 
 tslContAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)

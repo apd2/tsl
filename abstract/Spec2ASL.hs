@@ -35,8 +35,8 @@ spec2ASL spec =
         ldecls   = map mkDecl lscalars
         sdecls   = map mkDecl sscalars
         upds     = map mkVarUpd sscalars
-        initcond = (\(t, e) -> (mkForm $ ptrFreeBExprToFormula e) <+> text "&&" <+> mkTranPrecondition t) $ tsInit $ specTran ?spec
-        goal     = head $ map (mkTranPrecondition . goalCond) $ tsGoal $ specTran ?spec
+        initcond = (\(t, e) -> (mkForm $ ptrFreeBExprToFormula e) <+> text "&&" <+> mkTranPrecondition t "init") $ tsInit $ specTran ?spec
+        goal     = head $ mapIdx (\g i -> mkTranPrecondition (goalCond g) ("goal" ++ show i)) $ tsGoal $ specTran ?spec
         constr   = mkForm (autoConstr False) $+$ text "&&" $+$ mkAllPreconditions
         cont     = mkExpr $ mkContVar === true in
     text "STATE"
@@ -75,12 +75,12 @@ spec2ASL spec =
 
 mkAllPreconditions :: (?spec::Spec) => Doc
 mkAllPreconditions = parens $ vcat $ punctuate (text "||")
-                     $ map mkTranPrecondition
-                     $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
+                     $ (mkForm $ ptrFreeBExprToFormula $ mkTagVar /== (EConst $ EnumVal mkTagNone)) :
+                       (mapIdx (\t i -> mkTranPrecondition t (show i)) $ (tsUTran $ specTran ?spec)) -- ++ (tsCTran $ specTran ?spec)
 
 
 mkVarUpd :: (?spec::Spec) => Expr -> Doc
-mkVarUpd e = trace("mkVarUpd =" ++ show e ++ "\n" ++ show upds) $ mkECascade (Just e) upds
+mkVarUpd e = {-trace("mkVarUpd =" ++ show e ++ "\n" ++ show upds) $ -} mkECascade (Just e) upds
    where
    upds | e == mkContVar = fmap formToExpr contUpdUnfair
         | e == mkEPIDVar = fmap termToExpr epidUpd
@@ -106,7 +106,7 @@ mkForm :: (?spec::Spec) => Formula -> Doc
 mkForm FTrue                    = text "true"
 mkForm FFalse                   = text "false"
 mkForm (FBoolAVar (AVarBool t)) = parens $ (mkExpr $ termToExpr t) <+> text "==" <+> text "1"
-mkForm (FBinOp Impl  f1 f2)      = mkForm $ FBinOp Disj (FNot f1) f2
+mkForm (FBinOp Impl  f1 f2)     = mkForm $ FBinOp Disj (FNot f1) f2
 mkForm (FBinOp Equiv f FTrue)   = mkForm f
 mkForm (FBinOp Equiv f FFalse)  = mkForm $ FNot f
 mkForm (FBinOp op f1 f2)        = parens $ (mkForm f1) <+> (mkBOp $ boolOpToBOp op) <+> (mkForm f2)
@@ -138,8 +138,9 @@ mkDecl e = mkExpr e <+> colon <+>
                 Bool   -> text "conc" <+> text "bool"
                 Enum n -> text "conc" <+> (braces $ hcat $ punctuate comma $ map mkName $ enumEnums $ getEnumeration n)
 
-mkTranPrecondition :: (?spec::Spec) => Transition -> Doc
-mkTranPrecondition Transition{..} = mkForm $ fcasToFormula $ fmap ptrFreeBExprToFormula $ acfa2ECas Nothing acfa
+mkTranPrecondition :: (?spec::Spec) => Transition -> String -> Doc
+mkTranPrecondition Transition{..} n = acfaTraceFile acfa ("pre" ++ n)
+                                      $ mkForm $ fcasToFormula $ fmap ptrFreeBExprToFormula $ acfa2ECas Nothing acfa
     where acfa = let ?pred = [] in tranCFAToACFA [] tranFrom tranCFA
 
 mkName :: String -> Doc

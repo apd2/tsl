@@ -90,12 +90,13 @@ isVarRecomputedByTran v tr = case varUpdateTran tr v of
                                   _         -> True
 
 
-simplifyACFA :: ACFA -> ACFA
-simplifyACFA acfa = if' (b1 || b2 || b3 || b4) (simplifyACFA acfa4) acfa
+simplifyACFA :: (?spec::Spec) => ACFA -> ACFA
+simplifyACFA acfa = if' (b1 || b2 || b3 || b4 || b5) (simplifyACFA acfa5) acfa
     where (acfa1, b1) = simplifyACFA1 acfa
           (acfa2, b2) = simplifyACFA2 acfa1
           (acfa3, b3) = simplifyACFA3 acfa2
           (acfa4, b4) = simplifyACFA4 acfa3
+          (acfa5, b5) = simplifyACFA5 acfa4
 
 -- Find and delete a location that
 -- * has a single outgoing transition that does not contain any variable
@@ -147,20 +148,32 @@ simplifyACFA3 acfa = maybe (acfa, False) ((,True) . rm acfa) mcand
                    $ G.delEdge (c,c') g
                    where c' = head $ G.suc g c
 
+-- Prune references to variables that are not used anymore
+simplifyACFA4 :: (?spec::Spec) => ACFA -> (ACFA, Bool)
+simplifyACFA4 acfa = foldl' (\(acfa',f') (l, (r,defs)) -> let u = used l 
+                                                              defs' = M.filterWithKey (\av _ -> elem av u) defs in
+                                                          (graphUpdNode l (\_ -> (r, defs')) acfa', f' || (M.size defs' /= M.size defs))) 
+                            (acfa, False) (G.labNodes acfa)
+    where 
+    used :: Loc -> [AbsVar]
+    used loc | null (G.lsuc acfa loc) = M.keys $ snd $ fromJust $ G.lab acfa loc -- don't trim final location
+             | otherwise              = nub $ concatMap (\(_,(_,mpre,upds)) -> (maybe [] fAbsVars mpre) ++ concatMap ecasAbsVars upds) $ G.lsuc acfa loc
+
 -- Detemine variables recomputed at different locations that are still used somewhere else
 -- and don't recompute variables that are not needed.
-simplifyACFA4 :: ACFA -> (ACFA, Bool)
-simplifyACFA4 acfa = (G.gmap rm acfa, f)
+simplifyACFA5 :: ACFA -> (ACFA, Bool)
+simplifyACFA5 acfa = (G.gmap rm acfa, f)
     where
     used = concatMap (M.toList . snd . snd) $ G.labNodes acfa
+    cands = M.fromList $ map (\(loc, (recomp, _)) -> (loc, getCands loc recomp)) $ G.labNodes acfa
     getCands loc avs = findIndices (\av -> notElem (av,loc) used) avs
     f = any (\(loc, (recomp,_)) -> not $ null $ getCands loc recomp) $ G.labNodes acfa
-    rm (pre, loc, (recomp, defs), suc) = (pre', loc, (recomp',defs), suc)
+    rm (pre, loc, (recomp, defs), suc) = (pre', loc, (recomp',defs), suc')
         where
-        del = getCands loc recomp 
         delIndices is lst = catMaybes $ mapIdx (\x i -> if' (elem i is) Nothing (Just x)) lst
-        recomp' = delIndices del recomp
-        pre' = map (mapFst (mapTrd3 (delIndices del))) pre
+        recomp' = delIndices (cands M.! loc) recomp
+        pre' = map (mapFst (mapTrd3 (delIndices (cands M.! loc)))) pre
+        suc' = map (\(e, loc') -> (mapTrd3 (delIndices (cands M.! loc')) e, loc')) suc
 
 
 -- Takes a location and a list of variables used in this location and updates
