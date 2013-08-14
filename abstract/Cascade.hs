@@ -25,8 +25,9 @@ data Cascade a = CasTree  [(Formula, Cascade a)]
                | CasLeaf a
 
 casTree :: (PP a) => [(Formula, Cascade a)] -> Cascade a
-casTree bs | null bs'   = error $ "casTree: invalid cascade " ++ show (CasTree bs)
-           | otherwise  = CasTree bs'
+casTree bs = case bs' of
+                  [(FTrue, cas)] -> cas
+                  _              -> CasTree bs'
     where bs' = filter ((/= FFalse) . fst) bs
 
 -- Map leaves of a cascade to cascades
@@ -67,5 +68,6 @@ fcasPrune (CasLeaf f)  = CasLeaf f
 fcasPrune (CasTree bs) = if null bs' then CasLeaf FFalse else casTree bs'
     where bs' = filter (\(_,cas) -> case cas of 
                                          CasLeaf FFalse -> False
+                                         CasTree []     -> False
                                          _              -> True)
                        $ map (mapSnd fcasPrune) bs

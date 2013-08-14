@@ -255,14 +255,14 @@ lhsExprEq (EIndex a1 i1) (EIndex a2 i2)              =
                      then case bexprToFormula $ i1 === i2 of
                                FTrue  -> CasLeaf True
                                FFalse -> CasLeaf False
-                               f      -> CasTree [(f, CasLeaf True), (fnot f, CasLeaf False)]
+                               f      -> casTree [(f, CasLeaf True), (fnot f, CasLeaf False)]
                      else CasLeaf False)
            $ lhsExprEq a1 a2
 lhsExprEq (EUnOp Deref e1) e2             | t1 == t2 && isMemExpr e2 = 
     case bexprToFormula $ e1 === EUnOp AddrOf e2 of
          FTrue  -> CasLeaf True
          FFalse -> CasLeaf False
-         f      -> CasTree [(f, CasLeaf True), (fnot f, CasLeaf False)]
+         f      -> casTree [(f, CasLeaf True), (fnot f, CasLeaf False)]
     where Ptr t1 = typ e1
           t2     = typ e2
 lhsExprEq _              _                           = CasLeaf False
@@ -307,7 +307,7 @@ exprExpandPtr e@(EVar _)          = CasLeaf e
 exprExpandPtr e@(EConst _)        = CasLeaf e
 exprExpandPtr   (EField e f)      = fmap (\e' -> EField e' f) $ exprExpandPtr e
 exprExpandPtr   (EIndex a i)      = EIndex <$> exprExpandPtr a <*> exprExpandPtr i
-exprExpandPtr   (EUnOp Deref e)   = casMap (CasTree . (map (\(p, t) -> (FBoolAVar $ AVarPred p, CasLeaf $ termToExpr t))) . ptrPreds)
+exprExpandPtr   (EUnOp Deref e)   = casMap (casTree . (map (\(p, t) -> (FBoolAVar $ AVarPred p, CasLeaf $ termToExpr t))) . ptrPreds)
                                            $ exprExpandPtr e
 exprExpandPtr   (EUnOp op e)      = fmap (EUnOp op) $ exprExpandPtr e
 exprExpandPtr   (EBinOp op e1 e2) = (EBinOp op) <$> exprExpandPtr e1 <*> exprExpandPtr e2

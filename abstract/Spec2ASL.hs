@@ -84,7 +84,7 @@ mkVarUpd e = {-trace("mkVarUpd =" ++ show e ++ "\n" ++ show upds) $ -} mkECascad
    where
    upds | e == mkContVar = fmap formToExpr contUpdUnfair
         | e == mkEPIDVar = fmap termToExpr epidUpd
-        | otherwise      = CasTree $ (mapMaybe (varUpd1 e) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)) ++ 
+        | otherwise      = casTree $ (mapMaybe (varUpd1 e) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)) ++ 
                                      [(FTrue, CasLeaf e)]
 
 varUpd1 :: (?spec::Spec) => Expr -> Transition -> Maybe (Formula, ECascade)
@@ -167,14 +167,14 @@ acfa2ECas me acfa = let ?acfa = acfa
 
 acfa2ECas' :: (?spec::Spec,?acfa::ACFA,?me::Maybe Expr) => Loc -> ECascade
 acfa2ECas' l | (null $ G.suc ?acfa l)        = CasLeaf $ maybe true id ?me
-             | (length (G.lsuc ?acfa l) > 1) = CasTree $ map (\(l', (_, Just pre,_)) -> (pre, acfa2ECas' l'))
+             | (length (G.lsuc ?acfa l) > 1) = casTree $ map (\(l', (_, Just pre,_)) -> (pre, acfa2ECas' l'))
                                                        $ G.lsuc ?acfa l
              | otherwise                     = let [(l', (_, mpre, upds))] = G.lsuc ?acfa l
                                                    ecas' = ecasSubst (acfa2ECas' l') 
                                                            $ zip (fst $ fromJust $ G.lab ?acfa l') upds
                                                -- non-branching assume statements are taken into account in
                                                -- the precondition of the entire state transition
-                                               in maybe ecas' (\pre -> maybe (CasTree [(pre, ecas')]) (\_ -> ecas') ?me) mpre
+                                               in maybe ecas' (\pre -> maybe (casTree [(pre, ecas')]) (\_ -> ecas') ?me) mpre
 
 
 ecasSubst :: (?spec::Spec) => ECascade -> [(AbsVar, ECascade)] -> ECascade
@@ -184,7 +184,7 @@ ecasSubst1 :: (?spec::Spec) => ECascade -> (AbsVar, ECascade) -> ECascade
 ecasSubst1 ecas (av, ecas') = casMap (ecasSubstAVar ecas av) ecas'
 
 ecasSubstAVar :: (?spec::Spec) => ECascade -> AbsVar -> Expr -> ECascade
-ecasSubstAVar (CasTree bs) av e'            = CasTree $ map (\(f,cas) -> (formSubstAVar av e' f, ecasSubstAVar cas av e')) bs
+ecasSubstAVar (CasTree bs) av e'            = casTree $ map (\(f,cas) -> (formSubstAVar av e' f, ecasSubstAVar cas av e')) bs
 ecasSubstAVar (CasLeaf e) av e' | isBool e  = CasLeaf $ formToExpr $ formSubstAVar av e' $ ptrFreeBExprToFormula e
                                 | otherwise = CasLeaf $
                                               case scalarExprToTerm e of 

@@ -18,6 +18,10 @@ instance PP String where
 instance PP Int where
     pp = int
 
+instance PP Bool where
+    pp True  = text "true"
+    pp False = text "false"
+
 instance PP Integer where
     pp = integer
 

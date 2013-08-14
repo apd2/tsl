@@ -150,13 +150,13 @@ tslUpdateAbsVarAST (av, n)                              = H.Disj (unchanged:upds
 
 
 contUpdUnfair :: (?spec::Spec) => FCascade
-contUpdUnfair = CasTree [ (       fconj [fnot cont, magic], CasLeaf FTrue)
+contUpdUnfair = casTree [ (       fconj [fnot cont, magic], CasLeaf FTrue)
                         , (fnot $ fconj [fnot cont, magic], CasLeaf FFalse)]
     where cont  = ptrFreeBExprToFormula mkContVar
           magic = ptrFreeBExprToFormula mkMagicVar
 
 contUpdFair :: (?spec::Spec) => FCascade
-contUpdFair = CasTree [ (       fconj [fnot cont, magic], CasLeaf lcont)
+contUpdFair = casTree [ (       fconj [fnot cont, magic], CasLeaf lcont)
                       , (fnot $ fconj [fnot cont, magic], CasLeaf FFalse)]
     where cont  = ptrFreeBExprToFormula mkContVar
           lcont = ptrFreeBExprToFormula mkContLVar
@@ -164,7 +164,7 @@ contUpdFair = CasTree [ (       fconj [fnot cont, magic], CasLeaf lcont)
 
 
 epidUpd :: (?spec::Spec) => TCascade
-epidUpd = CasTree [ (cont     , CasLeaf $ scalarExprToTerm $ EConst $ EnumVal $ mkEPIDEnumeratorName EPIDCont)
+epidUpd = casTree [ (cont     , CasLeaf $ scalarExprToTerm $ EConst $ EnumVal $ mkEPIDEnumeratorName EPIDCont)
                   , (fnot cont, CasLeaf lepid)]
     where cont  = ptrFreeBExprToFormula mkContVar
           lepid = scalarExprToTerm mkEPIDLVar
