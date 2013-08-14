@@ -1,4 +1,5 @@
 module Cascade(Cascade(..),
+               casTree,
                casMap,
                FCascade,
                ECascade,
@@ -22,6 +23,11 @@ import Predicate
 -- or other conditions
 data Cascade a = CasTree  [(Formula, Cascade a)] 
                | CasLeaf a
+
+casTree :: (PP a) => [(Formula, Cascade a)] -> Cascade a
+casTree bs | null bs'   = error $ "casTree: invalid cascade " ++ show (CasTree bs)
+           | otherwise  = CasTree bs'
+    where bs' = filter ((/= FFalse) . fst) bs
 
 -- Map leaves of a cascade to cascades
 casMap :: (a -> Cascade b) -> Cascade a -> Cascade b
@@ -58,7 +64,7 @@ fcasToFormula (CasTree (b:bs)) = foldl' (\f (c,cas) -> fdisj [f, fconj [c, fcasT
 -- Recursively prune false leaves
 fcasPrune :: FCascade -> FCascade
 fcasPrune (CasLeaf f)  = CasLeaf f
-fcasPrune (CasTree bs) = if null bs' then CasLeaf FFalse else CasTree bs'
+fcasPrune (CasTree bs) = if null bs' then CasLeaf FFalse else casTree bs'
     where bs' = filter (\(_,cas) -> case cas of 
                                          CasLeaf FFalse -> False
                                          _              -> True)

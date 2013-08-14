@@ -2,6 +2,7 @@
 
 module BFormula(BoolBOp(..),
                 Formula(..),
+                fbinop,
                 fdisj,
                 fconj,
                 fnot,
@@ -75,6 +76,12 @@ instance PP Formula where
 
 instance Show Formula where
     show = render . pp
+
+fbinop :: BoolBOp -> Formula -> Formula -> Formula
+fbinop Conj f1 f2 = fconj [f1,f2]
+fbinop Disj f1 f2 = fdisj [f1,f2]
+fbinop op   f1 f2 = FBinOp op f1 f2
+
 
 fdisj :: [Formula] -> Formula
 fdisj fs = case disjuncts'' of 

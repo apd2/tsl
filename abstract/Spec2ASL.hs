@@ -110,9 +110,9 @@ mkForm :: (?spec::Spec) => Formula -> Doc
 mkForm FTrue                    = text "true"
 mkForm FFalse                   = text "false"
 mkForm (FBoolAVar (AVarBool t)) = parens $ (mkExpr $ termToExpr t) <+> text "==" <+> text "1"
-mkForm (FBinOp Impl  f1 f2)     = mkForm $ FBinOp Disj (FNot f1) f2
+mkForm (FBinOp Impl  f1 f2)     = mkForm $ fdisj [fnot f1, f2]
 mkForm (FBinOp Equiv f FTrue)   = mkForm f
-mkForm (FBinOp Equiv f FFalse)  = mkForm $ FNot f
+mkForm (FBinOp Equiv f FFalse)  = mkForm $ fnot f
 mkForm (FBinOp op f1 f2)        = parens $ (mkForm f1) <+> (mkBOp $ boolOpToBOp op) <+> (mkForm f2)
 mkForm (FNot f)                 = parens $ char '!' <> mkForm f
 mkForm f                        = mkExpr $ formToExpr f
@@ -201,5 +201,5 @@ formSubstAVar av e f@(FBoolAVar av') | av == av' = ptrFreeBExprToFormula e
                                      | otherwise = f
 formSubstAVar av e   (FEq av1 av2)               = ptrFreeBExprToFormula $ EBinOp Eq (if' (av1 == av) e (avarToExpr av1)) (if' (av2 == av) e (avarToExpr av2))
 formSubstAVar av e   (FEqConst av' i)            = ptrFreeBExprToFormula $ EBinOp Eq (if' (av' == av) e (avarToExpr av')) $ EConst $ avarValToConst av' i
-formSubstAVar av e   (FBinOp op f1 f2)           = FBinOp op (formSubstAVar av e f1) (formSubstAVar av e f2)
-formSubstAVar av e   (FNot f)                    = FNot $ formSubstAVar av e f
+formSubstAVar av e   (FBinOp op f1 f2)           = fbinop op (formSubstAVar av e f1) (formSubstAVar av e f2)
+formSubstAVar av e   (FNot f)                    = fnot $ formSubstAVar av e f

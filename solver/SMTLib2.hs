@@ -251,7 +251,7 @@ taddrofTerms _         = []
 ptrEqConstr :: (?spec::Spec, ?typemap::M.Map Type String) => (Term, Term) -> Formula
 ptrEqConstr (t1, t2) = case ptrEqCond t1 t2 of
                             FFalse -> neq (TAddr t1) (TAddr t2)
-                            f      -> FBinOp Equiv (eq (TAddr t1) (TAddr t2)) f
+                            f      -> fbinop Equiv (eq (TAddr t1) (TAddr t2)) f
 
 eq  t1 t2 = fRel REq (termToExpr t1) (termToExpr t2)
 neq t1 t2 = fnot $ eq t1 t2
