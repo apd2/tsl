@@ -100,7 +100,11 @@ varUpd1 e Transition{..} = if' (G.isEmpty cfa') Nothing
 
 mkECascade :: (?spec::Spec) => Maybe Expr -> ECascade -> Doc
 mkECascade mlhs (CasLeaf e)  = maybe empty (\lhs -> mkExpr lhs <+> text ":=") mlhs <+> mkExpr e
-mkECascade mlhs (CasTree bs) = (maybe empty (\lhs -> mkExpr lhs <+> text ":=") mlhs <+> text "case" <+> lbrace) $+$ (nest 4 $ vcat $ map (\(f, cas) -> mkForm f <+> colon <+> mkECascade Nothing cas <+> semi) bs) $+$ rbrace
+mkECascade mlhs (CasTree bs) = (maybe empty (\lhs -> mkExpr lhs <+> text ":=") mlhs <+> text "case" <+> lbrace) 
+                               $+$ (nest 4 $ vcat $ map (\(f, cas) -> case cas of 
+                                                                           CasLeaf _ -> mkForm f <+> colon <+> mkECascade Nothing cas <+> semi
+                                                                           CasTree _ -> mkForm f <+> colon $+$ (nest 4 $ mkECascade Nothing cas <+> semi)) bs) 
+                               $+$ rbrace
 
 mkForm :: (?spec::Spec) => Formula -> Doc
 mkForm FTrue                    = text "true"
