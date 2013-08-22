@@ -45,7 +45,7 @@ import Ops
 mapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Expr -> Expr
 mapExpr f s e = 
     case f s e of
-         EApply p m as          -> EApply  p m (map (mapExpr f s) as)
+         EApply p m mas         -> EApply  p m (map (fmap $ mapExpr f s) mas)
          EField p st n          -> EField  p (mapExpr f s st) n
          EPField p st n         -> EPField p (mapExpr f s st) n
          EIndex p arr i         -> EIndex  p (mapExpr f s arr) (mapExpr f s i)
@@ -61,7 +61,7 @@ mapExpr f s e =
 
 -- Find all methods invoked by the expression
 exprCallees :: (?spec::Spec) => Scope -> Expr -> [(Pos, (Template, Method))]
-exprCallees s (EApply  p mref as)       = (p,getMethod s mref):(concatMap (exprCallees s) as)
+exprCallees s (EApply  p mref mas)      = (p,getMethod s mref):(concatMap (exprCallees s) $ catMaybes mas)
 exprCallees s (EField  _ e _)           = exprCallees s e
 exprCallees s (EPField _ e _)           = exprCallees s e
 exprCallees s (EIndex  _ e idx)         = exprCallees s e ++ exprCallees s idx
@@ -233,7 +233,7 @@ isConstExpr (ENonDet _)              = False
 
 -- Side-effect free expression
 exprNoSideEffects :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
-exprNoSideEffects (EApply _ m as)          = applyNoSideEffects m as
+exprNoSideEffects (EApply _ m mas)         = applyNoSideEffects m mas
 exprNoSideEffects (EField _ e _)           = exprNoSideEffects e
 exprNoSideEffects (EPField _ e _)          = False -- exprNoSideEffects e
 exprNoSideEffects (EIndex _ a i)           = exprNoSideEffects a && exprNoSideEffects i
@@ -254,13 +254,13 @@ exprNoSideEffects _ = True
 -- Check that method call is side-effect-free:
 -- The method must be a function, all arguments must be side-effect-free 
 -- expressions, and all out arguments must be local variables.
-applyNoSideEffects :: (?spec::Spec, ?scope::Scope) => MethodRef -> [Expr] -> Bool
-applyNoSideEffects mref as =  (and $ map isLocalLHS oargs)     
-                           && (methCat m == Function) 
-                           && (and $ map exprNoSideEffects as)
+applyNoSideEffects :: (?spec::Spec, ?scope::Scope) => MethodRef -> [Maybe Expr] -> Bool
+applyNoSideEffects mref mas =  (all isLocalLHS $ catMaybes oargs)     
+                            && (methCat m == Function) 
+                            && (all exprNoSideEffects $ catMaybes mas)
     where m       = snd $ getMethod ?scope mref
           oidx    = findIndices ((== ArgOut) . argDir) (methArg m)
-          oargs   = map (as !!) oidx
+          oargs   = map (mas !!) oidx
 
 -- True if expression _can_ terminate instantaneously 
 -- (but is not necessarily guaranteed to always do so)
@@ -268,9 +268,9 @@ isInstExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isInstExpr (ETerm _ _)              = True
 isInstExpr (ELit _ _ _ _ _)         = True
 isInstExpr (EBool _ _)              = True
-isInstExpr (EApply _ m as)          = let (_,meth) = getMethod ?scope m
+isInstExpr (EApply _ m mas)         = let (_,meth) = getMethod ?scope m
                                       in if elem (methCat meth) [Function,Procedure]
-                                            then all isInstExpr as 
+                                            then all isInstExpr $ catMaybes mas 
                                             else False
 isInstExpr (EField _ s _)           = isInstExpr s
 isInstExpr (EPField _ s _)          = isInstExpr s
@@ -290,8 +290,8 @@ isInstExpr (ENonDet _)              = True
 -- Objects referred to by the expression
 exprObjs :: (?spec::Spec, ?scope::Scope) => Expr -> [Obj]
 exprObjs (ETerm   _ s)            = [getTerm ?scope s]
-exprObjs (EApply  _ m as)         = (let (t,meth) = getMethod ?scope m in ObjMethod t meth):
-                                    concatMap exprObjs as
+exprObjs (EApply  _ m mas)        = (let (t,meth) = getMethod ?scope m in ObjMethod t meth):
+                                    (concatMap exprObjs $ catMaybes mas)
 exprObjs (EField  _ e f)          = (objGet (ObjType $ typ e) f) : 
                                     exprObjs e
 exprObjs (EPField _ e f)          = exprObjs e

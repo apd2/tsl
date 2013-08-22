@@ -46,7 +46,7 @@ instance Show MethodRef where
 data Expr = ETerm   {epos::Pos, ssym::StaticSym}
           | ELit    {epos::Pos, width::Int, signed::Bool, rad::Radix, ival::Integer}
           | EBool   {epos::Pos, bval::Bool}
-          | EApply  {epos::Pos, mref::MethodRef, args::[Expr]}
+          | EApply  {epos::Pos, mref::MethodRef, args::[Maybe Expr]}
           | EField  {epos::Pos, struct::Expr, field::Ident}
           | EPField {epos::Pos, struct::Expr, field::Ident}
           | EIndex  {epos::Pos, arr::Expr, idx::Expr}

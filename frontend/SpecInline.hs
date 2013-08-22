@@ -278,7 +278,7 @@ mkCTran = I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
           ctasks = filter ((== Task Controllable) . methCat) $ tmMethod tmMain
           stats = SMagExit nopos : 
                   (map (\m -> SInvoke nopos (MethodRef nopos [name m]) 
-                              $ replicate (length $ methArg m) (ENonDet nopos))
+                              $ map (\a -> if' (argDir a == ArgIn) (Just $ ENonDet nopos) Nothing) (methArg m))
                    ctasks)
           stats' = map (\stat -> let ?scope = sc in evalState (statSimplify stat) (0,[])) stats
           ctx  = CFACtx { ctxEPID    = Just EPIDCont

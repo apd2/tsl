@@ -37,6 +37,7 @@ spec2ASL spec =
         upds     = map mkVarUpd sscalars
         initcond = (\(t, e) -> (mkForm $ ptrFreeBExprToFormula e) <+> text "&&" <+> mkTranPrecondition t "init") $ tsInit $ specTran ?spec
         goal     = head $ mapIdx (\g i -> mkTranPrecondition (goalCond g) ("goal" ++ show i)) $ tsGoal $ specTran ?spec
+        fairs    = vcat $ map (\f -> (mkForm $ ptrFreeBExprToFormula $ fairCond f) <> semi) $ tsFair $ specTran ?spec
         constr   = mkForm (autoConstr False) $+$ text "&&" $+$ mkAllPreconditions
         cont     = mkExpr $ mkContVar === true in
     text "STATE"
@@ -59,7 +60,7 @@ spec2ASL spec =
     $+$ text "" $+$
     text "FAIR"
     $+$
-    text "false"
+    fairs
     $+$ text "" $+$
     text "CONT"
     $+$
@@ -82,7 +83,7 @@ mkAllPreconditions = parens $ vcat $ punctuate (text "||")
 mkVarUpd :: (?spec::Spec) => Expr -> Doc
 mkVarUpd e = {-trace("mkVarUpd =" ++ show e ++ "\n" ++ show upds) $ -} mkECascade (Just e) upds
    where
-   upds | e == mkContVar = fmap formToExpr contUpdUnfair
+   upds | e == mkContVar = fmap formToExpr contUpdFair
         | e == mkEPIDVar = fmap termToExpr epidUpd
         | otherwise      = casTree $ (mapMaybe (varUpd1 e) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)) ++ 
                                      [(FTrue, CasLeaf e)]
@@ -141,6 +142,7 @@ mkDecl e = mkExpr e <+> colon <+>
                 UInt w -> text "abs " <+> text "uint<" <> int w <> char '>'
                 Bool   -> text "conc" <+> text "bool"
                 Enum n -> text "conc" <+> (braces $ hcat $ punctuate comma $ map mkName $ enumEnums $ getEnumeration n)
+                t      -> error $ "mkDecl " ++ show t
 
 mkTranPrecondition :: (?spec::Spec) => Transition -> String -> Doc
 mkTranPrecondition Transition{..} n = acfaTraceFile acfa ("pre" ++ n)

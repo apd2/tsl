@@ -11,11 +11,12 @@ import Data.List
 import Data.Maybe
 import Control.Monad.State
 import qualified Data.Map as M
+import Debug.Trace
 
 import qualified IExpr as I
 import qualified IType as I
 import qualified IVar  as I
-import Util hiding (name)
+import Util hiding (name, trace)
 import NS
 import Pos
 import Name
@@ -45,11 +46,11 @@ exprSimplify :: (?spec::Spec, ?scope::Scope) => Expr -> NameGen ([Statement], Ex
 exprSimplify e = liftM (mapSnd exprFlattenStruct) $ exprSimplify' e
 
 exprSimplify' :: (?spec::Spec, ?scope::Scope) => Expr -> NameGen ([Statement], Expr)
-exprSimplify' e@(EApply p mref as)      = do 
-    (argss, as') <- liftM unzip $ mapM exprSimplify as
+exprSimplify' e@(EApply p mref mas)     = do 
+    (argss, mas') <- liftM unzip $ mapM (maybe (return ([], Nothing)) (liftM (mapSnd Just) . exprSimplify)) mas
     var <- tmpVar p False (tspec e)
     let decl = SVarDecl p var
-        asn = SAssign p (ETerm p [name var]) (EApply p mref as')
+        asn = SAssign p (ETerm p [name var]) (EApply p mref mas')
         ss = (concat argss) ++ [decl,asn]
         e' = ETerm p [name var]
     return (ss, e')
@@ -87,9 +88,9 @@ exprSimplify' e                         = return ([], e)
 -- Like exprSimplify, but don't expand the top-level method call or conditional expression
 -- and assign it directly to lhs, which is assumed to be already simplified.
 exprSimplifyAsn :: (?spec::Spec, ?scope::Scope) => Pos -> Expr -> Expr -> NameGen [Statement]
-exprSimplifyAsn p lhs (EApply p' mref as)  = do
-    (argss, as') <- liftM unzip $ mapM exprSimplify as
-    let asn = SAssign p lhs (EApply p' mref as')
+exprSimplifyAsn p lhs (EApply p' mref mas)  = do
+    (argss, mas') <- liftM unzip $ mapM (maybe (return ([], Nothing)) ((liftM $ mapSnd Just) . exprSimplify)) mas
+    let asn = SAssign p lhs (EApply p' mref mas')
     return $ (concat argss) ++ [asn]
 exprSimplifyAsn p lhs (ETernOp _ a1 a2 a3) = liftM fst $ condSimplify p (Right lhs) [(a1,a2)] (Just a3)
 exprSimplifyAsn p lhs (ECase _ c cs md)    = do let cs' = map (mapFst $ (\e -> EBinOp (pos e) Eq c e)) cs

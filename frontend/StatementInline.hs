@@ -62,9 +62,9 @@ statSimplify' (SFor p (mi, c, s) b) = do i' <- case mi of
                                          b' <- statSimplify' b
                                          return $ i' ++ ss ++ [SFor p (Nothing, c',s') (sSeq (pos b) (b'++ss))]
 statSimplify' (SChoice p ss)        = liftM (return . SChoice p)         $ mapM statSimplify ss
-statSimplify' (SInvoke p mref as)   = -- Order of argument evaluation is undefined in C;
+statSimplify' (SInvoke p mref mas)  = -- Order of argument evaluation is undefined in C;
                                       -- Go left-to-right
-                                      do (ss, as') <- liftM unzip $ mapM exprSimplify as
+                                      do (ss, as') <- liftM unzip $ mapM (maybe (return ([], Nothing)) ((liftM $ mapSnd Just) . exprSimplify)) mas
                                          return $ (concat ss) ++ [SInvoke p mref as']
 statSimplify' (SWait p c)           = do (ss,c') <- exprSimplify c
                                          return $ case ss of
@@ -233,10 +233,10 @@ statToCFA' before _ (SBreak _) = do
     brkLoc <- gets ctxBrkLoc
     ctxInsTrans before brkLoc I.TranNop
 
-statToCFA' before after s@(SInvoke _ mref as) = do
+statToCFA' before after s@(SInvoke _ mref mas) = do
     sc <- gets ctxScope
     let meth = snd $ getMethod sc mref
-    methInline before after meth as Nothing (I.ActStat s)
+    methInline before after meth mas Nothing (I.ActStat s)
 
 statToCFA' before after (SAssert _ cond) = do
     cond' <- exprToIExprDet cond
@@ -248,10 +248,10 @@ statToCFA' before after (SAssume _ cond) = do
     cond' <- exprToIExprDet cond
     ctxInsTrans before after (I.TranStat $ I.SAssume cond')
 
-statToCFA' before after (SAssign _ lhs e@(EApply _ mref args)) = do
+statToCFA' before after (SAssign _ lhs e@(EApply _ mref margs)) = do
     sc <- gets ctxScope
     let meth = snd $ getMethod sc mref
-    methInline before after meth args (Just lhs) (I.ActExpr e)
+    methInline before after meth margs (Just lhs) (I.ActExpr e)
 
 statToCFA' before after (SAssign _ lhs rhs) = do
     sc <- gets ctxScope
@@ -313,8 +313,8 @@ statToCFA' before after (SMagExit _) = do
 --    aftpid  <- ctxInsTrans' aftcont $ I.TranStat $ mkPIDVar   I.=: mkPIDEnum pidCont
     ctxInsTrans before after $ I.TranStat $ mkMagicVar I.=: I.false
 
-methInline :: (?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
-methInline before after meth args mlhs act = do
+methInline :: (?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Maybe Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
+methInline before after meth margs mlhs act = do
     -- save current context
     mepid <- gets ctxEPID
     let mpid = case mepid of
@@ -325,7 +325,7 @@ methInline before after meth args mlhs act = do
                 Nothing  -> return Nothing
                 Just lhs -> (liftM Just) $ exprToIExprDet lhs
     -- set input arguments
-    aftarg <- setArgs before meth args
+    aftarg <- setArgs before meth margs
     -- set return location
     retloc <- ctxInsLoc
     aftret <- ctxInsTrans' retloc I.TranReturn
@@ -341,7 +341,7 @@ methInline before after meth args mlhs act = do
     -- restore syntactic scope
     ctxPopScope
     -- copy out arguments
-    aftout <- copyOutArgs aftret meth args
+    aftout <- copyOutArgs aftret meth margs
     -- pause after task invocation
     aftpause <- if elem (methCat meth) [Task Controllable] && (mepid /= Just EPIDCont)
                    then ctxPause aftout I.true act
@@ -352,28 +352,31 @@ methInline before after meth args mlhs act = do
     ctxPopBrkLoc
 
 -- assign input arguments to a method
-setArgs :: (?spec::Spec) => I.Loc -> Method -> [Expr] -> State CFACtx I.Loc 
-setArgs before meth args = do
+setArgs :: (?spec::Spec) => I.Loc -> Method -> [Maybe Expr] -> State CFACtx I.Loc 
+setArgs before meth margs = do
     mepid  <- gets ctxEPID
     let nsid = maybe (NSID Nothing Nothing) (\epid -> epid2nsid epid (ScopeMethod tmMain meth)) mepid
-    foldM (\bef (farg,aarg) -> do aarg' <- exprToIExprs aarg (tspec farg)
-                                  let t = mkType $ Type (ScopeTemplate tmMain) (tspec farg)
-                                  ctxInsTransMany' bef $ map I.TranStat
-                                                       $ zipWith I.SAssign (I.exprScalars (mkVar nsid farg) t) 
-                                                                           (concatMap (uncurry I.exprScalars) aarg'))
-          before $ filter (\(a,_) -> argDir a == ArgIn) $ zip (methArg meth) args
+    foldM (\bef (farg,Just aarg) -> do aarg' <- exprToIExprs aarg (tspec farg)
+                                       let t = mkType $ Type (ScopeTemplate tmMain) (tspec farg)
+                                       ctxInsTransMany' bef $ map I.TranStat
+                                                            $ zipWith I.SAssign (I.exprScalars (mkVar nsid farg) t) 
+                                                                                (concatMap (uncurry I.exprScalars) aarg'))
+          before $ filter (\(a,_) -> argDir a == ArgIn) $ zip (methArg meth) margs
 
 -- copy out arguments
-copyOutArgs :: (?spec::Spec) => I.Loc -> Method -> [Expr] -> State CFACtx I.Loc
-copyOutArgs loc meth args = do
+copyOutArgs :: (?spec::Spec) => I.Loc -> Method -> [Maybe Expr] -> State CFACtx I.Loc
+copyOutArgs loc meth margs = do
     mepid <- gets ctxEPID
     let nsid = maybe (NSID Nothing Nothing) (\epid -> epid2nsid epid (ScopeMethod tmMain meth)) mepid
     foldM (\loc' (farg,aarg) -> do aarg' <- exprToIExprDet aarg
                                    let t = mkType $ Type (ScopeTemplate tmMain) (tspec farg)
                                    ctxInsTransMany' loc' $ map I.TranStat
                                                          $ zipWith I.SAssign (I.exprScalars aarg' t) 
-                                                                             (I.exprScalars (mkVar nsid farg) t)) loc $ 
-          filter (\(a,_) -> argDir a == ArgOut) $ zip (methArg meth) args
+                                                                             (I.exprScalars (mkVar nsid farg) t)) loc
+          $ map (mapSnd fromJust)
+          $ filter (isJust . snd)
+          $ filter ((== ArgOut) . argDir . fst) 
+          $ zip (methArg meth) margs
 
 ----------------------------------------------------------
 -- Top-level function: convert process statement to CFA

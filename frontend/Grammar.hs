@@ -369,7 +369,7 @@ spause   = SPause nopos <$ reserved "pause"
 swait    = SWait nopos <$ reserved "wait" <*> (parens detexpr)
 sstop    = SStop nopos <$ reserved "stop"
 sbreak   = SBreak nopos <$ reserved "break"
-sinvoke  = SInvoke nopos <$ isinvoke <*> methname <*> (parens $ commaSep expr)
+sinvoke  = SInvoke nopos <$ isinvoke <*> methname <*> (parens $ commaSep $ Just <$> expr)
     where isinvoke = try $ lookAhead $ methname *> symbol "("
 sassert  = SAssert nopos <$ reserved "assert" <*> (parens detexpr)
 sassume  = SAssume nopos <$ reserved "assume" <*> (parens detexpr)
@@ -416,7 +416,7 @@ estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
           anonfields = commaSep1 (expr' det)
           namedfields = commaSep1 $ ((,) <$ reservedOp "." <*> ident <* reservedOp "=" <*> (expr' det))
-eapply  det = EApply nopos <$ isapply <*> methname <*> (parens $ commaSep (expr' det))
+eapply  det = EApply nopos <$ isapply <*> methname <*> (parens $ commaSep (Just <$> expr' det))
     where isapply = try $ lookAhead $ methname *> symbol "("
 eterm   det = ETerm nopos <$> staticsym
 ebool   det = EBool nopos <$> boolParser

@@ -27,7 +27,7 @@ data Statement = SVarDecl {stpos::Pos, svar::Var}
                | SWait    {stpos::Pos, cond::Expr}
                | SStop    {stpos::Pos}
                | SBreak   {stpos::Pos}
-               | SInvoke  {stpos::Pos, mname::MethodRef, args::[Expr]}
+               | SInvoke  {stpos::Pos, mname::MethodRef, args::[Maybe Expr]}
                | SAssert  {stpos::Pos, cond::Expr}
                | SAssume  {stpos::Pos, cond::Expr}
                | SAssign  {stpos::Pos, lhs::Expr, rhs::Expr}

@@ -90,7 +90,7 @@ statMapExpr' f s (SReturn  p mr)           = SReturn  p (fmap (mapExpr f s) mr)
 statMapExpr' f s (SDo      p b c)          = SDo      p b (mapExpr f s c)
 statMapExpr' f s (SWhile   p c b)          = SWhile   p (mapExpr f s c) b
 statMapExpr' f s (SFor     p (i,c,u) b)    = SFor     p (i, mapExpr f s c, u) b
-statMapExpr' f s (SInvoke  p m as)         = SInvoke  p m (map (mapExpr f s) as)
+statMapExpr' f s (SInvoke  p m mas)        = SInvoke  p m (map (fmap $ mapExpr f s) mas)
 statMapExpr' f s (SWait    p e)            = SWait    p (mapExpr f s e)
 statMapExpr' f s (SAssert  p e)            = SAssert  p (mapExpr f s e)
 statMapExpr' f s (SAssume  p e)            = SAssume  p (mapExpr f s e)
@@ -111,7 +111,7 @@ statCallees s (SDo      _ b c)          = statCallees s b ++ exprCallees s c
 statCallees s (SWhile   _ c b)          = exprCallees s c ++ statCallees s b
 statCallees s (SFor     _ (i,c,u) b)    = (fromMaybe [] $ fmap (statCallees s) i) ++ exprCallees s c ++ statCallees s u ++ statCallees s b
 statCallees s (SChoice  _ ss)           = concatMap (statCallees s) ss
-statCallees s (SInvoke  p mref as)      = (p,getMethod s mref):(concatMap (exprCallees s) as)
+statCallees s (SInvoke  p mref mas)     = (p,getMethod s mref):(concatMap (exprCallees s) $ catMaybes mas)
 statCallees s (SWait    _ e)            = exprCallees s e
 statCallees s (SAssert  _ e)            = exprCallees s e
 statCallees s (SAssume  _ e)            = exprCallees s e
@@ -134,8 +134,8 @@ statObjs (SDo      _ s c)           = statObjs s ++ exprObjs c
 statObjs (SWhile   _ c s)           = statObjs s ++ exprObjs c
 statObjs (SFor     _ (mi, c, i) s)  = statObjs s ++ exprObjs c ++ statObjs i ++ (concatMap statObjs $ maybeToList mi)
 statObjs (SChoice  _ ss)            = concatMap statObjs ss
-statObjs (SInvoke  _ m as)          = (let (t,meth) = getMethod ?scope m in ObjMethod t meth):
-                                      concatMap exprObjs as
+statObjs (SInvoke  _ m mas)         = (let (t,meth) = getMethod ?scope m in ObjMethod t meth):
+                                      (concatMap exprObjs $ catMaybes mas)
 statObjs (SWait    _ c)             = exprObjs c
 statObjs (SAssert  _ c)             = exprObjs c
 statObjs (SAssume  _ c)             = exprObjs c
@@ -406,9 +406,9 @@ findInstPath _       (SWait _ _)       = Nothing
 findInstPath _       (SStop _)         = Nothing
 findInstPath True  s@(SBreak _)        = Just [Left s]
 findInstPath False s@(SBreak _)        = Nothing
-findInstPath b     s@(SInvoke _ m as)  = let (_,meth) = getMethod ?scope m
+findInstPath b     s@(SInvoke _ m mas) = let (_,meth) = getMethod ?scope m
                                          in if elem (methCat meth) [Function,Procedure] 
-                                               then if all isInstExpr as 
+                                               then if all isInstExpr $ catMaybes mas 
                                                        then Just [Left s]
                                                        else Nothing
                                                else Nothing
