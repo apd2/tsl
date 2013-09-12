@@ -333,7 +333,7 @@ methInline before after meth margs mlhs act = do
     -- clear break location
     ctxPushBrkLoc $ error "break outside a loop"
     -- change syntactic scope
-    ctxPushScope sc aftret lhs (methodLMap mpid meth)
+    ctxPushScope sc retloc lhs (methodLMap mpid meth)
     -- build CFA of the method
     aftcall <- ctxInsTrans' aftarg (I.TranCall meth (Just aftret))
     aftbody <- statToCFA aftcall (fromRight $ methBody meth)
