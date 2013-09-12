@@ -5,10 +5,10 @@ module Grammar(SpecItem(..),
                litParser, 
                boolParser,
                grammar,
-               detexpr,
-               statement,
-               statements,
-               statements1) where
+               detexprParser,
+               statementParser,
+               statementsParser,
+               statements1Parser) where
 
 import Data.Maybe
 import qualified Text.PrettyPrint as P
@@ -37,9 +37,13 @@ import Type
 import Method
 import Const
 
--- exports
-litParser = (\(ELit _ w s r v) -> (w,s,r,v)) <$> elit True
-boolParser = ((True <$ reserved "true") <|> (False <$ reserved "false"))
+-- exports: all exported parsers must start with removeTabs to get correct position markers
+litParser         = removeTabs *> ((\(ELit _ w s r v) -> (w,s,r,v)) <$> elit True)
+boolParser        = removeTabs *> ((True <$ reserved "true") <|> (False <$ reserved "false"))
+detexprParser     = removeTabs *> detexpr
+statementParser   = removeTabs *> statement
+statementsParser  = removeTabs *> statements
+statements1Parser = removeTabs *> statements1
 
 reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "...", "::", "->"]
 reservedNames = ["after",
@@ -129,6 +133,11 @@ charLit    = T.charLiteral lexer
 ----------------------------------------------------------------
 -- Common declarations that occur in different syntactic scopes
 ----------------------------------------------------------------
+
+removeTabs = do s <- getInput
+                let s' = map (\c -> if' (c == '\t') ' ' c ) s 
+                setInput s'          
+
 withPos x = (\s x e -> atPos x (s,e)) <$> getPosition <*> x <*> getPosition
 
 quote :: String -> String
@@ -201,7 +210,7 @@ instance WithPos Import where
     atPos (Import _ i) p = Import p i
 
 -- A TSL spec is a list of template, type, and constant declarations.  
-grammar = (optional whiteSpace) *> (many decl) <* eof
+grammar = removeTabs *> ((optional whiteSpace) *> (many decl) <* eof)
 decl =  (SpImport <$> imp)
     <|> (SpConst <$> constant <* semi)
     <|> (SpType <$> typeDef <* semi)
