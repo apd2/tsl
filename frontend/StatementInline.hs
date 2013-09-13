@@ -133,7 +133,7 @@ statToCFA' before _ (SReturn _ rval) = do
     mlhs  <- gets ctxLHS
     ret   <- gets ctxRetLoc
     case rval of 
-         Nothing -> ctxInsTrans before ret I.TranNop
+         Nothing -> ctxInsTrans before ret I.TranReturn
          Just v  -> case mlhs of
                          Nothing  -> ctxInsTrans before ret I.TranNop
                          Just lhs -> do sc@(ScopeMethod _ m) <- gets ctxScope
@@ -143,7 +143,7 @@ statToCFA' before _ (SReturn _ rval) = do
                                                    $ zipWith I.SAssign (I.exprScalars lhs (mkType $ Type sc t))
                                                                        (concatMap (uncurry I.exprScalars) vi)
                                         aftargs <- ctxInsTransMany' before asns
-                                        ctxInsTrans aftargs ret I.TranNop
+                                        ctxInsTrans aftargs ret I.TranReturn
 
 statToCFA' before after s@(SPar _ ps) = do
     Just (EPIDProc pid) <- gets ctxEPID
@@ -333,7 +333,7 @@ methInline before after meth margs mlhs act = do
     -- clear break location
     ctxPushBrkLoc $ error "break outside a loop"
     -- change syntactic scope
-    ctxPushScope sc retloc lhs (methodLMap mpid meth)
+    ctxPushScope sc aftret lhs (methodLMap mpid meth)
     -- build CFA of the method
     aftcall <- ctxInsTrans' aftarg (I.TranCall meth (Just aftret))
     aftbody <- statToCFA aftcall (fromRight $ methBody meth)
