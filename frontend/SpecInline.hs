@@ -9,6 +9,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad.State hiding (guard)
 import qualified Data.Graph.Inductive.Graph as G
+import Debug.Trace
 
 import TSLUtil
 import Util hiding (name, trace)
@@ -34,6 +35,7 @@ import Method
 import Process
 import Type
 import Inline
+
 
 -- Main function
 spec2Internal :: Spec -> Bool -> I.Spec
@@ -333,6 +335,7 @@ mkVars = mkErrVarDecl : mkContVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires
 
     methVars :: Maybe PrID -> Bool -> Method -> [I.Var]
     methVars mpid ret m = 
+        trace ("methVars " ++ show mpid ++ " " ++ sname m) $
         (let ?scope = ScopeMethod tmMain m in map (\v -> mkVarDecl (varMem v) (NSID mpid (Just m)) v) (methVar m)) ++ 
         (let ?scope = ScopeMethod tmMain m in map (mkVarDecl False (NSID mpid (Just m))) (methArg m)) ++
         (if ret then maybeToList (mkRetVarDecl mpid m) else [])
@@ -390,17 +393,17 @@ fprocToCProc mparpid (sc, (n,stat)) = (I.Process{..}, pvs ++ concat cvs)
           (procChildren, cvs) = unzip $ map (fprocToCProc $ Just pid) $ forkedProcsRec sc stat
           (procCFA,pvs)       = let ?procs = procChildren in procToCFA pid lmap sc stat
 
--- Map a function over all inlined invisible and uncontrollable tasks tasks called by the process
+-- Map a function over all inlined invisible and uncontrollable tasks called by the process
 mapPTreeInlinedTask :: (?spec::Spec) => (PrID -> Method -> a) -> Process -> [a]
 mapPTreeInlinedTask f p = mapPTreeInlinedTask' f (PrID (sname p) []) (ScopeProcess tmMain p) (procStatement p)
 
 mapPTreeInlinedTask' :: (?spec::Spec) => (PrID -> Method -> a) -> PrID -> Scope -> Statement -> [a]
-mapPTreeInlinedTask' f pid s stat = 
-    (concatMap (\m -> (f pid m) : (mapPTreeInlinedTask' f pid (ScopeMethod tmMain m) (fromRight $ methBody m)))
-               $ filter (\m -> elem (methCat m) [Task Invisible, Task Uncontrollable])
-               $ procCallees s stat)
+mapPTreeInlinedTask' f pid sc stat = 
+    (map (f pid)
+     $ filter (\m -> elem (methCat m) [Task Invisible, Task Uncontrollable])
+     $ procCallees sc stat)
     ++
-    (concatMap (\(n,st) -> mapPTreeInlinedTask' f (childPID pid n) s st) $ forkedProcs stat)
+    (concatMap (\(sc',(n,st)) -> mapPTreeInlinedTask' f (childPID pid n) sc' st) $ forkedProcsRec sc stat)
 
 
 -- Map a function over forked processes
