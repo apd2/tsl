@@ -57,9 +57,10 @@ spec2Internal s dofair =
         senum = mapMaybe (\d -> case tspec d of
                                      EnumSpec _ es -> Just $ I.Enumeration (sname d) (map sname es)
                                      _             -> Nothing) (specType ?spec)                                                     
-        (pidvar, pidenum)  = mkEPIDVarDecl epids
-        vars               = mkVars
-        (tvar, tenum)      = mkTagVarDecl
+        (pidlvar, pidenum)  = mkEPIDLVarDecl epids
+        vars                = mkVars
+        (tvar, tenum)       = mkTagVarDecl
+        (fairvars, fairinit, fairreg) = mkFair spec'
 
         ((specWire, specPrefix, inittran, goals), (_, extratmvars)) = 
             runState (do wire      <- mkWires
@@ -72,7 +73,7 @@ spec2Internal s dofair =
         extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) (NSID Nothing Nothing) v) extratmvars
         (specProc, tmppvs) = unzip $ (map procToCProc $ tmProcess tmMain) 
         specEnum           = choiceenum ++ (tenum : pidenum : (senum ++ pcenums))
-        specVar            = cvars ++ [tvar, pidvar, mkEPIDLVarDecl] ++ pcvars ++ vars ++ concat tmppvs ++ extraivars
+        specVar            = cvars ++ [tvar, pidlvar] ++ pcvars ++ vars ++ concat tmppvs ++ extraivars ++ fairvars
         specCAct           = ctran
         specTran           = error "specTran undefined"
         spec               = I.Spec {..}
@@ -98,9 +99,9 @@ spec2Internal s dofair =
                                        , I.tsUTran  = utran
                                        , I.tsWire   = cfaToITransition (fromMaybe I.cfaNop (I.specWire spec'))   "wires"
                                        , I.tsPrefix = cfaToITransition (fromMaybe I.cfaNop (I.specPrefix spec')) "prefix"
-                                       , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ [errinit, maginit, continit]))
+                                       , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ fairinit ++ [errinit, maginit, continit]))
                                        , I.tsGoal   = goals
-                                       , I.tsFair   = if' dofair (mkFair spec') [I.FairRegion "dummy" I.false]
+                                       , I.tsFair   = if' dofair [fairreg] [I.FairRegion "dummy" I.false]
                                        }}
 
 
@@ -194,26 +195,31 @@ mkPrefix | (null $ tmPrefix tmMain) = return Nothing
 -- Fair sets
 ----------------------------------------------------------------------
 
-mkFair :: (?spec::Spec) => I.Spec -> [I.FairRegion]
-mkFair ispec = mkFairSched : (map mkFairProc $ I.specAllProcs ispec)
-    where 
-    -- Fair scheduling:  GF (not ($magic==true && $cont == false))
-    mkFairSched = I.FairRegion "fair_scheduler" $ (mkMagicVar I.=== I.true) `I.land` (mkContVar I.=== I.false)
+mkFair :: (?spec::Spec) => I.Spec -> ([I.Var], [I.Expr], I.FairRegion)
+mkFair ispec = (mkFairRegVarDecls ispec
+               , map (I.=== I.false) $ mkFairRegVars ispec
+               , I.FairRegion "fair" $ I.neg $ I.conj $ mkFairRegVars ispec)
 
-    -- For each uncontrollable process: 
-    -- GF (not ((\/i . pc=si && condi) && lastpid /= pid))
-    -- where si and condi are process pause locations and matching conditions
-    -- i.e, the process eventually either becomes disabled or makes a transition.
-    mkFairProc :: (PrID, I.Process) -> I.FairRegion
-    mkFairProc (pid,p) = I.FairRegion ("fair_" ++ show pid)
-                         $ mkFairCFA (I.procCFA p) pid 
-
-    mkFairCFA :: I.CFA -> PrID -> I.Expr
-    mkFairCFA cfa pid = 
-        (mkEPIDVar I./== mkEPIDEnum (EPIDProc pid)) `I.land`
-        (I.disj $ map (\loc -> mkPCEq cfa pid (mkPC pid loc) `I.land` (I.cfaLocWaitCond cfa loc)) 
-                $ filter (not . I.isDeadendLoc cfa) 
-                $ I.cfaDelayLocs cfa)
+--mkFair :: (?spec::Spec) => I.Spec -> [I.FairRegion]
+--mkFair ispec = mkFairSched : (map mkFairProc $ I.specAllProcs ispec)
+--    where 
+--    -- Fair scheduling:  GF (not ($magic==true && $cont == false))
+--    mkFairSched = I.FairRegion "fair_scheduler" $ (mkMagicVar I.=== I.true) `I.land` (mkContVar I.=== I.false)
+--
+--    -- For each uncontrollable process: 
+--    -- GF (not ((\/i . pc=si && condi) && lastpid /= pid))
+--    -- where si and condi are process pause locations and matching conditions
+--    -- i.e, the process eventually either becomes disabled or makes a transition.
+--    mkFairProc :: (PrID, I.Process) -> I.FairRegion
+--    mkFairProc (pid,p) = I.FairRegion ("fair_" ++ show pid)
+--                         $ mkFairCFA (I.procCFA p) pid 
+--
+--    mkFairCFA :: I.CFA -> PrID -> I.Expr
+--    mkFairCFA cfa pid = 
+--        (mkEPIDVar I./== mkEPIDEnum (EPIDProc pid)) `I.land`
+--        (I.disj $ map (\loc -> mkPCEq cfa pid (mkPC pid loc) `I.land` (I.cfaLocWaitCond cfa loc)) 
+--                $ filter (not . I.isDeadendLoc cfa) 
+--                $ I.cfaDelayLocs cfa)
 
 ----------------------------------------------------------------------
 -- Init and goal conditions

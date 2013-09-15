@@ -15,6 +15,7 @@ import qualified IExpr    as I
 import qualified CFA      as I
 import qualified IType    as I
 import qualified IVar     as I
+import qualified ISpec    as I
 import PID
 import Name
 import NS
@@ -147,12 +148,50 @@ pcEnumToLoc str = read
                   $ reverse 
                   $ tails str
 
--- PID of the last process to make a transition
-mkEPIDVarName :: String
-mkEPIDVarName = "$epid"
+-- Variables that encode fairness
+--mkFairVarName :: String
+--mkFairVarName = "$fair"
+--
+--mkFairVarDecl :: I.Var
+--mkFairVarDecl = I.Var False I.VarState mkFairVarName I.Bool
+--
+--mkFairVar :: I.Expr
+--mkFairVar = I.EVar mkFairVarName
 
-mkEPIDVar :: I.Expr
-mkEPIDVar = I.EVar mkEPIDVarName
+mkFairSchedVarName :: String
+mkFairSchedVarName = "$fair_sched"
+
+mkFairSchedVarDecl :: I.Var
+mkFairSchedVarDecl = I.Var False I.VarState mkFairSchedVarName I.Bool
+
+mkFairSchedVar :: I.Expr
+mkFairSchedVar = I.EVar mkFairSchedVarName
+
+mkFairProcVarName :: PrID -> String
+mkFairProcVarName pid = "$pfair_" ++ show pid
+
+fairProcVarPID :: String -> Maybe PrID
+fairProcVarPID s | isPrefixOf "$pfair_" s = Just $ parsePID $ drop (length "$pfair_") s
+                 | otherwise              = Nothing
+
+mkFairProcVarDecl :: PrID -> I.Var
+mkFairProcVarDecl pid = I.Var False I.VarState (mkFairProcVarName pid) I.Bool
+
+mkFairProcVar :: PrID -> I.Expr
+mkFairProcVar pid = I.EVar $ mkFairProcVarName pid
+
+mkFairRegVarDecls :: I.Spec -> [I.Var]
+mkFairRegVarDecls spec = mkFairSchedVarDecl : (map (mkFairProcVarDecl . fst) $ I.specAllProcs spec)
+
+mkFairRegVars :: I.Spec -> [I.Expr]
+mkFairRegVars spec = mkFairSchedVar : (map (mkFairProcVar . fst) $ I.specAllProcs spec)
+
+-- PID of the last process to make a transition
+--mkEPIDVarName :: String
+--mkEPIDVarName = "$epid"
+--
+--mkEPIDVar :: I.Expr
+--mkEPIDVar = I.EVar mkEPIDVarName
 
 mkEPIDLVarName :: String
 mkEPIDLVarName = "$lepid"
@@ -163,8 +202,8 @@ mkEPIDLVar = I.EVar mkEPIDLVarName
 mkEPIDEnumeratorName :: EPID -> String
 mkEPIDEnumeratorName epid = "$" ++ show epid
 
-parseEPIDEnumerator :: Spec -> String -> EPID
-parseEPIDEnumerator spec n = parseEPID spec $ tail n
+parseEPIDEnumerator :: String -> EPID
+parseEPIDEnumerator n = parseEPID $ tail n
 
 mkEPIDEnum :: EPID -> I.Expr
 mkEPIDEnum = I.EConst . I.EnumVal . mkEPIDEnumeratorName
@@ -175,12 +214,13 @@ mkEPIDEnumName = "$epidenum"
 mkEPIDNone :: String
 mkEPIDNone = "$epidnone"
 
-mkEPIDVarDecl :: [EPID] -> (I.Var, I.Enumeration)
-mkEPIDVarDecl epids = (I.Var False I.VarState mkEPIDVarName (I.Enum mkEPIDEnumName), enum)
-    where enum = I.Enumeration mkEPIDEnumName $ mkEPIDNone : map mkEPIDEnumeratorName epids
+--mkEPIDVarDecl :: [EPID] -> (I.Var, I.Enumeration)
+--mkEPIDVarDecl epids = (I.Var False I.VarState mkEPIDVarName (I.Enum mkEPIDEnumName), enum)
+--    where enum = I.Enumeration mkEPIDEnumName $ mkEPIDNone : map mkEPIDEnumeratorName epids
 
-mkEPIDLVarDecl :: I.Var
-mkEPIDLVarDecl = I.Var False I.VarTmp mkEPIDLVarName (I.Enum mkEPIDEnumName)
+mkEPIDLVarDecl :: [EPID] -> (I.Var, I.Enumeration)
+mkEPIDLVarDecl epids = (I.Var False I.VarTmp mkEPIDLVarName (I.Enum mkEPIDEnumName), enum)
+    where enum = I.Enumeration mkEPIDEnumName $ mkEPIDNone : map mkEPIDEnumeratorName epids
 
 mkContVarName :: String
 mkContVarName = "$cont"
@@ -465,9 +505,9 @@ insertSuffix pid cfa loc | (null $ G.pre cfa loc) = cfa
     (loc', cfa0) = I.cfaSplitLoc loc cfa
     -- pid
     --(cfa1, befepid)  = I.cfaInsTrans' loc' (I.TranStat $ I.SAssume $ mkEPIDLVar I.=== (mkEPIDEnum $ EPIDProc pid)) cfa0
-    (cfa2, aftepid)  = I.cfaInsTrans' loc' (I.TranStat $ mkEPIDVar I.=: mkEPIDLVar)                   cfa0
+    --(cfa2, aftepid)  = I.cfaInsTrans' loc' (I.TranStat $ mkEPIDVar I.=: mkEPIDLVar)                   cfa0
     -- pc
-    (cfa3, aftpc)    = I.cfaInsTrans' aftepid (mkPCAsn cfa pid (mkPC pid loc))                           cfa2
+    (cfa3, aftpc)    = I.cfaInsTrans' loc' (mkPCAsn cfa pid (mkPC pid loc))                              cfa0
     -- cont
     --(cfa4, aftucont) = I.cfaInsTrans' aftpc   (I.TranStat $ I.SAssume $ mkContVar I.=== I.false)         cfa3
     cfa4             = I.cfaInsTrans  aftpc loc (I.TranStat        $ mkContVar I.=: mkContLVar)          cfa3

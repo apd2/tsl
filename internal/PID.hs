@@ -3,6 +3,7 @@
 module PID (PrID(..),
             EPID(..),
             NSID(..),
+            parsePID,
             parseEPID,
             childPID,
             epid2nsid) where
@@ -30,6 +31,10 @@ instance PP PrID where
 instance Show PrID where
     show = render . pp
 
+parsePID :: String -> PrID
+parsePID s = PrID (head toks) (tail toks) where toks = splitOn "/" s
+
+
 childPID :: PrID -> String -> PrID
 childPID (PrID p ps) pname = PrID p (ps ++ [pname])
 
@@ -49,10 +54,8 @@ instance PP EPID where
 instance Show EPID where
     show = render . pp
 
-parseEPID :: Spec -> String -> EPID
-parseEPID spec s = if' (s=="$contproc") EPIDCont $
-                   (EPIDProc $ PrID (head toks) (tail toks))
-                   where toks = splitOn "/" s
+parseEPID :: String -> EPID
+parseEPID s = if' (s=="$contproc") EPIDCont (EPIDProc $ parsePID s)
 
 epid2nsid :: EPID -> Scope -> NSID
 epid2nsid epid sc = NSID mpid mmeth
