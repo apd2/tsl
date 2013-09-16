@@ -84,7 +84,9 @@ mkAllPreconditions = parens $ vcat $ punctuate (text "||")
 mkVarUpd :: (?spec::Spec) => Expr -> Doc
 mkVarUpd e = {-trace("mkVarUpd =" ++ show e ++ "\n" ++ show upds) $ -} mkECascade (Just e) upds
    where
-   upds | M.member (show e) (specUpds ?spec) = casTree $ map (\(c,x) -> (ptrFreeBExprToFormula c, CasLeaf x)) $ (specUpds ?spec) M.! (show e)
+   upds | M.member (show e) (specUpds ?spec) = casTree 
+                                               $ map (\(c,x) -> (ptrFreeBExprToFormula c, casTree [(ptrFreeBExprToFormula x, CasLeaf true), (FTrue, CasLeaf false)])) 
+                                               $ (specUpds ?spec) M.! (show e)
         | otherwise = casTree $ (mapMaybe (varUpd1 e) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)) ++ 
                                 [(FTrue, CasLeaf e)]
 
