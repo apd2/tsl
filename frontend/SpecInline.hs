@@ -76,6 +76,7 @@ spec2Internal s dofair =
         specVar            = cvars ++ [tvar, pidlvar] ++ pcvars ++ vars ++ concat tmppvs ++ extraivars ++ fairvars
         specCAct           = ctran
         specTran           = error "specTran undefined"
+        specUpds           = mkUpds spec'
         spec               = I.Spec {..}
         spec'              = I.specMapCFA (I.cfaAddNullTypes spec) spec
 
@@ -199,27 +200,44 @@ mkFair :: (?spec::Spec) => I.Spec -> ([I.Var], [I.Expr], I.FairRegion)
 mkFair ispec = (mkFairRegVarDecls ispec
                , map (I.=== I.false) $ mkFairRegVars ispec
                , I.FairRegion "fair" $ I.neg $ I.conj $ mkFairRegVars ispec)
+ 
+----------------------------------------------------------------------
+-- Explicit update functions 
+----------------------------------------------------------------------
 
---mkFair :: (?spec::Spec) => I.Spec -> [I.FairRegion]
---mkFair ispec = mkFairSched : (map mkFairProc $ I.specAllProcs ispec)
---    where 
---    -- Fair scheduling:  GF (not ($magic==true && $cont == false))
---    mkFairSched = I.FairRegion "fair_scheduler" $ (mkMagicVar I.=== I.true) `I.land` (mkContVar I.=== I.false)
---
---    -- For each uncontrollable process: 
---    -- GF (not ((\/i . pc=si && condi) && lastpid /= pid))
---    -- where si and condi are process pause locations and matching conditions
---    -- i.e, the process eventually either becomes disabled or makes a transition.
---    mkFairProc :: (PrID, I.Process) -> I.FairRegion
---    mkFairProc (pid,p) = I.FairRegion ("fair_" ++ show pid)
---                         $ mkFairCFA (I.procCFA p) pid 
---
---    mkFairCFA :: I.CFA -> PrID -> I.Expr
---    mkFairCFA cfa pid = 
---        (mkEPIDVar I./== mkEPIDEnum (EPIDProc pid)) `I.land`
---        (I.disj $ map (\loc -> mkPCEq cfa pid (mkPC pid loc) `I.land` (I.cfaLocWaitCond cfa loc)) 
---                $ filter (not . I.isDeadendLoc cfa) 
---                $ I.cfaDelayLocs cfa)
+mkUpds :: I.Spec -> M.Map String [(I.Expr, I.Expr)]
+mkUpds spec = M.fromList $ (mkContVarName, contUpd) 
+                         : (mkFairSchedVarName, fairSchedUpd spec) 
+                         : map (\(pid, _) -> (mkFairProcVarName pid, fairProcUpd spec pid)) (I.specAllProcs spec)
+
+-- f_i := cond -> T
+--       !cond -> f_i /\ ! (/\_j f_j)
+fairRegUpd :: I.Spec -> I.Expr -> I.Expr -> [(I.Expr, I.Expr)]
+fairRegUpd spec x cond = [ (cond      , I.true)
+                         , (I.neg cond, I.conj [x, I.neg $ I.conj $ mkFairRegVars spec])]
+
+fairSchedUpd :: I.Spec -> [(I.Expr, I.Expr)]
+fairSchedUpd spec = fairRegUpd spec mkFairSchedVar $ (mkMagicVar I.=== I.false) `I.lor` (mkContVar I.=== I.true)
+
+fairProcUpd :: I.Spec -> PrID -> [(I.Expr, I.Expr)]
+fairProcUpd spec pid = fairRegUpd spec (mkFairProcVar pid) $ 
+        (mkEPIDLVar I.=== mkEPIDEnum (EPIDProc pid)) `I.lor`
+        (I.neg 
+         $ I.disj 
+         $ map (\loc -> mkPCEq cfa pid (mkPC pid loc) `I.land` (I.cfaLocWaitCond cfa loc)) 
+         $ filter (not . I.isDeadendLoc cfa) 
+         $ I.cfaDelayLocs cfa)
+    where cfa = I.procCFA $ I.specGetProcess spec pid 
+
+--contUpdUnfair :: (?spec::Spec) => FCascade
+--contUpdUnfair = casTree [ (       fconj [fnot cont, magic], CasLeaf FTrue)
+--                        , (fnot $ fconj [fnot cont, magic], CasLeaf FFalse)]
+--    where cont  = ptrFreeBExprToFormula mkContVar
+--          magic = ptrFreeBExprToFormula mkMagicVar
+
+contUpd :: [(I.Expr, I.Expr)]
+contUpd = [ (        (I.neg mkContVar) `I.land` mkMagicVar , mkContLVar)
+          , ( I.neg ((I.neg mkContVar) `I.land` mkMagicVar), I.false)]
 
 ----------------------------------------------------------------------
 -- Init and goal conditions

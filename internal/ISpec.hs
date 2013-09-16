@@ -20,6 +20,7 @@ module ISpec(Spec(..),
 
 import Data.List
 import Data.Maybe
+import qualified Data.Map as M
 import qualified Data.Graph.Inductive.Graph as G
 import Text.PrettyPrint
 
@@ -27,6 +28,7 @@ import Util
 import CFA
 import IVar
 import IType
+import IExpr
 import TranSpec
 import PP
 import PID
@@ -40,12 +42,13 @@ data Process = Process {
 data Spec = Spec {
     specEnum   :: [Enumeration],
     specVar    :: [Var],
-    specWire   :: Maybe CFA,   -- wire assignment
-    specPrefix :: Maybe CFA,   -- prefix blocks
-    specProc   :: [Process],   -- processes
-    specCAct   :: CFA,         -- controllable transitions
-    specTran   :: TranSpec     -- info required for variable update
-                               -- computation
+    specWire   :: Maybe CFA,                   -- wire assignment
+    specPrefix :: Maybe CFA,                   -- prefix blocks
+    specProc   :: [Process],                   -- processes
+    specCAct   :: CFA,                         -- controllable transitions
+    specUpds   :: M.Map String [(Expr, Expr)], -- variable update functions specified explicitly
+    specTran   :: TranSpec                     -- info required for variable update
+                                               -- computation
 }
 
 specStateVar :: Spec -> [Var]

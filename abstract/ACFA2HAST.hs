@@ -12,7 +12,6 @@ import qualified Data.Graph.Inductive as G
 import qualified Data.Map             as M
 import Data.List
 import Data.Maybe
-import Debug.Trace
 import GHC.Exts
 
 import Util hiding (trace)

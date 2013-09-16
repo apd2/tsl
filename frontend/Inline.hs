@@ -500,39 +500,13 @@ insertPrefix pid cfa loc | (null $ G.lsuc cfa loc) = cfa
 
 insertSuffix :: PrID -> I.CFA -> I.Loc -> I.CFA
 insertSuffix pid cfa loc | (null $ G.pre cfa loc) = cfa
-                         | otherwise =              cfa4
+                         | otherwise              = cfa2
     where
-    (loc', cfa0) = I.cfaSplitLoc loc cfa
-    -- pid
-    --(cfa1, befepid)  = I.cfaInsTrans' loc' (I.TranStat $ I.SAssume $ mkEPIDLVar I.=== (mkEPIDEnum $ EPIDProc pid)) cfa0
-    --(cfa2, aftepid)  = I.cfaInsTrans' loc' (I.TranStat $ mkEPIDVar I.=: mkEPIDLVar)                   cfa0
+    (loc', cfa0)  = I.cfaSplitLoc loc cfa
     -- pc
-    (cfa3, aftpc)    = I.cfaInsTrans' loc' (mkPCAsn cfa pid (mkPC pid loc))                              cfa0
+    (cfa1, aftpc) = I.cfaInsTrans' loc' (mkPCAsn cfa pid (mkPC pid loc))              cfa0
     -- cont
-    --(cfa4, aftucont) = I.cfaInsTrans' aftpc   (I.TranStat $ I.SAssume $ mkContVar I.=== I.false)         cfa3
-    cfa4             = I.cfaInsTrans  aftpc loc (I.TranStat        $ mkContVar I.=: mkContLVar)          cfa3
-
----- common code of ctxPause, ctxFinal
---ctxSuffix :: I.Loc -> I.Loc -> I.Loc -> State CFACtx ()
---ctxSuffix loc after pc = do mepid  <- gets ctxEPID
---                            -- set PID variable
---                            aftepid <- if isNothing mepid
---                                          then ctxInsTrans' loc $ I.TranNop
---                                          else do befepid <- ctxInsTrans' loc $ I.TranStat $ I.SAssume $ mkEPIDLVar I.=== (mkEPIDEnum $ fromJust mepid)
---                                                  ctxInsTrans' befepid $ I.TranStat $ mkEPIDVar I.=: mkEPIDLVar
---                            -- 1. update PC
---                            -- 2. uncontrollable transitions are only available in uncontrollable states
---                            -- 3. non-deterministically set $cont to true if inside a magic block
---                            if' (isJust mepid && mepid /= Just EPIDCont) 
---                                (do let Just (EPIDProc pid) = mepid
---                                    aftpc    <- ctxInsTrans' aftepid $ I.TranStat  $ mkPCVar pid I.=: mkPC pid pc
---                                    aftucont <- ctxInsTrans' aftpc $ I.TranStat    $ I.SAssume $ mkContVar I.=== I.false
---                                    --ifmagic  <- ctxInsTrans' aftucont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
---                                    ctxInsTrans aftucont after $ I.TranStat        $ mkContVar I.=: mkContLVar) $
---                                    --ctxInsTrans aftucont after $ I.TranStat        $ I.SAssume $ mkMagicVar I.=== I.false) $
---                                if' (mepid == Just EPIDCont)
---                                    (ctxInsTrans aftepid after $ I.TranStat $ mkContVar I.=: I.false)
---                                    (ctxInsTrans aftepid after I.TranNop)
+    cfa2          = I.cfaInsTrans  aftpc loc (I.TranStat $ mkContVar I.=: mkContLVar) cfa1
 
 ctxErrTrans :: I.Loc -> I.Loc -> State CFACtx ()
 ctxErrTrans from to = do

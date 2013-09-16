@@ -6,6 +6,7 @@ import qualified Data.Graph.Inductive as G
 import Text.PrettyPrint
 import Data.Maybe
 import Data.List
+import qualified Data.Map as M
 import Debug.Trace
 
 import Util hiding (trace)
@@ -83,13 +84,9 @@ mkAllPreconditions = parens $ vcat $ punctuate (text "||")
 mkVarUpd :: (?spec::Spec) => Expr -> Doc
 mkVarUpd e = {-trace("mkVarUpd =" ++ show e ++ "\n" ++ show upds) $ -} mkECascade (Just e) upds
    where
-   upds | e == mkContVar                   = fmap formToExpr contUpdFair
-        | e == mkFairSchedVar              = fmap formToExpr fairSchedUpd
-        | isJust (fairProcVarPID $ show e) = let pid = fromJust $ fairProcVarPID $ show e
-                                             in fmap formToExpr (fairProcUpd pid)
-        -- | e == mkEPIDVar = fmap termToExpr epidUpd
-        | otherwise      = casTree $ (mapMaybe (varUpd1 e) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)) ++ 
-                                     [(FTrue, CasLeaf e)]
+   upds | M.member (show e) (specUpds ?spec) = casTree $ map (\(c,x) -> (ptrFreeBExprToFormula c, CasLeaf x)) $ (specUpds ?spec) M.! (show e)
+        | otherwise = casTree $ (mapMaybe (varUpd1 e) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)) ++ 
+                                [(FTrue, CasLeaf e)]
 
 varUpd1 :: (?spec::Spec) => Expr -> Transition -> Maybe (Formula, ECascade)
 varUpd1 e Transition{..} = if' (G.isEmpty cfa') Nothing

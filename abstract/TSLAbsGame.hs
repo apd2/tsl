@@ -3,14 +3,11 @@
 module TSLAbsGame(tslAbsGame, 
                   bexprToFormula, 
                   tslUpdateAbsVarAST,
-                  autoConstr,
-                  contUpdFair,
-                  contUpdUnfair,
-                  fairSchedUpd,
-                  fairProcUpd) where
+                  autoConstr) where
 
 import Prelude hiding (and)
 import Data.List hiding (and)
+import qualified Data.Map as M
 import Debug.Trace
 import Data.Maybe
 import Text.PrettyPrint.Leijen.Text
@@ -132,14 +129,15 @@ tslUpdateAbsVarAST :: (?dofair::Bool, ?spec::Spec, ?pred::[Predicate]) => (AbsVa
 -- handle $cont variable in a special way:
 -- $cont is false under controllable transition, 
 -- $cont can only be true after uncontrollable transition if we are inside a magic block.
-tslUpdateAbsVarAST (av, n) | (show av) == mkContVarName && ?dofair       = compileFCas contUpdFair   (H.FVar n)
-                           | (show av) == mkContVarName && (not ?dofair) = compileFCas contUpdUnfair (H.FVar n)
-                           | (show av) == mkFairSchedVarName             = compileFCas fairSchedUpd  (H.FVar n)
-                           | isJust (fairProcVarPID $ show av)           = let pid = fromJust $ fairProcVarPID $ show av
-                                                                           in compileFCas (fairProcUpd pid) (H.FVar n) 
---tslUpdateAbsVarAST (av, n) | (show av) == mkEPIDVarName = compileTCas epidUpd (H.FVar n)
-    
-tslUpdateAbsVarAST (av, n)                              = H.Disj (unchanged:upds)
+tslUpdateAbsVarAST (av, n) | M.member (show av) (specUpds ?spec) = 
+    case av of 
+         AVarBool _ -> let cas = casTree 
+                                 $ map (\(c,e) -> (ptrFreeBExprToFormula c, CasLeaf $ ptrFreeBExprToFormula e)) 
+                                 $ (specUpds ?spec) M.! (show av)
+                       in compileFCas cas (H.FVar n)
+         _          -> error "tslUpdateAbsVarAST: non-bool variables"
+
+tslUpdateAbsVarAST (av, n)                                       = H.Disj (unchanged:upds)
     where
     trans = mapIdx (\tr i -> varUpdateTrans (show i) [(av,n)] tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
     (upds, pres) = unzip $ catMaybes trans
@@ -150,48 +148,7 @@ tslUpdateAbsVarAST (av, n)                              = H.Disj (unchanged:upds
 ----------------------------------------------------------------------------
 -- Shared with Spec2ASL
 ----------------------------------------------------------------------------
-
--- f_i := cond -> T
---       !cond -> f_i /\ ! (/\_j f_j)
-fairRegUpd :: (?spec::Spec) => Expr -> Expr -> FCascade
-fairRegUpd v e = casTree [ (cond     , CasLeaf FTrue)
-                         , (fnot cond, CasLeaf $ fconj [x, fnot $ fconj $ map ptrFreeBExprToFormula $ mkFairRegVars ?spec])]
-    where -- XXX: assume that fairness conditions do not contain pointers
-          cond = ptrFreeBExprToFormula e
-          x    = ptrFreeBExprToFormula v        
-
-fairSchedUpd :: (?spec::Spec) => FCascade
-fairSchedUpd = fairRegUpd mkFairSchedVar $ (mkMagicVar === false) `lor` (mkContVar === true)
-
-fairProcUpd :: (?spec::Spec) => PrID -> FCascade
-fairProcUpd pid = fairRegUpd (mkFairProcVar pid) $ 
-        (mkEPIDLVar === mkEPIDEnum (EPIDProc pid)) `lor`
-        (neg 
-         $ disj 
-         $ map (\loc -> mkPCEq cfa pid (mkPC pid loc) `land` (cfaLocWaitCond cfa loc)) 
-         $ filter (not . isDeadendLoc cfa) 
-         $ cfaDelayLocs cfa)
-    where cfa = procCFA $ specGetProcess ?spec pid 
-
-contUpdUnfair :: (?spec::Spec) => FCascade
-contUpdUnfair = casTree [ (       fconj [fnot cont, magic], CasLeaf FTrue)
-                        , (fnot $ fconj [fnot cont, magic], CasLeaf FFalse)]
-    where cont  = ptrFreeBExprToFormula mkContVar
-          magic = ptrFreeBExprToFormula mkMagicVar
-
-contUpdFair :: (?spec::Spec) => FCascade
-contUpdFair = casTree [ (       fconj [fnot cont, magic], CasLeaf lcont)
-                      , (fnot $ fconj [fnot cont, magic], CasLeaf FFalse)]
-    where cont  = ptrFreeBExprToFormula mkContVar
-          lcont = ptrFreeBExprToFormula mkContLVar
-          magic = ptrFreeBExprToFormula mkMagicVar
-
---epidUpd :: (?spec::Spec) => TCascade
---epidUpd = casTree [ (cont     , CasLeaf $ scalarExprToTerm $ EConst $ EnumVal $ mkEPIDEnumeratorName EPIDCont)
---                  , (fnot cont, CasLeaf lepid)]
---    where cont  = ptrFreeBExprToFormula mkContVar
---          lepid = scalarExprToTerm mkEPIDLVar
-
+ 
 -- additional constraints over automatic variables
 autoConstr :: (?spec::Spec) => Bool -> Formula
 autoConstr fair = fconj $ map ptrFreeBExprToFormula $ [nolepid, notag]  ++ if' fair [] [noidle]
