@@ -20,6 +20,7 @@ import qualified CuddExplicitDeref as C
 import ISpec
 import TranSpec
 import IExpr
+import IVar
 import CFA
 import Predicate
 import Inline
@@ -32,20 +33,21 @@ import ACFA2HAST
 import BFormula
 import Cascade
 import Ops
+import RefineCommon 
 
 -----------------------------------------------------------------------
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: Spec -> C.STDdManager s u -> Abs.Abstractor s u AbsVar AbsVar
-tslAbsGame spec m = Abs.Abstractor { Abs.goalAbs                 = tslGoalAbs                 spec m
-                                   , Abs.fairAbs                 = tslFairAbs                 spec m
-                                   , Abs.initAbs                 = tslInitAbs                 spec m
-                                   , Abs.contAbs                 = tslContAbs                 spec m
-                                   --, gameConsistent  = tslGameConsistent  spec
-                                   , Abs.stateLabelConstraintAbs = tslStateLabelConstraintAbs spec m
-                                   , Abs.updateAbs               = tslUpdateAbs               spec m
-                                   }
+tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Bool -> Abs.Abstractor s u AbsVar AbsVar
+tslAbsGame spec m ts = Abs.Abstractor { Abs.goalAbs                 = tslGoalAbs                 spec m
+                                      , Abs.fairAbs                 = tslFairAbs                 spec m
+                                      , Abs.initAbs                 = tslInitAbs                 spec m
+                                      , Abs.contAbs                 = tslContAbs                 spec m
+                                      --, gameConsistent  = tslGameConsistent  spec
+                                      , Abs.stateLabelConstraintAbs = tslStateLabelConstraintAbs spec m
+                                      , Abs.updateAbs               = tslUpdateAbs               spec m ts
+                                      }
 
 tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslGoalAbs spec m ops = do
@@ -108,15 +110,16 @@ tslContAbs spec m ops = do
         ?pred = p
     H.compileBDD m ops $ bexprAbstract $ mkContVar === true
 
-tslUpdateAbs :: Spec -> C.STDdManager s u -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
-tslUpdateAbs spec m avars ops = do
+tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
+tslUpdateAbs spec m ts avars ops = do
     trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops    = ops
     p <- pdbPred
     let ?spec   = spec
         ?m      = m
         ?pred   = p
-    mapM tslUpdateAbsVar avars
+    upd <- mapM tslUpdateAbsVar avars
+    return (upd, C.bone m)
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
@@ -168,6 +171,27 @@ pdbPred = do
     return $ map (\(AVarPred p) -> p)
            $ filter avarIsPred 
            $ map bavarAVar bavars
+
+----------------------------------------------------------------------------
+-- Precomputing consistency constraints
+----------------------------------------------------------------------------
+
+absVarConstr :: (?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => TheorySolver s u AbsVar AbsVar Var -> AbsVar -> TAST f e c
+absVarConstr ts av@(AVarPred p) = 
+    case predVar p of
+         [v] -> -- consider pair-wise combinations with all predicates involving only this variable;
+                -- only consider positive polarities (does it make sense to try both?)
+                compileFormula
+                $ fconj
+                $ map (\p' -> let f = ptrFreeBExprToFormula $ predToExpr p `land` predToExpr p' in
+                            case (unsatCoreState ts) [(AVarPred p, [True]), (AVarPred p', [True])] of
+                                 Just _ -> FNot f
+                                 _      -> FTrue)
+                $ filter (\p' -> p' /= p && predVar p' == predVar p) ?pred
+         _   -> H.T
+
+absVarConstr _ (AVarEnum t) = H.T -- enum must be one of legal value
+absVarConstr _ _            = H.T
 
 ----------------------------------------------------------------------------
 -- Predicate/variable update functions
