@@ -119,7 +119,8 @@ tslUpdateAbs spec m ts avars ops = do
         ?m      = m
         ?pred   = p
     upd <- mapM tslUpdateAbsVar avars
-    return (upd, C.bone m)
+    constr <- H.compileBDD m ops $ H.Disj $ map (absVarInconsistent ts . fst) avars
+    return (upd, constr)
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
@@ -173,25 +174,25 @@ pdbPred = do
            $ map bavarAVar bavars
 
 ----------------------------------------------------------------------------
--- Precomputing consistency constraints
+-- Precomputing inconsistent combinations of abstract variables
 ----------------------------------------------------------------------------
 
-absVarConstr :: (?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => TheorySolver s u AbsVar AbsVar Var -> AbsVar -> TAST f e c
-absVarConstr ts av@(AVarPred p) = 
+absVarInconsistent :: (?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => TheorySolver s u AbsVar AbsVar Var -> AbsVar -> TAST f e c
+absVarInconsistent ts (AVarPred p) = 
     case predVar p of
          [v] -> -- consider pair-wise combinations with all predicates involving only this variable;
                 -- only consider positive polarities (does it make sense to try both?)
                 compileFormula
-                $ fconj
+                $ fdisj
                 $ map (\p' -> let f = ptrFreeBExprToFormula $ predToExpr p `land` predToExpr p' in
-                            case (unsatCoreState ts) [(AVarPred p, [True]), (AVarPred p', [True])] of
-                                 Just _ -> FNot f
-                                 _      -> FTrue)
+                              case (unsatCoreState ts) [(AVarPred p, [True]), (AVarPred p', [True])] of
+                                   Just _ -> trace ("absVarConstr: " ++ show f) $ f
+                                   _      -> FFalse)
                 $ filter (\p' -> p' /= p && predVar p' == predVar p) ?pred
-         _   -> H.T
+         _   -> H.F
 
-absVarConstr _ (AVarEnum t) = H.T -- enum must be one of legal value
-absVarConstr _ _            = H.T
+absVarInconsistent _ (AVarEnum t) = H.F -- enum must be one of legal value
+absVarInconsistent _ _            = H.F
 
 ----------------------------------------------------------------------------
 -- Predicate/variable update functions
