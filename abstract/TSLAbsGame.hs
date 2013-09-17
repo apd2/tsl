@@ -23,7 +23,6 @@ import IExpr
 import CFA
 import Predicate
 import Inline
-import PID
 import qualified Interface   as Abs
 import qualified TermiteGame as Abs
 import qualified HAST.HAST   as H
@@ -38,15 +37,15 @@ import Ops
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: Spec -> C.STDdManager s u -> Bool -> Abs.Abstractor s u AbsVar AbsVar
-tslAbsGame spec m dofair = Abs.Abstractor { Abs.goalAbs                 = tslGoalAbs                 spec m
-                                          , Abs.fairAbs                 = tslFairAbs                 spec m
-                                          , Abs.initAbs                 = tslInitAbs                 spec m
-                                          , Abs.contAbs                 = tslContAbs                 spec m
-                                          --, gameConsistent  = tslGameConsistent  spec
-                                          , Abs.stateLabelConstraintAbs = tslStateLabelConstraintAbs spec m dofair
-                                          , Abs.updateAbs               = tslUpdateAbs               spec m dofair
-                                          }
+tslAbsGame :: Spec -> C.STDdManager s u -> Abs.Abstractor s u AbsVar AbsVar
+tslAbsGame spec m = Abs.Abstractor { Abs.goalAbs                 = tslGoalAbs                 spec m
+                                   , Abs.fairAbs                 = tslFairAbs                 spec m
+                                   , Abs.initAbs                 = tslInitAbs                 spec m
+                                   , Abs.contAbs                 = tslContAbs                 spec m
+                                   --, gameConsistent  = tslGameConsistent  spec
+                                   , Abs.stateLabelConstraintAbs = tslStateLabelConstraintAbs spec m
+                                   , Abs.updateAbs               = tslUpdateAbs               spec m
+                                   }
 
 tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslGoalAbs spec m ops = do
@@ -82,17 +81,17 @@ tslInitAbs spec m ops = do
 
 -- TODO: where should this go?
 
-tslStateLabelConstraintAbs :: Spec -> C.STDdManager s u -> Bool -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
-tslStateLabelConstraintAbs spec m dofair ops = do
+tslStateLabelConstraintAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslStateLabelConstraintAbs spec m ops = do
     let ?ops    = ops
     p <- pdbPred
     let ?spec   = spec
         ?m      = m
         ?pred   = p
-    H.compileBDD ?m ?ops $ tslConstraint dofair
+    H.compileBDD ?m ?ops tslConstraint
 
-tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => Bool -> TAST f e c
-tslConstraint fair = H.Conj [compileFormula $ autoConstr fair, pre]
+tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
+tslConstraint = H.Conj [compileFormula $ autoConstr, pre]
     where 
     -- precondition of at least one transition must hold   
     pre = H.Disj
@@ -109,23 +108,22 @@ tslContAbs spec m ops = do
         ?pred = p
     H.compileBDD m ops $ bexprAbstract $ mkContVar === true
 
-tslUpdateAbs :: Spec -> C.STDdManager s u -> Bool -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
-tslUpdateAbs spec m dofair avars ops = do
+tslUpdateAbs :: Spec -> C.STDdManager s u -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
+tslUpdateAbs spec m avars ops = do
     trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops    = ops
     p <- pdbPred
     let ?spec   = spec
         ?m      = m
         ?pred   = p
-        ?dofair = dofair
     mapM tslUpdateAbsVar avars
 
-tslUpdateAbsVar :: (?dofair::Bool, ?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
+tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
                           $ H.compileBDD ?m ?ops $ tslUpdateAbsVarAST (av,n)
 
 
-tslUpdateAbsVarAST :: (?dofair::Bool, ?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
+tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
 -- handle $cont variable in a special way:
 -- $cont is false under controllable transition, 
 -- $cont can only be true after uncontrollable transition if we are inside a magic block.
@@ -150,8 +148,8 @@ tslUpdateAbsVarAST (av, n)                                       = H.Disj (uncha
 ----------------------------------------------------------------------------
  
 -- additional constraints over automatic variables
-autoConstr :: (?spec::Spec) => Bool -> Formula
-autoConstr fair = fconj $ map ptrFreeBExprToFormula $ [nolepid, notag]  ++ if' fair [] [noidle]
+autoConstr :: (?spec::Spec) => Formula
+autoConstr = fconj $ map ptrFreeBExprToFormula $ [nolepid, notag]
     where 
     -- $cont  <-> $lepid == $nolepid
     nolepid = EBinOp Or (EBinOp And mkContVar (EBinOp Eq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
@@ -159,8 +157,6 @@ autoConstr fair = fconj $ map ptrFreeBExprToFormula $ [nolepid, notag]  ++ if' f
     -- !$cont <-> $tag == $tagnone
     notag   = EBinOp Or (EBinOp And (EUnOp Not mkContVar) (EBinOp Eq mkTagVar (EConst $ EnumVal mkTagNone)))
                         (EBinOp And mkContVar             (EBinOp Neq mkTagVar (EConst $ EnumVal mkTagNone)))
-    -- !$magic -> $lepid != _idle_
-    noidle  = EBinOp Imp (EUnOp Not mkMagicVar) $ EBinOp Neq mkEPIDLVar (EConst $ EnumVal $ mkEPIDEnumeratorName $ EPIDProc $ PrID "_idle_" [])
 
 ----------------------------------------------------------------------------
 -- PDB operations

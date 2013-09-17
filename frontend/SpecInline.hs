@@ -38,8 +38,8 @@ import Inline
 
 
 -- Main function
-spec2Internal :: Spec -> Bool -> I.Spec
-spec2Internal s dofair = 
+spec2Internal :: Spec -> I.Spec
+spec2Internal s = 
     let -- preprocessing
         ?spec = specSimplify s in
     let cfas = I.specAllCFAs spec
@@ -102,7 +102,7 @@ spec2Internal s dofair =
                                        , I.tsPrefix = cfaToITransition (fromMaybe I.cfaNop (I.specPrefix spec')) "prefix"
                                        , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ fairinit ++ [errinit, maginit, continit]))
                                        , I.tsGoal   = goals
-                                       , I.tsFair   = if' dofair [fairreg] [I.FairRegion "dummy" I.false]
+                                       , I.tsFair   = [fairreg]
                                        }}
 
 
@@ -228,12 +228,6 @@ fairProcUpd spec pid = fairRegUpd spec (mkFairProcVar pid) $
          $ filter (not . I.isDeadendLoc cfa) 
          $ I.cfaDelayLocs cfa)
     where cfa = I.procCFA $ I.specGetProcess spec pid 
-
---contUpdUnfair :: (?spec::Spec) => FCascade
---contUpdUnfair = casTree [ (       fconj [fnot cont, magic], CasLeaf FTrue)
---                        , (fnot $ fconj [fnot cont, magic], CasLeaf FFalse)]
---    where cont  = ptrFreeBExprToFormula mkContVar
---          magic = ptrFreeBExprToFormula mkMagicVar
 
 contUpd :: [(I.Expr, I.Expr)]
 contUpd = [ (        (I.neg mkContVar) `I.land` mkMagicVar , mkContLVar)
