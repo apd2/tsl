@@ -67,15 +67,19 @@ mkACFA acfa added =
           else mkACFA acfa'' (loc:added)
 
 pruneCFAVar :: (?spec::Spec, ?pred::[Predicate]) => [AbsVar] -> CFA -> CFA
-pruneCFAVar avs cfa = foldl' (\g l -> if' (elem l keep) g (G.delNode l g)) cfa (G.nodes cfa)
+pruneCFAVar avs cfa = cfa2
     where
     -- Find all transitions that update variable values
     trs = filter (\(_,_,tr) -> any (\av -> isVarRecomputedByTran av tr) avs) 
           $ G.labEdges cfa
     -- Find all predecessors of these transitions
     --reach = concatMap (\(_,to,_) -> G.dfs  [to] cfa) trs
-    keep = nub $ concatMap (\(fr,to,_) -> to : G.rdfs [fr] cfa) trs
-
+    keepedges = nub $ concatMap (\e@(fr,_,_) -> e : concatMap (G.inn cfa) (G.rdfs [fr] cfa)) trs
+    keepnodes = nub $ concatMap (\(fr, to, _) -> [fr,to]) keepedges
+    -- delete irrelevant nodes
+    cfa1 = foldl' (\g l -> if' (elem l keepnodes) g (G.delNode l g)) cfa (G.nodes cfa)
+    -- delete irrelevant edges connecting relevant nodes
+    cfa2 = foldl' (\g e -> if' (elem e keepedges) g (G.delLEdge e g)) cfa1 (G.labEdges cfa)
 
 varRecomputedLoc :: (?spec::Spec, ?pred::[Predicate], ?cfa::CFA) => Loc -> AbsVar -> Loc
 varRecomputedLoc l v | null (G.pre ?cfa l)                                 = l

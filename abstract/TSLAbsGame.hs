@@ -119,8 +119,8 @@ tslUpdateAbs spec m ts avars ops = do
         ?m      = m
         ?pred   = p
     upd <- mapM tslUpdateAbsVar avars
-    constr <- H.compileBDD m ops $ H.Disj $ map (absVarInconsistent ts . fst) avars
-    return (upd, constr)
+    --constr <- H.compileBDD m ops $ H.Disj $ map (absVarInconsistent ts . fst) avars
+    return (upd, {-constr-} C.bzero m)
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
