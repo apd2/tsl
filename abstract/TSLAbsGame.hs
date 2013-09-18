@@ -8,11 +8,13 @@ module TSLAbsGame(tslAbsGame,
 import Prelude hiding (and)
 import Data.List hiding (and)
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Debug.Trace
 import Data.Maybe
 import Text.PrettyPrint.Leijen.Text
-import Data.Text.Lazy hiding (intercalate, map, take, length, zip, filter)
+import Data.Text.Lazy hiding (intercalate, map, take, length, zip, filter, init, tails)
 import qualified Data.Graph.Inductive as G
+import Control.Monad
 
 import TSLUtil
 import Util hiding (trace)
@@ -118,9 +120,17 @@ tslUpdateAbs spec m ts avars ops = do
     let ?spec   = spec
         ?m      = m
         ?pred   = p
+    avarbef <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
     upd <- mapM tslUpdateAbsVar avars
-    --constr <- H.compileBDD m ops $ H.Disj $ map (absVarInconsistent ts . fst) avars
-    return (upd, {-constr-} C.bzero m)
+    avaraft <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
+    let avarnew = S.toList $ S.fromList avaraft S.\\ S.fromList avarbef
+    inconsistent <- case avarnew of
+                         [] -> return $ C.bzero m
+                         _  -> H.compileBDD m ops
+                               $ H.Disj 
+                               $ map (absVarInconsistent ts . \(x:xs) -> (x, xs ++ avarbef)) 
+                               $ init $ tails avarnew
+    return (upd, inconsistent)
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
@@ -177,8 +187,8 @@ pdbPred = do
 -- Precomputing inconsistent combinations of abstract variables
 ----------------------------------------------------------------------------
 
-absVarInconsistent :: (?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => TheorySolver s u AbsVar AbsVar Var -> AbsVar -> TAST f e c
-absVarInconsistent ts (AVarPred p) = 
+absVarInconsistent :: (?spec::Spec, ?m::C.STDdManager s u) => TheorySolver s u AbsVar AbsVar Var -> (AbsVar, [AbsVar]) -> TAST f e c
+absVarInconsistent ts (AVarPred p, avs) = 
     case predVar p of
          [v] -> -- consider pair-wise combinations with all predicates involving only this variable;
                 -- only consider positive polarities (does it make sense to try both?)
@@ -186,12 +196,14 @@ absVarInconsistent ts (AVarPred p) =
                 $ fdisj
                 $ map (\p' -> let f = ptrFreeBExprToFormula $ predToExpr p `land` predToExpr p' in
                               case (unsatCoreState ts) [(AVarPred p, [True]), (AVarPred p', [True])] of
-                                   Just _ -> trace ("absVarConstr: " ++ show f) $ f
+                                   Just _ -> f
                                    _      -> FFalse)
-                $ filter (\p' -> p' /= p && predVar p' == predVar p) ?pred
+                $ filter (\p' -> p' /= p && predVar p' == predVar p) 
+                $ map (\(AVarPred p) -> p) 
+                $ filter avarIsPred avs
          _   -> H.F
 
-absVarInconsistent _ (AVarEnum t) = H.F -- enum must be one of legal value
+--absVarInconsistent _ (AVarEnum t) = H.F -- enum must be one of legal value
 absVarInconsistent _ _            = H.F
 
 ----------------------------------------------------------------------------
