@@ -36,6 +36,7 @@ import BFormula
 import Cascade
 import Ops
 import RefineCommon 
+import GroupTag
 
 -----------------------------------------------------------------------
 -- Interface
@@ -59,7 +60,7 @@ tslGoalAbs spec m ops = do
         ?m    = m
         ?pred = p
     mapM (\g -> do let ast = tranPrecondition ("goal_" ++ (goalName g))  (goalCond g)
-                   H.compileBDD m ops ast)
+                   H.compileBDD m ops (avarGroupTag . bavarAVar) ast)
          $ tsGoal $ specTran spec
 
 tslFairAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
@@ -69,7 +70,7 @@ tslFairAbs spec m ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    mapM (H.compileBDD m ops . bexprAbstract . fairCond) $ tsFair $ specTran spec
+    mapM (H.compileBDD m ops (avarGroupTag . bavarAVar) . bexprAbstract . fairCond) $ tsFair $ specTran spec
 
 tslInitAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
 tslInitAbs spec m ops = do 
@@ -81,7 +82,7 @@ tslInitAbs spec m ops = do
     let pre   = tranPrecondition "init" (fst $ tsInit $ specTran spec)
         extra = bexprAbstract (snd $ tsInit $ specTran spec)
         res   = H.And pre extra
-    H.compileBDD m ops res
+    H.compileBDD m ops (avarGroupTag . bavarAVar) res
 
 -- TODO: where should this go?
 
@@ -92,7 +93,7 @@ tslStateLabelConstraintAbs spec m ops = do
     let ?spec   = spec
         ?m      = m
         ?pred   = p
-    H.compileBDD ?m ?ops tslConstraint
+    H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) tslConstraint
 
 tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
 tslConstraint = H.Conj [compileFormula $ autoConstr, pre]
@@ -110,7 +111,7 @@ tslContAbs spec m ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    H.compileBDD m ops $ bexprAbstract $ mkContVar === true
+    H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContVar === true
 
 tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
 tslUpdateAbs spec m ts avars ops = do
@@ -126,7 +127,7 @@ tslUpdateAbs spec m ts avars ops = do
     let avarnew = S.toList $ S.fromList avaraft S.\\ S.fromList avarbef
     inconsistent <- case avarnew of
                          [] -> return $ C.bzero m
-                         _  -> H.compileBDD m ops
+                         _  -> H.compileBDD m ops (avarGroupTag . bavarAVar)
                                $ H.Disj 
                                $ map (absVarInconsistent ts . \(x:xs) -> (x, xs ++ avarbef)) 
                                $ init $ tails avarnew
@@ -134,7 +135,7 @@ tslUpdateAbs spec m ts avars ops = do
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
-                          $ H.compileBDD ?m ?ops $ tslUpdateAbsVarAST (av,n)
+                          $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
 
 
 tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c

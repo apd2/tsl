@@ -26,6 +26,7 @@ import Predicate
 import BFormula
 import ACFA2HAST
 import RefineCommon
+import GroupTag
 import qualified HAST.BDD  as H
 
 --eqSolver :: Spec -> Solver Predicate s u
@@ -74,8 +75,7 @@ eqEquant spec m ops avs vs = do
         qvs  = map mkVar vs'
         dnf  = {-trace ("eqEquant " ++ show dnf0 ++ " qvars: " ++ show qvs) $-} DP.dpEQuantVars (DP.dpContext::EUF) dnf0 qvs
     --trace ("dnf = " ++ show dnf) $ return ()
-    H.compileBDD m ops (compileFormula $ dnfToForm dnf)
-
+    H.compileBDD m ops (avarGroupTag . bavarAVar) (compileFormula $ dnfToForm dnf)
    
 
 eqEquantTmp :: Spec -> C.STDdManager s u -> [(AbsVar,[Bool])] -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)

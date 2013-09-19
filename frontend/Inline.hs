@@ -149,14 +149,6 @@ pcEnumToLoc str = read
                   $ tails str
 
 -- Variables that encode fairness
---mkFairVarName :: String
---mkFairVarName = "$fair"
---
---mkFairVarDecl :: I.Var
---mkFairVarDecl = I.Var False I.VarState mkFairVarName I.Bool
---
---mkFairVar :: I.Expr
---mkFairVar = I.EVar mkFairVarName
 
 mkFairSchedVarName :: String
 mkFairSchedVarName = "$fair_sched"
@@ -174,6 +166,9 @@ fairProcVarPID :: String -> Maybe PrID
 fairProcVarPID s | isPrefixOf "$pfair_" s = Just $ parsePID $ drop (length "$pfair_") s
                  | otherwise              = Nothing
 
+isFairVarName :: String -> Bool
+isFairVarName n = (isJust $ fairProcVarPID n) || n == mkFairSchedVarName
+
 mkFairProcVarDecl :: PrID -> I.Var
 mkFairProcVarDecl pid = I.Var False I.VarState (mkFairProcVarName pid) I.Bool
 
@@ -186,12 +181,7 @@ mkFairRegVarDecls spec = mkFairSchedVarDecl : (map (mkFairProcVarDecl . fst) $ I
 mkFairRegVars :: I.Spec -> [I.Expr]
 mkFairRegVars spec = mkFairSchedVar : (map (mkFairProcVar . fst) $ I.specAllProcs spec)
 
--- PID of the last process to make a transition
---mkEPIDVarName :: String
---mkEPIDVarName = "$epid"
---
---mkEPIDVar :: I.Expr
---mkEPIDVar = I.EVar mkEPIDVarName
+-- PID of the process making a transition
 
 mkEPIDLVarName :: String
 mkEPIDLVarName = "$lepid"
@@ -213,10 +203,6 @@ mkEPIDEnumName = "$epidenum"
 
 mkEPIDNone :: String
 mkEPIDNone = "$epidnone"
-
---mkEPIDVarDecl :: [EPID] -> (I.Var, I.Enumeration)
---mkEPIDVarDecl epids = (I.Var False I.VarState mkEPIDVarName (I.Enum mkEPIDEnumName), enum)
---    where enum = I.Enumeration mkEPIDEnumName $ mkEPIDNone : map mkEPIDEnumeratorName epids
 
 mkEPIDLVarDecl :: [EPID] -> (I.Var, I.Enumeration)
 mkEPIDLVarDecl epids = (I.Var False I.VarTmp mkEPIDLVarName (I.Enum mkEPIDEnumName), enum)

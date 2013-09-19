@@ -24,6 +24,7 @@ module Predicate(PVarOps,
                  termWidth,
                  termCategory,
                  termVar,
+                 isConstTerm,
                  --evalConstTerm,
                  RelOp(..),
                  bopToRelOp,
@@ -40,7 +41,8 @@ module Predicate(PVarOps,
                  predToExpr,
                  scalarExprToTerm,
                  valToTerm,
-                 termToExpr) where
+                 termToExpr,
+                 ) where
 
 import Text.PrettyPrint
 import Data.List
@@ -323,7 +325,7 @@ predTerm :: Predicate -> [Term]
 predTerm (PAtom _ t1 t2) = [ptermTerm t1, ptermTerm t2]
 
 predVar :: (?spec::Spec) => Predicate -> [Var]
-predVar = concatMap termVar . predTerm
+predVar = nub . concatMap termVar . predTerm
 
 predCategory :: (?spec::Spec) => Predicate -> VarCategory
 predCategory p = if any ((==VarTmp) . termCategory) $ predTerm p
@@ -362,6 +364,9 @@ termToExpr (TSlice t s)      = ESlice (termToExpr t) s
 
 ptermToExpr :: PTerm -> Expr 
 ptermToExpr = termToExpr . ptermTerm
+
+isConstTerm :: Term -> Bool
+isConstTerm = isConstExpr . termToExpr
 
 predToExpr :: Predicate -> Expr
 predToExpr (PAtom op t1 t2) = EBinOp (predOpToBOp op) (ptermToExpr t1) (ptermToExpr t2)
