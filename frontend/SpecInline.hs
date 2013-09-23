@@ -308,13 +308,11 @@ mkCTran = I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
                         , ctxGNMap   = globalNMap
                         , ctxLastVar = 0
                         , ctxVar     = []}
-          ctx' = let ?procs = [] in execState (do --aftguard <- ctxInsTrans' I.cfaInitLoc $ I.TranStat contGuard
-                                                  after   <- ctxInsLoc
-                                                  aftcont <- ctxInsTrans' after $ I.TranStat $ mkContVar I.=: I.false
-                                                  _ <- mapM (\(t,s) -> do afttag <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
-                                                                          aftcall <- procStatToCFA s afttag
-                                                                          ctxInsTrans aftcall after $ I.TranNop) $ zip mkTagList stats'
-                                                  ctxFinal aftcont) ctx
+          ctx' = let ?procs = [] in execState (mapM (\(t,s) -> do afttag <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
+                                                                  aftcall <- procStatToCFA s afttag
+                                                                  aftcont <- ctxInsTrans' aftcall $ I.TranStat $ mkContVar I.=: I.false
+                                                                  ctxFinal aftcont) 
+                                               $ zip mkTagList stats') ctx
 
 ----------------------------------------------------------------------
 -- Variables
