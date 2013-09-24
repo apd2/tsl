@@ -145,7 +145,7 @@ tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> ([(Str
 -- handle $cont variable in a special way:
 -- $cont is false under controllable transition, 
 -- $cont can only be true after uncontrollable transition if we are inside a magic block.
-tslUpdateAbsVarAST (av, n) | M.member (show av) (specUpds ?spec) = (upds, H.T)
+tslUpdateAbsVarAST (av, n) | M.member (show av) (specUpds ?spec) = (upds, H.F)
     where 
     upds = mapIdx (\tr i -> ("tr" ++ show i, tranPrecondition (show i) tr `H.And` upd))
            $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
