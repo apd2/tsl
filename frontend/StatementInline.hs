@@ -98,7 +98,7 @@ statSimplify' st                      = return [st]
 ----------------------------------------------------------
 -- Convert statement to CFA
 ----------------------------------------------------------
-statToCFA :: (?spec::Spec, ?procs::[I.Process]) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA before   (SSeq _ ss)    = foldM statToCFA before ss
 statToCFA before s@(SPause _)     = do ctxLocSetAct before (I.ActStat s)
                                        ctxPause before I.true (I.ActStat s)
@@ -127,7 +127,7 @@ statToCFA before s@stat           = do ctxLocSetAct before (I.ActStat s)
                                        return after
 
 -- Only safe to call from statToCFA.  Do not call this function directly!
-statToCFA' :: (?spec::Spec, ?procs::[I.Process]) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
+statToCFA' :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
 statToCFA' before _ (SReturn _ rval) = do
     -- add transition before before to return location
     mlhs  <- gets ctxLHS
@@ -296,24 +296,32 @@ statToCFA' before after (SCase _ e cs mdef) = do
                               ctxInsTrans aftst after I.TranNop) cs'
     return ()
 
-statToCFA' before after s@(SMagic _ _ constr) = do
+statToCFA' before after s@(SMagic _ _ constr) | ?nestedmb = do
+    -- move action label to the pause location below
+    ctxLocSetAct before I.ActNone
+    -- don't wait for $magic in a nested magic block
+    aftpause <- ctxPause before I.true (I.ActStat s) -- (I.ActStat $ atPos s p)
+    -- debugger expects a nop-transition here
+    ctxInsTrans aftpause after I.TranNop
+                                              | otherwise = do
+    ctxLocSetAct before I.ActNone
     -- magic block flag
-    -- if this check is to be re-introduced, it should 
     ---aftcheck <- ctxInsTrans' before $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.false
     aftmag <- ctxInsTrans' before $ I.TranStat $ mkMagicVar I.=: I.true
     -- wait for magic flag to be false
-    let p = case constr of
-                 Left  i -> pos i
-                 Right c -> pos c
-    aftwait <- ctxPause aftmag mkMagicDoneCond (I.ActStat $ atPos s p)
+    aftwait <- ctxPause aftmag mkMagicDoneCond (I.ActStat s) --(I.ActStat $ atPos s p)
     ctxInsTrans aftwait after I.TranNop
+--    where 
+--    p = case constr of
+--             Left  i -> pos i
+--             Right c -> pos c
 
 statToCFA' before after (SMagExit _) = do
 --    aftcont <- ctxInsTrans' before  $ I.TranStat $ mkContVar  I.=: I.false
 --    aftpid  <- ctxInsTrans' aftcont $ I.TranStat $ mkPIDVar   I.=: mkPIDEnum pidCont
     ctxInsTrans before after $ I.TranStat $ mkMagicVar I.=: I.false
 
-methInline :: (?spec::Spec,?procs::[I.Process]) => I.Loc -> I.Loc -> Method -> [Maybe Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
+methInline :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> I.Loc -> Method -> [Maybe Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
 methInline before after meth margs mlhs act = do
     -- save current context
     mepid <- gets ctxEPID
@@ -382,7 +390,7 @@ copyOutArgs loc meth margs = do
 -- Top-level function: convert process statement to CFA
 ----------------------------------------------------------
 
-procStatToCFA :: (?spec::Spec, ?procs::[I.Process]) => Statement -> I.Loc -> State CFACtx I.Loc
+procStatToCFA :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => Statement -> I.Loc -> State CFACtx I.Loc
 procStatToCFA stat before = do
     after <- statToCFA before stat
     ctxAddNullPtrTrans

@@ -150,8 +150,10 @@ mkWires | (null $ tmWire tmMain) = return Nothing
                      , ctxGNMap   = globalNMap
                      , ctxLastVar = 0
                      , ctxVar     = []}
-        ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
-                                               ctxPause aft I.true I.ActNone) ctx
+        ctx' = let ?procs =[] 
+                   ?nestedmb = False 
+               in execState (do aft <- procStatToCFA stat I.cfaInitLoc
+                                ctxPause aft I.true I.ActNone) ctx
     return $ Just $ I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ ctxCFA ctx'
 
 
@@ -188,8 +190,10 @@ mkPrefix | (null $ tmPrefix tmMain) = return Nothing
                      , ctxGNMap   = globalNMap
                      , ctxLastVar = 0
                      , ctxVar     = []}
-        ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
-                                               ctxPause aft I.true I.ActNone) ctx
+        ctx' = let ?procs = [] 
+                   ?nestedmb = False
+               in execState (do aft <- procStatToCFA stat I.cfaInitLoc
+                                ctxPause aft I.true I.ActNone) ctx
     return $ Just $ I.cfaTraceFile (ctxCFA ctx') "prefix_cfa" $ ctxCFA ctx'
 
 ----------------------------------------------------------------------
@@ -273,8 +277,10 @@ mkCond descr s extra = do
                      , ctxGNMap   = globalNMap
                      , ctxLastVar = 0
                      , ctxVar     = []}
-        ctx' = let ?procs =[] in execState (do aft <- procStatToCFA stat I.cfaInitLoc
-                                               ctxPause aft I.true I.ActNone) ctx
+        ctx' = let ?procs = [] 
+                   ?nestedmb = False
+               in execState (do aft <- procStatToCFA stat I.cfaInitLoc
+                                ctxPause aft I.true I.ActNone) ctx
         trans = locTrans (ctxCFA ctx') I.cfaInitLoc
         -- precondition
     return $ case trans of
@@ -308,11 +314,13 @@ mkCTran = I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
                         , ctxGNMap   = globalNMap
                         , ctxLastVar = 0
                         , ctxVar     = []}
-          ctx' = let ?procs = [] in execState (mapM (\(t,s) -> do afttag <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
-                                                                  aftcall <- procStatToCFA s afttag
-                                                                  aftcont <- ctxInsTrans' aftcall $ I.TranStat $ mkContVar I.=: I.false
-                                                                  ctxFinal aftcont) 
-                                               $ zip mkTagList stats') ctx
+          ctx' = let ?procs = []
+                     ?nestedmb = False
+                 in execState (mapM (\(t,s) -> do afttag <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
+                                                  aftcall <- procStatToCFA s afttag
+                                                  aftcont <- ctxInsTrans' aftcall $ I.TranStat $ mkContVar I.=: I.false
+                                                  ctxFinal aftcont) 
+                                    $ zip mkTagList stats') ctx
 
 ----------------------------------------------------------------------
 -- Variables
@@ -378,7 +386,7 @@ procToCFA pid@(PrID _ ps) lmap parscope stat = {- I.cfaTraceFile (ctxCFA ctx') (
           ctx' = execState (do aftguard <- if guarded
                                               then ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume guard
                                               else return I.cfaInitLoc
-                               aft <- procStatToCFA stat aftguard
+                               aft <- let ?nestedmb = False in procStatToCFA stat aftguard
                                _   <- ctxFinal aft
                                modify $ \c -> c {ctxCFA = cfaShortcut $ ctxCFA c}
                                ctxUContInsertSuffixes
