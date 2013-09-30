@@ -3,6 +3,7 @@
 module PID (PrID(..),
             EPID(..),
             NSID(..),
+            pidIdle,
             parsePID,
             parseEPID,
             childPID,
@@ -12,13 +13,9 @@ import Text.PrettyPrint
 import Data.List.Split
 
 import Util
-import Pos
 import PP
 import NS
-import Name
 import Method
-import Spec
-import Expr
 
 -- Process ID: root process or forked process
 
@@ -30,6 +27,8 @@ instance PP PrID where
 
 instance Show PrID where
     show = render . pp
+
+pidIdle = PrID "_idle_" []
 
 parsePID :: String -> PrID
 parsePID s = PrID (head toks) (tail toks) where toks = splitOn "/" s

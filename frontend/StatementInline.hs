@@ -89,8 +89,6 @@ statSimplify' (SCase p c cs md)     = -- Case labels must be side-effect-free, s
                                          cstats        <- mapM statSimplify (snd $ unzip cs)
                                          md'           <- Tr.sequence $ fmap statSimplify md
                                          return $ concat sscs ++ ssc ++ [SCase p c' (zip clabs' cstats) md']
-statSimplify' (SMagic p p2 (Right e)) = do (ss,e') <- exprSimplify e
-                                           return $ (SMagic p p2 (Right $ EBool (pos e) True)):(ss ++ [SAssert (pos e) e'])
 statSimplify' st                      = return [st]
 
 
@@ -296,7 +294,7 @@ statToCFA' before after (SCase _ e cs mdef) = do
                               ctxInsTrans aftst after I.TranNop) cs'
     return ()
 
-statToCFA' before after s@(SMagic _ _ constr) | ?nestedmb = do
+statToCFA' before after s@(SMagic _) | ?nestedmb = do
     -- move action label to the pause location below
     ctxLocSetAct before I.ActNone
     -- don't wait for $magic in a nested magic block

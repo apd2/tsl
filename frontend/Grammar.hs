@@ -362,7 +362,7 @@ statement =  withPos $
          <?> "statement")
 
 statements  = many  $ statement <* semi
-statements1 = many1 $ statement <* semi
+statements1 = sepBy1 statement semi
 
 svarDecl = SVarDecl nopos <$> varDecl
 sreturn  = SReturn nopos <$ reserved "return" <*> (optionMaybe expr)
@@ -389,9 +389,9 @@ scase    = (fmap uncurry (SCase nopos <$ reserved "case" <*> (parens detexpr)))
            <*> (braces $ (,) <$> (many $ (,) <$> detexpr <* colon <*> statement <* semi) 
                              <*> optionMaybe (reserved "default" *> colon *> statement <* semi))
 smagic   = SMagic nopos <$ ismagic
-                        <*> (braces $ withPos $ nopos <$ reservedOp "...") 
-                        <*> ((Left <$ reserved "using" <*> ident) <|> (Right <$ reserved "post" <*> detexpr))
-    where ismagic = try $ lookAhead $ symbol "{" *> reservedOp "..."
+                        <* (withPos $ nopos <$ reservedOp "...") 
+                        -- <*> ((Left <$ reserved "using" <*> ident) <|> (Right <$ reserved "post" <*> detexpr))
+    where ismagic = try $ lookAhead $ reservedOp "..."
 
 ------------------------------------------------------------------
 -- Expression

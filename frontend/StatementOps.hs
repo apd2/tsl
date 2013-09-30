@@ -97,7 +97,7 @@ statMapExpr' f s (SAssume  p e)            = SAssume  p (mapExpr f s e)
 statMapExpr' f s (SAssign  p l r)          = SAssign  p (mapExpr f s l) (mapExpr f s r)
 statMapExpr' f s (SITE     p c t me)       = SITE     p (mapExpr f s c) t me
 statMapExpr' f s (SCase    p c cs md)      = SCase    p (mapExpr f s c) (map (mapFst $ mapExpr f s) cs) md
-statMapExpr' f s (SMagic   p p2 (Right e)) = SMagic   p p2 (Right $ mapExpr f s e)
+statMapExpr' f s (SMagic   p)              = SMagic   p
 statMapExpr' f s st                        = st
 
 -- Find all methods invoked by the statement
@@ -144,8 +144,6 @@ statObjs (SITE     _ c t me)        = exprObjs c ++ statObjs t ++ (concatMap sta
 statObjs (SCase    _ c cs md)       = exprObjs c ++
                                       concatMap (\(e,s) -> exprObjs e ++ statObjs s) cs ++
                                       concatMap statObjs (maybeToList md)
-statObjs (SMagic   _ _ (Left g))    = [ObjGoal (scopeTm ?scope) (getGoal ?scope g)]
-statObjs (SMagic   _ _ (Right e))   = exprObjs e
 statObjs _                          = []
 
 -- recursive version
@@ -200,7 +198,6 @@ statFlatten iid s st = mapStat (statFlatten' iid) s $ statMapExpr (exprFlatten' 
 statFlatten' :: (?spec::Spec) => IID -> Scope -> Statement -> Statement
 statFlatten' iid s (SPar p ps)                     = SPar p $ map (\(n,s) -> (itreeFlattenName iid n,s)) ps
 statFlatten' iid s (SInvoke p (MethodRef p' n) as) = SInvoke p (MethodRef p' [itreeFlattenName (itreeRelToAbsPath iid (init n)) (last n)]) as
-statFlatten' iid s (SMagic p p2 (Left g))          = SMagic p p2 $ Left $ itreeFlattenName iid g
 statFlatten' _   _ st                              = st
 
 -- True if the statement returns a value on all execution paths.
@@ -360,15 +357,10 @@ validateStat' l (SCase p c cs md) = do
     mapM (\(e1,_) -> checkTypeMatch c e1) cs
     return ()
 
-validateStat' l (SMagic p _ g) = do
+validateStat' l (SMagic p) = do
     case ?scope of
          ScopeMethod t m -> assert (methCat m == Task Uncontrollable) p "Magic blocks only allowed in uncontrollable tasks"
          _               -> err p "Magic blocks only allowed in uncontrollable tasks"
-    case g of
-         Left n  -> do {checkGoal ?scope n; return()}
-         Right e -> do validateExpr' e
-                       assert (exprNoSideEffects e) (pos e) $ "Objective must be a side-effect-free expression"
-                       assert (isBool e) (pos e) $ "Objective must be a boolean expression"
 
 -- There is no path through the loop body that does not break out of the loop and
 -- does not contain some form of pause
@@ -421,7 +413,7 @@ findInstPath b     s@(SITE _ c t e)    = if not $ isInstExpr c
                                                       Nothing -> Just [Right c]
                                                       Just st -> shortest $ catMaybes $ map (findInstPath b) $ [t,st]
 findInstPath b     s@(SCase _ _ cs md) = shortest $ catMaybes $ map (findInstPath b) $ (map snd cs) ++ maybeToList md
-findInstPath _       (SMagic _ _ _)    = Nothing
+findInstPath _       (SMagic _)        = Nothing
 
 
 isBreak :: Either Statement Expr -> Bool
