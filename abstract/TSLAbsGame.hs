@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, ScopedTypeVariables, RecordWildCards, TupleSections #-}
+{-# LANGUAGE ImplicitParams, ScopedTypeVariables, RecordWildCards #-}
 
 module TSLAbsGame(tslAbsGame, 
                   bexprToFormula, 
@@ -42,7 +42,7 @@ import GroupTag
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar String
+tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar
 tslAbsGame spec m ts = Abs.Abstractor { Abs.goalAbs                 = tslGoalAbs                 spec m
                                       , Abs.fairAbs                 = tslFairAbs                 spec m
                                       , Abs.initAbs                 = tslInitAbs                 spec m
@@ -113,7 +113,7 @@ tslContAbs spec m ops = do
         ?pred = p
     H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContVar === true
 
-tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([([(String, C.DDNode s u)], C.DDNode s u)], C.DDNode s u)
+tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
 tslUpdateAbs spec m ts avars ops = do
     trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops    = ops
@@ -121,52 +121,42 @@ tslUpdateAbs spec m ts avars ops = do
     let ?spec   = spec
         ?m      = m
         ?pred   = p
---    avarbef <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
+    avarbef <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
     upd <- mapM tslUpdateAbsVar avars
---    avaraft <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
---    let avarnew = S.toList $ S.fromList avaraft S.\\ S.fromList avarbef
---    inconsistent <- case avarnew of
---                         [] -> return $ C.bzero m
---                         _  -> H.compileBDD m ops (avarGroupTag . bavarAVar)
---                               $ H.Disj 
---                               $ map (absVarInconsistent ts . \(x:xs) -> (x, xs ++ avarbef)) 
---                               $ init $ tails avarnew
-    return (upd, {-inconsistent-}C.bzero m)
+    avaraft <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
+    let avarnew = S.toList $ S.fromList avaraft S.\\ S.fromList avarbef
+    inconsistent <- case avarnew of
+                         [] -> return $ C.bzero m
+                         _  -> H.compileBDD m ops (avarGroupTag . bavarAVar)
+                               $ H.Disj 
+                               $ map (absVarInconsistent ts . \(x:xs) -> (x, xs ++ avarbef)) 
+                               $ init $ tails avarnew
+    return (upd, inconsistent)
 
-tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u ([(String, C.DDNode s u)], C.DDNode s u)
-tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av) $ do
-    disjs' <- mapM (\(n,u) -> liftM (n,) $ comp u) disjs
-    def' <- comp def
-    return (disjs', def')
-    where comp = H.compileBDD ?m ?ops (avarGroupTag . bavarAVar)
-          (disjs, def) = tslUpdateAbsVarAST (av,n)
+tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
+tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
+                          $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
 
-tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> ([(String, TAST f e c)], TAST f e c)
+
+tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
 -- handle $cont variable in a special way:
 -- $cont is false under controllable transition, 
 -- $cont can only be true after uncontrollable transition if we are inside a magic block.
-tslUpdateAbsVarAST (av, n) | M.member (show av) (specUpds ?spec) = (upds, H.F)
-    where 
-    upds = mapIdx (\tr i -> ("tr" ++ show i, tranPrecondition (show i) tr `H.And` upd))
-           $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
-    upd = case av of 
-               AVarBool _ -> let cas = casTree 
-                                       $ map (\(c,e) -> (ptrFreeBExprToFormula c, CasLeaf $ ptrFreeBExprToFormula e)) 
-                                       $ (specUpds ?spec) M.! (show av)
-                             in compileFCas cas (H.FVar n)
-               _          -> error "tslUpdateAbsVarAST: non-bool variables"
+tslUpdateAbsVarAST (av, n) | M.member (show av) (specUpds ?spec) = 
+    case av of 
+         AVarBool _ -> let cas = casTree 
+                                 $ map (\(c,e) -> (ptrFreeBExprToFormula c, CasLeaf $ ptrFreeBExprToFormula e)) 
+                                 $ (specUpds ?spec) M.! (show av)
+                       in compileFCas cas (H.FVar n)
+         _          -> error "tslUpdateAbsVarAST: non-bool variables"
 
-tslUpdateAbsVarAST (av, n)                                       = (upds, ident)
+tslUpdateAbsVarAST (av, n)                                       = H.Disj (unchanged:upds)
     where
-    trans = mapIdx (\tr i -> fmap ("tr" ++ show i, tranPrecondition (show i) tr,)
-                             $ varUpdateTrans (show i) [(av,n)] tr)
-            $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
-    ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
-    upds = map (\(n, trpre, (upd, pre)) -> (n, trpre `H.And` ((pre `H.And` upd) `H.Or` ((H.Not pre) `H.And` ident)))) 
-           $ catMaybes trans
-    
+    trans = mapIdx (\tr i -> varUpdateTrans (show i) [(av,n)] tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
+    (upds, pres) = unzip $ catMaybes trans
     -- generate condition when variable value does not change
-    --unchanged = H.And (H.Conj $ map H.Not pres) ident
+    ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
+    unchanged = H.And (H.Conj $ map H.Not pres) ident
 
 ----------------------------------------------------------------------------
 -- Shared with Spec2ASL
@@ -243,8 +233,8 @@ varUpdateTrans trname vs Transition{..} = if G.isEmpty cfa'
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA. 
 varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar, f)] -> Loc -> CFA -> TAST f e c
-varUpdateLoc trname vs loc cfa = {-acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
-                                 $ -}traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
+varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
+                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
     where
     acfa = tranCFAToACFA (map fst vs) loc cfa
     ast  = compileACFA vs acfa
