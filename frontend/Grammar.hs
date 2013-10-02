@@ -43,7 +43,7 @@ boolParser        = removeTabs *> ((True <$ reserved "true") <|> (False <$ reser
 detexprParser     = removeTabs *> detexpr
 statementParser   = removeTabs *> statement
 statementsParser  = removeTabs *> statements
-statements1Parser = removeTabs *> statements1
+statements1Parser = removeTabs *> ((optional whiteSpace) *> statements1)
 
 reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "...", "::", "->"]
 reservedNames = ["after",
