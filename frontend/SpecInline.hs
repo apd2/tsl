@@ -154,7 +154,7 @@ mkWires | (null $ tmWire tmMain) = return Nothing
                    ?nestedmb = False 
                in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                 ctxPause aft I.true I.ActNone) ctx
-    return $ Just $ I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ ctxCFA ctx'
+    return $ Just $ {- I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ -} ctxCFA ctx'
 
 
 -- Build total order of wires so that for each wire, all wires that
@@ -194,7 +194,7 @@ mkPrefix | (null $ tmPrefix tmMain) = return Nothing
                    ?nestedmb = False
                in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                 ctxPause aft I.true I.ActNone) ctx
-    return $ Just $ I.cfaTraceFile (ctxCFA ctx') "prefix_cfa" $ ctxCFA ctx'
+    return $ Just $ {- I.cfaTraceFile (ctxCFA ctx') "prefix_cfa" $-} ctxCFA ctx'
 
 ----------------------------------------------------------------------
 -- Fair sets
@@ -285,7 +285,7 @@ mkCond descr s extra = do
         -- precondition
     return $ case trans of
                   [t] -> let res = foldl' tranAppend t (map I.SAssume extra)
-                         in I.cfaTraceFile (I.tranCFA res) descr $ res
+                         in {-I.cfaTraceFile (I.tranCFA res) descr $-} res
                   _   -> error $ "mkCond " ++ show s ++ ": Invalid condition"
 
 ----------------------------------------------------------------------
@@ -299,7 +299,7 @@ mkCond descr s extra = do
 
 -- generate CFA that represents all possible controllable transitions
 mkCTran :: (?spec::Spec) => (I.CFA, [I.Var])
-mkCTran = I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
+mkCTran = {- I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar ctx')
     where sc   = ScopeTemplate tmMain
           ctasks = filter ((== Task Controllable) . methCat) $ tmMethod tmMain
           stats = SMagExit nopos : 
@@ -501,7 +501,7 @@ cfaToITransition cfa fname = case trans of
 -- Convert CFA to a list of transitions.
 -- Assume that unreachable states have already been pruned.
 cfaToITransitions :: EPID -> I.CFA -> [I.Transition]
-cfaToITransitions epid cfa = I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ show epid) trans'
+cfaToITransitions epid cfa = {-I.cfaTraceFileMany (map I.tranCFA trans') ("tran_" ++ show epid)-} trans'
     where
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa
