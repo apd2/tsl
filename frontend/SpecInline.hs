@@ -60,7 +60,7 @@ spec2Internal s =
         (pidlvar, pidenum)  = mkEPIDLVarDecl epids
         vars                = mkVars
         (tvar, tenum)       = mkTagVarDecl
-        (fairvars, fairinit, fairreg) = mkFair spec'
+        fairreg = mkFair spec'
 
         ((specWire, specPrefix, inittran, goals), (_, extratmvars)) = 
             runState (do wire      <- mkWires
@@ -73,7 +73,7 @@ spec2Internal s =
         extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) (NSID Nothing Nothing) v) extratmvars
         (specProc, tmppvs) = unzip $ (map procToCProc $ tmProcess tmMain) 
         specEnum           = choiceenum ++ (tenum : pidenum : (senum ++ pcenums))
-        specVar            = cvars ++ [tvar, pidlvar] ++ pcvars ++ vars ++ concat tmppvs ++ extraivars ++ fairvars
+        specVar            = cvars ++ [tvar, pidlvar] ++ pcvars ++ vars ++ concat tmppvs ++ extraivars
         specCAct           = ctran
         specTran           = error "specTran undefined"
         specUpds           = mkUpds spec'
@@ -93,16 +93,17 @@ spec2Internal s =
         -- initialise $en vars to false
         peninit = concatMap (mapPTreeFProc (\pid _ -> mkEnVar pid Nothing  I.=== I.false)) $ tmProcess tmMain
         maginit  = mkMagicVar I.=== I.false
-        errinit  = mkErrVar   I.=== I.false in
+        errinit  = mkErrVar   I.=== I.false 
 
-        spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransitions EPIDCont ctran 
-                                       , I.tsUTran  = utran
-                                       , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ fairinit ++ [errinit, maginit]))
-                                       , I.tsGoal   = goals
-                                       , I.tsFair   = [fairreg]
-                                       }}
-
-
+        res = 
+         spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransitions EPIDCont ctran 
+                                        , I.tsUTran  = utran
+                                        , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ [errinit, maginit]))
+                                        , I.tsGoal   = goals
+                                        , I.tsFair   = fairreg
+                                        }} in
+       {-I.cfaTraceFiles (zip (map (("tr" ++) . show) [0..]) $ map I.tranCFA $ (I.tsUTran $ I.specTran res) ++ (I.tsCTran $ I.specTran res)) $-} res
+      
 ------------------------------------------------------------------------------
 -- Preprocess all statements and expressions before inlining.  
 -- In the preprocessed spec:
@@ -195,41 +196,48 @@ mkPrefix | (null $ tmPrefix tmMain) = return Nothing
 -- Fair sets
 ----------------------------------------------------------------------
 
-mkFair :: (?spec::Spec) => I.Spec -> ([I.Var], [I.Expr], I.FairRegion)
-mkFair ispec = (mkFairRegVarDecls ispec
-               , map (I.=== I.false) $ mkFairRegVars ispec
-               , I.FairRegion "fair" $ I.neg $ I.conj $ mkFairRegVars ispec)
- 
+--mkFair :: (?spec::Spec) => I.Spec -> ([I.Var], [I.Expr], I.FairRegion)
+--mkFair ispec = (mkFairRegVarDecls ispec
+--               , map (I.=== I.false) $ mkFairRegVars ispec
+--               , I.FairRegion "fair" $ I.neg $ I.conj $ mkFairRegVars ispec)
+
+mkFair :: (?spec::Spec) => I.Spec -> [I.FairRegion]
+mkFair ispec = mkFairSched : (map mkFairProc $ I.specAllProcs ispec)
+    where 
+    -- Fair scheduling:  GF (not ($magic==true && $cont == false))
+    mkFairSched = I.FairRegion "fair_scheduler" $ (mkMagicVar I.=== I.true) `I.land` (mkContLVar I.=== I.false)
+
+    -- For each uncontrollable process: 
+    -- GF (not ((\/i . pc=si && condi) && lastpid /= pid))
+    -- where si and condi are process pause locations and matching conditions
+    -- i.e, the process eventually either becomes disabled or makes a transition.
+    mkFairProc :: (PrID, I.Process) -> I.FairRegion
+    mkFairProc (pid,p) = I.FairRegion ("fair_" ++ show pid)
+                         $ mkFairCFA (I.procCFA p) pid 
+
+    mkFairCFA :: I.CFA -> PrID -> I.Expr
+    mkFairCFA cfa pid = 
+        ((mkEPIDLVar I./== mkEPIDEnum (EPIDProc pid)) `I.lor` (mkContLVar I.=== I.true)) `I.land`
+        (I.disj $ map (\loc -> mkPCEq cfa pid (mkPC pid loc) `I.land` (I.cfaLocWaitCond cfa loc)) 
+                $ filter (not . I.isDeadendLoc cfa) 
+                $ I.cfaDelayLocs cfa)
+
+
 ----------------------------------------------------------------------
 -- Explicit update functions 
 ----------------------------------------------------------------------
 
 mkUpds :: I.Spec -> M.Map String [(I.Expr, I.Expr)]
-mkUpds spec = M.fromList $ (mkFairSchedVarName, fairSchedUpd spec) 
-                         : map (\(pid, _) -> (mkFairProcVarName pid, fairProcUpd spec pid)) (I.specAllProcs spec)
-
--- f_i := cond -> T
---       !cond -> f_i /\ ! (/\_j f_j)
-fairRegUpd :: I.Spec -> I.Expr -> I.Expr -> [(I.Expr, I.Expr)]
-fairRegUpd spec x cond = [ (cond      , I.true)
-                         , (I.neg cond, I.conj [x, I.neg $ I.conj $ mkFairRegVars spec])]
-
-fairSchedUpd :: I.Spec -> [(I.Expr, I.Expr)]
-fairSchedUpd spec = fairRegUpd spec mkFairSchedVar $ (mkMagicVar I.=== I.false) `I.lor` (mkContLVar I.=== I.true)
-
-fairProcUpd :: I.Spec -> PrID -> [(I.Expr, I.Expr)]
-fairProcUpd spec pid = fairRegUpd spec (mkFairProcVar pid) $ 
-        (mkEPIDLVar I.=== mkEPIDEnum (EPIDProc pid)) `I.lor`
-        (I.neg 
-         $ I.disj 
-         $ map (\loc -> mkPCEq cfa pid (mkPC pid loc) `I.land` (I.cfaLocWaitCond cfa loc)) 
-         $ filter (not . I.isDeadendLoc cfa) 
-         $ I.cfaDelayLocs cfa)
-    where cfa = I.procCFA $ I.specGetProcess spec pid 
+mkUpds spec = M.fromList $ []
 
 --contUpd :: [(I.Expr, I.Expr)]
 --contUpd = [ (        (I.neg mkContVar) `I.land` mkMagicVar , mkContLVar)
 --          , ( I.neg ((I.neg mkContVar) `I.land` mkMagicVar), I.false)]
+
+--epidUpd :: [(I.Expr, I.Expr)]
+--epidUpd = [ (mkContLVar      , I.EConst $ I.EnumVal $ mkEPIDEnumeratorName EPIDCont)
+--          , (I.neg mkContLVar, mkEPIDLVar)]
+
 
 ----------------------------------------------------------------------
 -- Init and goal conditions

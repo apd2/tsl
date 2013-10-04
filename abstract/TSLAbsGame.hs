@@ -139,16 +139,17 @@ tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
 
 
 tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
--- handle $cont variable in a special way:
--- $cont is false under controllable transition, 
--- $cont can only be true after uncontrollable transition if we are inside a magic block.
 tslUpdateAbsVarAST (av, n) | M.member (show av) (specUpds ?spec) = 
     case av of 
          AVarBool _ -> let cas = casTree 
                                  $ map (\(c,e) -> (ptrFreeBExprToFormula c, CasLeaf $ ptrFreeBExprToFormula e)) 
                                  $ (specUpds ?spec) M.! (show av)
                        in compileFCas cas (H.FVar n)
-         _          -> error "tslUpdateAbsVarAST: non-bool variables"
+         AVarEnum _ -> let cas = casTree 
+                                 $ (map (\(c,e) -> (ptrFreeBExprToFormula c, CasLeaf $ scalarExprToTerm e)))
+                                 $ (specUpds ?spec) M.! (show av)
+                       in compileTCas cas (H.FVar n)
+         _          -> error "tslUpdateAbsVarAST: not a bool or enum variable"
 
 tslUpdateAbsVarAST (av, n)                                       = H.Disj (unchanged:upds)
     where
