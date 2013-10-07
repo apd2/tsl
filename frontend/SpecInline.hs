@@ -258,7 +258,7 @@ noerror = I.EUnOp Not mkErrVar
 
 mkGoal :: (?spec::Spec) => Goal -> NameGen I.Goal
 mkGoal g = -- Add $err==false to the goal condition
-           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos $ goalCond g) [{-I.EUnOp Not mkMagicVar,-} noerror]
+           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos $ goalCond g) [I.EUnOp Not mkMagicVar, noerror]
 
 -- In addition to regular goals, we are required to be outside a magic block
 -- infinitely often
