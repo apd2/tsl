@@ -208,3 +208,4 @@ exprToIExpr' (ESlice _ e (l,h)) _           = do sc <- gets ctxScope
                                                  return $ I.ESlice e' (l',h')
 exprToIExpr' (ENonDet _) t                  = do v <- ctxInsTmpVar $ mkType t
                                                  return $ I.EVar $ I.varName v
+exprToIExpr' e _                            = error $ "exprToIExpr' " ++ show e

@@ -1,7 +1,7 @@
 {-# LANGUAGE ImplicitParams, TupleSections, RecordWildCards, ScopedTypeVariables #-}
 
 -- Convert flattened spec to internal representation
-module SpecInline (spec2Internal) where
+module SpecInline (specSimplify, spec2Internal) where
 
 import Data.List
 import Data.Maybe
@@ -38,6 +38,7 @@ import Inline
 
 
 -- Main function
+-- The input spec must be simplified using specSimplify
 spec2Internal :: Spec -> I.Spec
 spec2Internal s = 
     let -- preprocessing

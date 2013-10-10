@@ -16,6 +16,7 @@ import TypeValidate
 import Pos
 import Name
 import Spec
+import SpecInline
 import NS
 import Method
 import Template
@@ -217,7 +218,7 @@ flatten s = do
                          goals
         s'' = s'{specTemplate = [main']}
     validateFlattenedSpec s''
-    return s''
+    return $ specSimplify s''
     
 -- Remove all pure templates from the spec; merge concrete templates with their parents
 mergeParents :: Spec -> Spec
