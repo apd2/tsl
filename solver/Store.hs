@@ -20,6 +20,7 @@ module Store (Store(..),
 import Data.List
 import Control.Monad
 import qualified Data.Map as M
+import Debug.Trace
 
 import Ops
 import IExpr
@@ -32,6 +33,10 @@ data Store = SStruct {storeFields :: M.Map String Store} -- name/value pairs (us
            | SArr    {storeArr    :: M.Map Int Store}    -- array assignment
            | SVal    {storeVal    :: Val}                -- scalar
            deriving Eq
+
+isScalarStore :: Store -> Bool
+isScalarStore (SVal _) = True
+isScalarStore _        = False
 
 instance Show Store where
     show (SStruct fs) = "{" ++
@@ -60,18 +65,25 @@ storeProject (SStruct entries) names = SStruct $ M.filterWithKey (\n _ -> elem n
 
 -- Expression evaluation over stores
 storeTryEval :: Store -> Expr -> Maybe Store
-storeTryEval (SStruct fs) (EVar name)       = M.lookup name fs
-storeTryEval _            (EVar _)          = Nothing
-storeTryEval _            (EConst v)        = Just $ SVal v
-storeTryEval s            (EField e name)   = join $ fmap (M.lookup name) $ storeTryEvalStruct s e
-storeTryEval s            (EIndex e i)      = do idx <- liftM fromInteger $ storeTryEvalInt s i
-                                                 es  <- storeTryEvalArr s e
-                                                 M.lookup idx es
-storeTryEval s            (EUnOp op e)      = fmap (SVal . evalConstExpr . EUnOp op . EConst) $ storeTryEvalScalar s e
-storeTryEval s            (EBinOp op e1 e2) = do v1 <- storeTryEvalScalar s e1
-                                                 v2 <- storeTryEvalScalar s e2
-                                                 return $ SVal $ evalConstExpr (EBinOp op (EConst v1) (EConst v2))
-storeTryEval s            (ESlice e sl)     = fmap (\v -> SVal $ evalConstExpr (ESlice (EConst v) sl)) $ storeTryEvalScalar s e
+storeTryEval (SStruct fs) (EVar name)        = M.lookup name fs
+storeTryEval _            (EVar _)           = Nothing
+storeTryEval _            (EConst v)         = Just $ SVal v
+storeTryEval s            (EField e name)    = join $ fmap (M.lookup name) $ storeTryEvalStruct s e
+storeTryEval s            (EIndex e i)       = do idx <- liftM fromInteger $ storeTryEvalInt s i
+                                                  es  <- storeTryEvalArr s e
+                                                  M.lookup idx es
+storeTryEval s            (EUnOp op e)       = fmap (SVal . evalConstExpr . EUnOp op . EConst) $ storeTryEvalScalar s e
+storeTryEval s            (EBinOp op e1 e2)  = do s1 <- storeTryEval s e1
+                                                  s2 <- storeTryEval s e2
+                                                  if isScalarStore s1
+                                                     then do let SVal v1 = s1
+                                                                 SVal v2 = s2
+                                                             return $ SVal $ evalConstExpr (EBinOp op (EConst v1) (EConst v2))
+                                                     else return $ SVal $ BoolVal 
+                                                                 $ case op of
+                                                                        Eq  -> s1 == s2
+                                                                        Neq -> s1 /= s2
+storeTryEval s            (ESlice e sl)      = fmap (\v -> SVal $ evalConstExpr (ESlice (EConst v) sl)) $ storeTryEvalScalar s e
 
 storeTryEvalScalar :: Store -> Expr -> Maybe Val
 storeTryEvalScalar s e = fmap storeVal $ storeTryEval s e
