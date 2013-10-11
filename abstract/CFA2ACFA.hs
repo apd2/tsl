@@ -73,13 +73,16 @@ pruneCFAVar avs cfa = cfa2
     trs = filter (\(_,_,tr) -> any (\av -> isVarRecomputedByTran av tr) avs) 
           $ G.labEdges cfa
     -- Find all predecessors of these transitions
-    --reach = concatMap (\(_,to,_) -> G.dfs  [to] cfa) trs
     keepedges = nub $ concatMap (\e@(fr,_,_) -> e : concatMap (G.inn cfa) (G.rdfs [fr] cfa)) trs
-    keepnodes = nub $ concatMap (\(fr, to, _) -> [fr,to]) keepedges
+    -- Add edges that are successors of trs, and that have a sibling in keepedges
+    keepedges' = keepedges ++
+                 (filter (\(fr,_,_) -> any (\e -> elem e keepedges) (G.out cfa fr))
+                         $ ((concatMap (\(_,to,_) -> concatMap (G.out cfa) $ G.dfs [to] cfa) trs) \\ keepedges))
+    keepnodes = nub $ concatMap (\(fr, to, _) -> [fr,to]) keepedges'
     -- delete irrelevant nodes
     cfa1 = foldl' (\g l -> if' (elem l keepnodes) g (G.delNode l g)) cfa (G.nodes cfa)
     -- delete irrelevant edges connecting relevant nodes
-    cfa2 = foldl' (\g e -> if' (elem e keepedges) g (G.delLEdge e g)) cfa1 (G.labEdges cfa)
+    cfa2 = foldl' (\g e -> if' (elem e keepedges') g (G.delLEdge e g)) cfa1 (G.labEdges cfa)
 
 varRecomputedLoc :: (?spec::Spec, ?pred::[Predicate], ?cfa::CFA) => Loc -> AbsVar -> Loc
 varRecomputedLoc l v | null (G.pre ?cfa l)                                 = l
