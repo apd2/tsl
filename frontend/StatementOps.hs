@@ -304,6 +304,8 @@ validateStat' _ (SStop p) = do
 
 validateStat' _ (SWait p e) = do
     validateExpr' e
+    -- because we do not handle them correctly during inlining
+    assert (null $ exprCallees ?scope e) (pos e) $ "Method invocations not allowed inside wait conditions"
     case ?scope of
          ScopeMethod  _ m -> case methCat m of
                                   Function          -> err p "wait inside function"
