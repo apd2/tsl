@@ -197,6 +197,16 @@ exprToIExpr' (EIndex _ e i) _               = do e' <- exprToIExprDet e
                                                  return $ I.EIndex e' i'
 exprToIExpr' (EUnOp _ op e) _               = do e' <- exprToIExprDet e
                                                  return $ I.EUnOp op e'
+exprToIExpr' (EBinOp _ Eq e1 e2) _          = do sc <- gets ctxScope
+                                                 let ?scope = sc
+                                                 e1' <- mapM exprToIExprDet $ exprScalars e1
+                                                 e2' <- mapM exprToIExprDet $ exprScalars e2
+                                                 return $ I.conj $ zipWith (I.EBinOp Eq) e1' e2'
+exprToIExpr' (EBinOp _ Neq e1 e2) _         = do sc <- gets ctxScope
+                                                 let ?scope = sc
+                                                 e1' <- mapM exprToIExprDet $ exprScalars e1
+                                                 e2' <- mapM exprToIExprDet $ exprScalars e2
+                                                 return $ I.disj $ zipWith (I.EBinOp Neq) e1' e2'
 exprToIExpr' (EBinOp _ op e1 e2) _          = do e1' <- exprToIExprDet e1
                                                  e2' <- exprToIExprDet e2
                                                  return $ I.EBinOp op e1' e2'
