@@ -30,6 +30,7 @@ exprFlatten iid s e = mapExpr (exprFlatten' iid) s e
 
 exprFlatten' iid s e@(ETerm p n) = case getTerm s n of
                                        ObjGVar tm v                          -> ETerm p [itreeFlattenName iid (name v)]
+                                       ObjWire tm w                          -> ETerm p [itreeFlattenName iid (name w)]
                                        ObjEnum (Type (ScopeTemplate t) _) en -> ETerm p [flattenName t en]
                                        ObjConst (ScopeTemplate t) c          -> ETerm p [flattenName t c]
                                        _            -> e
