@@ -277,10 +277,11 @@ runSolver cfg spec parser =
                                "\nsolver stdout: " ++ out ++
                                "\nsolver stderr: " ++ err ++
                                "\nparser error: "++ show e
-            Right x -> trace "solver input: " 
-                       $ trace (render spec)
-                       $ trace " solver output: " 
-                       $ trace out x
+            Right x -> x
+--                       trace "solver input: " 
+--                       $ trace (render spec)
+--                       $ trace " solver output: " 
+--                       $ trace out x
 
 checkSat :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe Bool
 checkSat cfg fs = runSolver cfg spec satresParser
