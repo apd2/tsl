@@ -127,6 +127,7 @@ ptrFreeBExprToFormula   (EConst (BoolVal False))         = FFalse
 ptrFreeBExprToFormula   (EUnOp Not e)                    = fnot $ ptrFreeBExprToFormula e
 ptrFreeBExprToFormula   (EBinOp op e1 e2) | isRelBOp op  = fRel (bopToRelOp op) e1 e2
 ptrFreeBExprToFormula   (EBinOp op e1 e2) | isBoolBOp op = FBinOp (bopToBoolOp op) (ptrFreeBExprToFormula e1) (ptrFreeBExprToFormula e2)
+ptrFreeBExprToFormula e                                  = error $ "ptrFreeBExprToFormula " ++ show e
 
 fRel :: (?spec::Spec) => RelOp -> Expr -> Expr -> Formula
 -- type-independent cases

@@ -304,6 +304,7 @@ validateStat' _ (SStop p) = do
 
 validateStat' _ (SWait p e) = do
     validateExpr' e
+    assert (isBool e) (pos e) "wait condition is not of boolean type"
     -- because we do not handle them correctly during inlining
     assert (null $ exprCallees ?scope e) (pos e) $ "Method invocations not allowed inside wait conditions"
     case ?scope of
