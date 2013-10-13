@@ -265,7 +265,7 @@
                 <context id="tslStatement" style-ref="tslStatement" class="tslStatement">
                     <keyword>after</keyword>
                     <keyword>assert</keyword>
-                    <keyword>assign</keyword>
+                    <keyword>wire</keyword>
                     <keyword>assume</keyword>
                     <keyword>before</keyword>
                     <keyword>choice</keyword>

@@ -49,7 +49,6 @@ reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!
 reservedNames = ["after",
                  "prefix",
                  "assert",
-                 "assign",
                  "assume", 
                  "before",
                  "bool",
@@ -94,6 +93,7 @@ reservedNames = ["after",
                  "using", 
                  "void",
                  "while",
+                 "wire",
                  "wait"]
 
 lexer = T.makeTokenParser (emptyDef {T.commentStart      = "/*"
