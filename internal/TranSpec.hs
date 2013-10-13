@@ -43,9 +43,7 @@ instance PP FairRegion where
 
 data TranSpec = TranSpec { tsCTran  :: [Transition]
                          , tsUTran  :: [Transition]
-                         , tsWire   :: Transition
                          , tsInit   :: (Transition, Expr) -- initial state constraint (constraint_on_spec_variables,constraints_on_aux_variables)
-                         , tsPrefix :: Transition
                          , tsGoal   :: [Goal] 
                          , tsFair   :: [FairRegion]       -- sets of states f s.t. GF(-f)
                          }
@@ -55,13 +53,9 @@ instance PP TranSpec where
            $+$
            (vcat $ map (($+$ text "") . pp) (tsUTran s))
            $+$
-           (text "wires: " <+> (pp $ tsWire s))
-           $+$
            (text "init: " <+> (pp $ fst $ tsInit s))
            $+$
            (text "aux_init: " <+> (pp $ snd $ tsInit s))
-           $+$
-           (text "prefix: " <+> (pp $ tsPrefix s))
            $+$
            (vcat $ map (($+$ text "") . pp) (tsGoal s))
            $+$

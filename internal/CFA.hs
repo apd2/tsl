@@ -244,8 +244,8 @@ inlineBetween cfa0 bef aft inscfa =
         -- correspondence in a table
         (cfa1, locs1) = foldl' (\(cfa,locs) loc -> let lab = cfaLocLabel loc inscfa
                                                        (cfa', loc') = cfaInsLoc (LInst $ locAct lab) cfa
-                                                   in if' (loc == cfaInitLoc)                     (cfaInsTrans bef loc' TranNop cfa', locs ++ [loc']) $
-                                                      if' (isDelayLabel $ cfaLocLabel loc inscfa) (cfa, locs ++ [aft]) $
+                                                   in if' (loc == cfaInitLoc)       (cfaInsTrans bef loc' TranNop cfa', locs ++ [loc']) $
+                                                      if' (null $ G.suc inscfa loc) (cfa, locs ++ [aft]) $
                                                       (cfa', locs++[loc']))
                                (cfa0,[]) (G.nodes inscfa)
         match = M.fromList $ zip (G.nodes inscfa) locs1

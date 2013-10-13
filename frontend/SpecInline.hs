@@ -99,8 +99,6 @@ spec2Internal s =
 
         spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransitions EPIDCont ctran 
                                        , I.tsUTran  = utran
-                                       , I.tsWire   = cfaToITransition (fromMaybe I.cfaNop (I.specWire spec'))   "wires"
-                                       , I.tsPrefix = cfaToITransition (fromMaybe I.cfaNop (I.specPrefix spec')) "prefix"
                                        , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ fairinit ++ [errinit, maginit, continit]))
                                        , I.tsGoal   = goals
                                        , I.tsFair   = [fairreg]
@@ -153,9 +151,8 @@ mkWires | (null $ tmWire tmMain) = return Nothing
                      , ctxVar     = []}
         ctx' = let ?procs =[] 
                    ?nestedmb = False 
-               in execState (do aft <- procStatToCFA stat I.cfaInitLoc
-                                ctxPause aft I.true I.ActNone) ctx
-    return $ Just $ {- I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $ -} ctxCFA ctx'
+               in execState (procStatToCFA stat I.cfaInitLoc) ctx
+    return $ Just $ {-I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $-} ctxCFA ctx'
 
 
 -- Build total order of wires so that for each wire, all wires that
@@ -193,8 +190,7 @@ mkPrefix | (null $ tmPrefix tmMain) = return Nothing
                      , ctxVar     = []}
         ctx' = let ?procs = [] 
                    ?nestedmb = False
-               in execState (do aft <- procStatToCFA stat I.cfaInitLoc
-                                ctxPause aft I.true I.ActNone) ctx
+               in execState (procStatToCFA stat I.cfaInitLoc) ctx
     return $ Just $ {- I.cfaTraceFile (ctxCFA ctx') "prefix_cfa" $-} ctxCFA ctx'
 
 ----------------------------------------------------------------------
