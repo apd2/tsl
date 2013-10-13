@@ -27,6 +27,8 @@ import BFormula
 import ACFA2HAST
 import RefineCommon
 import GroupTag
+import SMTSolver
+import SMTLib2
 import qualified HAST.BDD  as H
 
 --eqSolver :: Spec -> Solver Predicate s u
@@ -56,14 +58,21 @@ eqCheckSat spec ps =
 
 eqUnsatCore :: Spec -> [(AbsVar,[Bool])] -> Maybe [(AbsVar,[Bool])]
 eqUnsatCore spec ps = 
-    let res = eqCheckSat spec ps
-        core = foldl' (\pset p -> if eqCheckSat spec (S.toList $ S.delete p pset) == Just False
-                                     then S.delete p pset
-                                     else pset)
-                      (S.fromList ps) ps
-    in if res == Just False
-          then Just (S.toList core)
-          else Nothing
+    case smtGetModel solver forms of
+        Just (Left core) -> trace ("eqUnsatCore " ++ show forms ++ "=" ++ show core) $ Just $ map (ps !!) core
+        Just (Right _)   -> trace ("eqUnsatCore " ++ show forms ++ ": SAT") $ Nothing
+        Nothing          -> error $ "eqUnsatCore: could not solve instance: " ++ show forms
+    where solver = newSMTLib2Solver spec z3Config
+          forms  = map (\(av,b) -> avarAsnToFormula av (boolArrToBitsBe b)) ps
+
+--    let res = eqCheckSat spec ps
+--        core = foldl' (\pset p -> if eqCheckSat spec (S.toList $ S.delete p pset) == Just False
+--                                     then S.delete p pset
+--                                     else pset)
+--                      (S.fromList ps) ps
+--    in if res == Just False
+--          then Just (S.toList core)
+--          else Nothing
 
 eqEquant :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> [(AbsVar,[Bool])] -> [String] -> PDB pdb s u (C.DDNode s u)
 eqEquant spec m ops avs vs = do
