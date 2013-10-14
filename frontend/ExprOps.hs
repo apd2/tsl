@@ -57,7 +57,7 @@ mapExpr f s e =
          ESlice p e (l,h)       -> ESlice  p (mapExpr f s e) (mapExpr f s l, mapExpr f s h)
          EStruct p n (Left fs)  -> EStruct p n (Left $ map (mapSnd $ mapExpr f s) fs)
          EStruct p n (Right fs) -> EStruct p n (Right $ map (mapExpr f s) fs)
-         e                      -> e
+         e'                     -> e'
 
 -- Find all methods invoked by the expression
 exprCallees :: (?spec::Spec) => Scope -> Expr -> [(Pos, (Template, Method))]

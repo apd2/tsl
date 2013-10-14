@@ -192,7 +192,7 @@ flatten s = do
     assert (isJust mmain) nopos $ "\"main\" template not found"
     let main = fromJust mmain
     let ?spec = s' 
-    mapM validateTmProcesses3 (specTemplate s')
+    mapM validateTmProcesses3 (filter isConcreteTemplate $ specTemplate s')
     checkConcreteTemplate main (pos main)
     assert (null $ tmPort main) (pos main) $ "The main template cannot have ports"
     let gvars = concat $ mapInstTree tmFlattenGVars
@@ -224,7 +224,7 @@ flatten s = do
 mergeParents :: Spec -> Spec
 mergeParents s = s{specTemplate = tms}
     where tms = let ?spec = s 
-                in map tmMergeParents $ filter isConcreteTemplate $ specTemplate s
+                in map tmMergeParents $ {- filter isConcreteTemplate $-} specTemplate s
 
 
 -- Move constants from templates to the top level
