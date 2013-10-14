@@ -161,7 +161,7 @@ validateExpr' (ECond p cs md) = do
     case md of
          Just d  -> validateExpr' d
          Nothing -> return ()
-    let e1 = fst $ head cs
+    let e1 = snd $ head cs
     _ <- mapM (\(_,e2) -> assert (typeMatch e1 e2) (pos e2) $ 
                                  "Clauses of a conditional expression return values of incompatible types:\n  " ++ 
                                  show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ tspec e1) ++ "\n  " ++
