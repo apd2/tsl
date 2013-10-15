@@ -13,7 +13,7 @@ import Data.Functor
 import qualified Data.Map as M
 import Control.Applicative
 
-import Util
+import Util hiding (trace)
 import TSLUtil
 import Cascade
 import Predicate

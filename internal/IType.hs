@@ -46,7 +46,7 @@ instance Show Type where
 twidth :: Type -> Int
 twidth (SInt w) = w
 twidth (UInt w) = w
-twidth _        = error "twidth undefined"
+twidth t        = error $ "twidth " ++ show t ++ " undefined"
 
 class Typed a where
     typ :: a -> Type

@@ -106,18 +106,17 @@ condSimplify p mlhs cs mdef = do
                                        return ([SVarDecl p var], ETerm p [name var])
                          Right e -> return ([],e)
     (ss,conds) <- liftM unzip $ mapM exprSimplify (fst $ unzip cs)
-    let negations = map (\es -> map (\e -> EUnOp (pos e) Not e) es) (inits conds)
-        conds' = (map (\(c,n) -> eAnd (pos c) (c:n)) (zip conds negations)) ++ [eAnd nopos $ last negations]
-        assumes = map (SAssume p) conds'
     stats <- mapM (\me -> case me of
                                Just e  -> do (ss', e') <- exprSimplify e
                                              let asn = SAssign (pos e) lhs e'
-                                             return $ ss' ++ [asn]
-                               Nothing -> return[SAssert p (EBool p False)])
+                                             return $ sSeq (pos e) (ss' ++ [asn])
+                               Nothing -> return (SAssert p (EBool p False)))
                   ((map Just $ snd $ unzip cs) ++ [mdef])
-    let choices = map (\(a,s) -> sSeq (pos a) (a:s)) (zip assumes stats)
-    return (sdecl ++ (concat ss) ++ [SChoice p choices], lhs)
+    return (sdecl ++ (concat ss) ++ [mkif (zip conds stats) (last stats)], lhs)
 
+mkif :: [(Expr, Statement)] -> Statement -> Statement
+mkif []          def = def
+mkif ((c,s):ifs) def = SITE (pos c) c s $ Just $ mkif ifs def
 
 -- Eliminate constructs of the form:
 -- struct_name{f1=...,f2=...}.f1 in a simplified expression

@@ -19,7 +19,7 @@ import Data.List
 import Data.Maybe
 import Text.PrettyPrint
 
-import Util
+import Util hiding (trace)
 import Predicate
 import Ops
 import PP
