@@ -138,7 +138,11 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Formula where
     smtpp (FBoolAVar (AVarPred p))    = smtpp p
     smtpp (FBoolAVar (AVarBool t))    = smtpp t
     smtpp (FEq v1 v2)                 = parens $ smtpp REq <+> smtpp v1 <+> smtpp v2
-    smtpp (FEqConst v@(AVarEnum t) i) = parens $ smtpp REq <+> smtpp v <+> (text $ mkIdent $ (enumEnums $ getEnumeration n) !! i) where Enum n = typ t
+    smtpp (FEqConst v@(AVarEnum t) i) = if i >= (length $ enumEnums $ getEnumeration n)
+                                           then trace ("WARNING: smtpp: enum value out of bounds: " ++ n ++ "=" ++ show i) $ text "false"
+                                           else parens $ smtpp REq <+> smtpp v <+> 
+                                                (text $ mkIdent $ (enumEnums $ getEnumeration n) !! i)
+                                        where Enum n = typ t
     smtpp (FEqConst v@(AVarInt _) i)  = parens $ smtpp REq <+> smtpp v <+> (text $ "(_ bv" ++ show i ++ " " ++ (show $ avarWidth v) ++ ")")
     smtpp (FBinOp op f1 f2)           = parens $ smtpp op <+> smtpp f1 <+> smtpp f2
     smtpp (FNot f)                    = parens $ text "not" <+> smtpp f
