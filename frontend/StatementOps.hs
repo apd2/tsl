@@ -307,6 +307,9 @@ validateStat' _ (SWait p e) = do
     assert (isBool e) (pos e) "wait condition is not of boolean type"
     -- because we do not handle them correctly during inlining
     assert (null $ exprCallees ?scope e) (pos e) $ "Method invocations not allowed inside wait conditions"
+    assert (not $ any (\o -> case o of
+                                  ObjWire _ _ -> True
+                                  _           -> False) $ exprObjs e) (pos e) $ "Wires not allowed inside wait conditions"
     case ?scope of
          ScopeMethod  _ m -> case methCat m of
                                   Function          -> err p "wait inside function"
