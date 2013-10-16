@@ -349,7 +349,7 @@ methInline before after meth margs mlhs act = do
     -- copy out arguments
     aftout <- copyOutArgs aftret meth margs
     -- pause after task invocation
-    aftpause <- if elem (methCat meth) [Task Controllable] && (mepid /= Just EPIDCont)
+    aftpause <- if elem (methCat meth) [Task Controllable] && (mepid /= Just EPIDCont || ?nestedmb == True)
                    then ctxPause aftout I.true act
                    else do ctxLocSetAct aftout act
                            return aftout
