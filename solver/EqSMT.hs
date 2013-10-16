@@ -59,8 +59,8 @@ eqCheckSat spec ps =
 eqUnsatCore :: Spec -> [(AbsVar,[Bool])] -> Maybe [(AbsVar,[Bool])]
 eqUnsatCore spec ps = 
     case smtGetModel solver forms of
-        Just (Left core) -> trace ("eqUnsatCore " ++ show forms ++ "=" ++ show core) $ Just $ map (ps !!) core
-        Just (Right _)   -> trace ("eqUnsatCore " ++ show forms ++ ": SAT") $ Nothing
+        Just (Left core) -> core
+        Just (Right _)   -> Nothing
         Nothing          -> error $ "eqUnsatCore: could not solve instance: " ++ show forms
     where solver = newSMTLib2Solver spec z3Config
           forms  = map (\(av,b) -> avarAsnToFormula av (boolArrToBitsBe b)) ps
