@@ -22,7 +22,7 @@ import Debug.Trace
 import qualified Data.Traversable as Tr
 
 import TSLUtil
-import Util hiding (name)
+import Util hiding (name, trace)
 import Pos
 import Name
 import Expr
@@ -386,8 +386,10 @@ checkLoopBody s = do
 findInstPath :: (?spec::Spec, ?scope::Scope) => Bool -> Statement -> Maybe [Either Statement Expr]
 findInstPath _     s@(SVarDecl _ _)    = Just []
 findInstPath _       (SReturn _ _)     = Nothing
-findInstPath b       (SSeq _ ss)       = let ps  = map (findInstPath b) ss
-                                             ps' = case findIndex (\p -> isJust p && isBreak (last $ fromJust p)) ps of
+findInstPath b     s@(SSeq _ ss)       = let ps  = map (findInstPath b) ss
+                                             ps' = case findIndex (\p -> isJust p && 
+                                                                         (not $ null $ fromJust p) && 
+                                                                         isBreak (last $ fromJust p)) ps of
                                                         Nothing -> ps
                                                         Just i  -> take (i+1) ps
                                          in if all isJust ps'
