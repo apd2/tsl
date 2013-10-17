@@ -433,6 +433,6 @@ isBreak _                 = False
 -- if the list is empty
 shortest :: [[Either Statement Expr]] -> Maybe [Either Statement Expr]
 shortest [] = Nothing
-shortest ps = case find (isBreak . last) ps of
+shortest ps = case find (\p -> if' (null p) False (isBreak $ last p)) ps of
                    Nothing -> Just $ head ps
                    Just p  -> Just p
