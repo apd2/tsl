@@ -216,7 +216,7 @@ bexprAbstract = compileFormula . bexprToFormula
 
 -- Compute precondition of transition without taking prefix blocks and wires into account
 tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => String -> Transition -> TAST f e c
-tranPrecondition trname tran = varUpdateLoc trname [] (tranFrom tran) (tranCFA tran)
+tranPrecondition trname Transition{..} = varUpdateLoc trname [] tranFrom (cfaLocInlineWirePrefix ?spec tranCFA tranFrom)
 
 -- Compute update functions for a list of variables wrt to a transition
 -- Returns update function and precondition of the transition.  The precondition
