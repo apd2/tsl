@@ -45,7 +45,7 @@ statementParser   = removeTabs *> statement
 statementsParser  = removeTabs *> statements
 statements1Parser = removeTabs *> ((optional whiteSpace) *> statements1)
 
-reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "...", "::", "->"]
+reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->"]
 reservedNames = ["after",
                  "prefix",
                  "assert",
@@ -505,6 +505,7 @@ table = [[postf $ choice [postSlice, postIndex, postField, postPField]]
         ,[binary "&" BAnd AssocLeft]
         ,[binary "^" BXor AssocLeft]
         ,[binary "|" BOr AssocLeft]
+        ,[binary "++" BConcat AssocLeft]
         ,[binary "&&" And AssocLeft]
         ,[binary "||" Or AssocLeft]
         ,[binary "=>" Imp AssocRight]
