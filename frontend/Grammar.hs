@@ -338,7 +338,12 @@ arg = withPos $ Arg nopos <$> (option ArgIn (ArgOut <$ reserved "out"))
 ----------------------------------------------------------------
 -- Statement
 ----------------------------------------------------------------
+
 statement =  withPos $
+            ((try $ (\l s -> s{stLab = Just l}) <$> (ident <* reservedOp ":") <*> statement')
+         <|> statement')
+
+statement' =  withPos $
            ( (try svarDecl)
          <|> sreturn
          <|> smagic 
@@ -364,31 +369,31 @@ statement =  withPos $
 statements  = many  $ statement <* semi
 statements1 = sepBy1 statement semi
 
-svarDecl = SVarDecl nopos <$> varDecl
-sreturn  = SReturn nopos <$ reserved "return" <*> (optionMaybe expr)
-sseq     = SSeq nopos <$> (braces statements)
-spar     = SPar nopos <$ reserved "fork" <*> (braces $ many $ (,) <$> (ident <* reservedOp ":") <*> statement <* semi)
-sforever = SForever nopos <$ reserved "forever" <*> statement
+svarDecl = SVarDecl nopos Nothing <$> varDecl
+sreturn  = SReturn  nopos Nothing <$ reserved "return" <*> (optionMaybe expr)
+sseq     = SSeq     nopos Nothing <$> (braces statements)
+spar     = SPar     nopos Nothing <$ reserved "fork" <*> (braces $ many $ statement <* semi)
+sforever = SForever nopos Nothing <$ reserved "forever" <*> statement
 
-sdo      = SDo nopos <$ reserved "do" <*> statement <* reserved "while" <*> (parens expr)
-swhile   = SWhile nopos <$ reserved "while" <*> (parens expr) <*> statement
-sfor     = SFor nopos <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe statement <* semi) <*> (detexpr <* semi) <*> statement) <*> statement
-schoice  = SChoice nopos <$ reserved "choice" <*> (braces $ many $ statement <* semi)
-spause   = SPause nopos <$ reserved "pause"
-swait    = SWait nopos <$ reserved "wait" <*> (parens detexpr)
-sstop    = SStop nopos <$ reserved "stop"
-sbreak   = SBreak nopos <$ reserved "break"
-sinvoke  = SInvoke nopos <$ isinvoke <*> methname <*> (parens $ commaSep $ Just <$> expr)
+sdo      = SDo      nopos Nothing <$ reserved "do" <*> statement <* reserved "while" <*> (parens expr)
+swhile   = SWhile   nopos Nothing <$ reserved "while" <*> (parens expr) <*> statement
+sfor     = SFor     nopos Nothing <$ reserved "for" <*> (parens $ (,,) <$> (optionMaybe statement <* semi) <*> (detexpr <* semi) <*> statement) <*> statement
+schoice  = SChoice  nopos Nothing <$ reserved "choice" <*> (braces $ many $ statement <* semi)
+spause   = SPause   nopos Nothing <$ reserved "pause"
+swait    = SWait    nopos Nothing <$ reserved "wait" <*> (parens detexpr)
+sstop    = SStop    nopos Nothing <$ reserved "stop"
+sbreak   = SBreak   nopos Nothing <$ reserved "break"
+sinvoke  = SInvoke  nopos Nothing <$ isinvoke <*> methname <*> (parens $ commaSep $ Just <$> expr)
     where isinvoke = try $ lookAhead $ methname *> symbol "("
-sassert  = SAssert nopos <$ reserved "assert" <*> (parens detexpr)
-sassume  = SAssume nopos <$ reserved "assume" <*> (parens detexpr)
-sassign  = SAssign nopos <$ isassign <*> detexpr <* reservedOp "=" <*> expr
+sassert  = SAssert  nopos Nothing <$ reserved "assert" <*> (parens detexpr)
+sassume  = SAssume  nopos Nothing <$ reserved "assume" <*> (parens detexpr)
+sassign  = SAssign  nopos Nothing <$ isassign <*> detexpr <* reservedOp "=" <*> expr
     where isassign = try $ lookAhead $ expr *> symbol "="
-site     = SITE nopos <$ reserved "if" <*> (parens expr) <*> statement <*> optionMaybe (reserved "else" *> statement)
-scase    = (fmap uncurry (SCase nopos <$ reserved "case" <*> (parens detexpr))) 
+site     = SITE     nopos Nothing <$ reserved "if" <*> (parens expr) <*> statement <*> optionMaybe (reserved "else" *> statement)
+scase    = (fmap uncurry (SCase nopos Nothing <$ reserved "case" <*> (parens detexpr))) 
            <*> (braces $ (,) <$> (many $ (,) <$> detexpr <* colon <*> statement <* semi) 
                              <*> optionMaybe (reserved "default" *> colon *> statement <* semi))
-smagic   = SMagic nopos <$ ismagic
+smagic   = SMagic   nopos Nothing <$ ismagic
                         <* (withPos $ nopos <$ reservedOp "...") 
                         -- <*> ((Left <$ reserved "using" <*> ident) <|> (Right <$ reserved "post" <*> detexpr))
     where ismagic = try $ lookAhead $ reservedOp "..."

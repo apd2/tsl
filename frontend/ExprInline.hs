@@ -11,7 +11,6 @@ import Data.List
 import Data.Maybe
 import Control.Monad.State
 import qualified Data.Map as M
-import Debug.Trace
 
 import qualified IExpr as I
 import qualified IType as I
@@ -49,8 +48,8 @@ exprSimplify' :: (?spec::Spec, ?scope::Scope) => Expr -> NameGen ([Statement], E
 exprSimplify' e@(EApply p mref mas)     = do 
     (argss, mas') <- liftM unzip $ mapM (maybe (return ([], Nothing)) (liftM (mapSnd Just) . exprSimplify)) mas
     var <- tmpVar p False (tspec e)
-    let decl = SVarDecl p var
-        asn = SAssign p (ETerm p [name var]) (EApply p mref mas')
+    let decl = SVarDecl p Nothing var
+        asn = SAssign p Nothing (ETerm p [name var]) (EApply p mref mas')
         ss = (concat argss) ++ [decl,asn]
         e' = ETerm p [name var]
     return (ss, e')
@@ -90,33 +89,33 @@ exprSimplify' e                         = return ([], e)
 exprSimplifyAsn :: (?spec::Spec, ?scope::Scope) => Pos -> Expr -> Expr -> NameGen [Statement]
 exprSimplifyAsn p lhs (EApply p' mref mas)  = do
     (argss, mas') <- liftM unzip $ mapM (maybe (return ([], Nothing)) ((liftM $ mapSnd Just) . exprSimplify)) mas
-    let asn = SAssign p lhs (EApply p' mref mas')
+    let asn = SAssign p Nothing lhs (EApply p' mref mas')
     return $ (concat argss) ++ [asn]
 exprSimplifyAsn p lhs (ETernOp _ a1 a2 a3) = liftM fst $ condSimplify p (Right lhs) [(a1,a2)] (Just a3)
 exprSimplifyAsn p lhs (ECase _ c cs md)    = do let cs' = map (mapFst $ (\e -> EBinOp (pos e) Eq c e)) cs
                                                 liftM fst $ condSimplify p (Right lhs) cs' md
 exprSimplifyAsn p lhs (ECond _ cs md)      = liftM fst $ condSimplify p (Right lhs) cs md
 exprSimplifyAsn p lhs rhs                  = do (ss, rhs') <- exprSimplify rhs
-                                                return $ ss++[SAssign p lhs rhs']
+                                                return $ ss++[SAssign p Nothing lhs rhs']
 
 condSimplify :: (?spec::Spec, ?scope::Scope) => Pos -> Either TypeSpec Expr -> [(Expr, Expr)] -> Maybe Expr -> NameGen ([Statement], Expr)
 condSimplify p mlhs cs mdef = do
     (sdecl, lhs) <- case mlhs of
                          Left t  -> do var <- tmpVar p False t
-                                       return ([SVarDecl p var], ETerm p [name var])
+                                       return ([SVarDecl p Nothing var], ETerm p [name var])
                          Right e -> return ([],e)
     (ss,conds) <- liftM unzip $ mapM exprSimplify (fst $ unzip cs)
     stats <- mapM (\me -> case me of
                                Just e  -> do (ss', e') <- exprSimplify e
-                                             let asn = SAssign (pos e) lhs e'
-                                             return $ sSeq (pos e) (ss' ++ [asn])
-                               Nothing -> return (SAssert p (EBool p False)))
+                                             let asn = SAssign (pos e) Nothing lhs e'
+                                             return $ sSeq (pos e) Nothing (ss' ++ [asn])
+                               Nothing -> return (SAssert p Nothing (EBool p False)))
                   ((map Just $ snd $ unzip cs) ++ [mdef])
     return (sdecl ++ (concat ss) ++ [mkif (zip conds stats) (last stats)], lhs)
 
 mkif :: [(Expr, Statement)] -> Statement -> Statement
 mkif []          def = def
-mkif ((c,s):ifs) def = SITE (pos c) c s $ Just $ mkif ifs def
+mkif ((c,s):ifs) def = SITE (pos c) Nothing c s $ Just $ mkif ifs def
 
 -- Eliminate constructs of the form:
 -- struct_name{f1=...,f2=...}.f1 in a simplified expression

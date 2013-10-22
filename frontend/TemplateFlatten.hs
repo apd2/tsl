@@ -10,21 +10,17 @@ module TemplateFlatten(tmFlattenGVars,
                        WireGraph,
                        wireGraph) where
 
-import qualified Data.Tree as T
 import qualified Data.Map  as M
 import Data.List
 import Data.Maybe
 import qualified Data.Graph.Inductive.Graph     as G
 import qualified Data.Graph.Inductive.Tree      as G
 
-
-import Pos
 import Name
 import NS
 import TVar
 import Spec
 import Template
-import TemplateOps
 import StatementOps
 import InstTree
 import Process

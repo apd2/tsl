@@ -9,7 +9,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad.State hiding (guard)
 import qualified Data.Graph.Inductive.Graph as G
-import Debug.Trace
 
 import TSLUtil
 import Util hiding (name, trace)
@@ -140,7 +139,7 @@ mkWires | (null $ tmWire tmMain) = return Nothing
     let wires = orderWires
         -- Generate assignment statement for each wire
     stat <- let ?scope = ScopeTemplate tmMain
-            in statSimplify $ SSeq nopos $ map (\w -> SAssign (pos w) (ETerm nopos [name w]) (fromJust $ wireRHS w)) wires
+            in statSimplify $ SSeq nopos Nothing $ map (\w -> SAssign (pos w) Nothing (ETerm nopos [name w]) (fromJust $ wireRHS w)) wires
     let ctx = CFACtx { ctxEPID    = Nothing
                      , ctxStack   = [(ScopeTemplate tmMain, error "return from a wire assignment", Nothing, M.empty)]
                      , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
@@ -179,7 +178,7 @@ mkPrefix :: (?spec::Spec) => NameGen (Maybe I.CFA)
 mkPrefix | (null $ tmPrefix tmMain) = return Nothing
          | otherwise                = do
     stat <- let ?scope = ScopeTemplate tmMain
-            in statSimplify $ SSeq nopos $ map prefBody $ tmPrefix tmMain
+            in statSimplify $ SSeq nopos Nothing $ map prefBody $ tmPrefix tmMain
     let ctx = CFACtx { ctxEPID    = Nothing
                      , ctxStack   = [(ScopeTemplate tmMain, error "return from an prefix-block", Nothing, M.empty)]
                      , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
@@ -239,13 +238,13 @@ fairProcUpd spec pid = fairRegUpd spec (mkFairProcVar pid) $
 mkInit :: (?spec::Spec) => NameGen I.Transition
 mkInit = do 
     -- conjunction of initial variable assignments
-    let ass = SSeq nopos
+    let ass = SSeq nopos Nothing
               $ mapMaybe (\v -> case varInit $ gvarVar v of
                                      Nothing -> Nothing
-                                     Just e  -> Just $ SAssume (pos v) $ EBinOp (pos v) Eq (ETerm nopos $ [name v]) e) (tmVar tmMain)
+                                     Just e  -> Just $ SAssume (pos v) Nothing $ EBinOp (pos v) Eq (ETerm nopos $ [name v]) e) (tmVar tmMain)
         -- add init blocks
-        cond = SAssume nopos $ eAnd nopos $ map initBody (tmInit tmMain)
-    mkCond "$init" (SSeq nopos [ass, cond]) []
+        cond = SAssume nopos Nothing $ eAnd nopos $ map initBody (tmInit tmMain)
+    mkCond "$init" (SSeq nopos Nothing [ass, cond]) []
 
 -- $err == false
 noerror :: I.Expr
@@ -253,12 +252,12 @@ noerror = I.EUnOp Not mkErrVar
 
 mkGoal :: (?spec::Spec) => Goal -> NameGen I.Goal
 mkGoal g = -- Add $err==false to the goal condition
-           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos $ goalCond g) [{-I.EUnOp Not mkMagicVar, noerror-}]
+           (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos Nothing $ goalCond g) [{-I.EUnOp Not mkMagicVar, noerror-}]
 
 -- In addition to regular goals, we are required to be outside a magic block
 -- infinitely often
 mkMagicGoal :: (?spec::Spec) => NameGen I.Goal
-mkMagicGoal = (liftM $ I.Goal "$magic_goal") $ mkCond "$magic_goal" (SAssume nopos $ EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
+mkMagicGoal = (liftM $ I.Goal "$magic_goal") $ mkCond "$magic_goal" (SAssume nopos Nothing $ EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
 
 mkCond :: (?spec::Spec) => String -> Statement -> [I.Expr] -> NameGen I.Transition
 mkCond descr s extra = do
@@ -297,14 +296,14 @@ mkCTran :: (?spec::Spec) => (I.CFA, [I.Var])
 mkCTran = {- I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar ctx')
     where sc   = ScopeTemplate tmMain
           ctasks = filter ((== Task Controllable) . methCat) $ tmMethod tmMain
-          stats = SMagExit nopos : 
-                  (map (\m -> SInvoke nopos (MethodRef nopos [name m]) 
+          stats = SMagExit nopos Nothing : 
+                  (map (\m -> SInvoke nopos Nothing (MethodRef nopos [name m]) 
                               $ map (\a -> if' (argDir a == ArgIn) (Just $ ENonDet nopos) Nothing) (methArg m))
                    ctasks)
           stats' = map (\stat -> let ?scope = sc in evalState (statSimplify stat) (0,[])) stats
           ctx  = CFACtx { ctxEPID    = Just EPIDCont
                         , ctxStack   = [(sc, error "return from controllable transition", Nothing, M.empty)]
-                        , ctxCFA     = I.newCFA sc (SSeq nopos []) I.true
+                        , ctxCFA     = I.newCFA sc (SSeq nopos Nothing []) I.true
                         , ctxBrkLocs = []
                         , ctxGNMap   = globalNMap
                         , ctxLastVar = 0
@@ -445,18 +444,18 @@ procCallees s stat =
        $ S.toList $ S.fromList $ map (name . snd . getMethod s) $ procCalleesRec s stat
 
 procCallees' :: (?spec::Spec) => Scope -> Statement -> [MethodRef]
-procCallees' s (SSeq     _ ss)                  = concatMap (procCallees' s) ss
-procCallees' s (SForever _ b)                   = procCallees' s b
-procCallees' s (SDo      _ b _)                 = procCallees' s b
-procCallees' s (SWhile   _ _ b)                 = procCallees' s b
-procCallees' s (SFor     _ (i,_,u) b)           = (fromMaybe [] $ fmap (procCallees' s) i) ++ procCallees' s u ++ procCallees' s b
-procCallees' s (SChoice  _ ss)                  = concatMap (procCallees' s) ss
-procCallees' _ (SInvoke  _ mref _)              = [mref]
-procCallees' _ (SAssign  _ _ (EApply _ mref _)) = [mref]
-procCallees' s (SITE     _ _ t me)              = procCallees' s t ++ (fromMaybe [] $ fmap (procCallees' s) me)
-procCallees' s (SCase    _ _ cs md)             = concatMap (\(_,st) -> procCallees' s st) cs ++
-                                                  (fromMaybe [] $ fmap (procCallees' s) md)
-procCallees' _ _                                = []
+procCallees' s (SSeq     _ _ ss)                  = concatMap (procCallees' s) ss
+procCallees' s (SForever _ _ b)                   = procCallees' s b
+procCallees' s (SDo      _ _ b _)                 = procCallees' s b
+procCallees' s (SWhile   _ _ _ b)                 = procCallees' s b
+procCallees' s (SFor     _ _ (i,_,u) b)           = (fromMaybe [] $ fmap (procCallees' s) i) ++ procCallees' s u ++ procCallees' s b
+procCallees' s (SChoice  _ _ ss)                  = concatMap (procCallees' s) ss
+procCallees' _ (SInvoke  _ _ mref _)              = [mref]
+procCallees' _ (SAssign  _ _ _ (EApply _ mref _)) = [mref]
+procCallees' s (SITE     _ _ _ t me)              = procCallees' s t ++ (fromMaybe [] $ fmap (procCallees' s) me)
+procCallees' s (SCase    _ _ _ cs md)             = concatMap (\(_,st) -> procCallees' s st) cs ++
+                                                    (fromMaybe [] $ fmap (procCallees' s) md)
+procCallees' _ _                                  = []
 
 procCalleesRec :: (?spec::Spec) => Scope -> Statement -> [MethodRef]
 procCalleesRec s stat = ms1 ++ ms2
@@ -465,17 +464,17 @@ procCalleesRec s stat = ms1 ++ ms2
 
 -- Find processes forked by the statement
 forkedProcs :: (?spec::Spec) => Statement -> [(String, Statement)]
-forkedProcs (SSeq _ ss)              = concatMap forkedProcs ss
-forkedProcs (SPar _ ps)              = map (mapFst sname) ps
-forkedProcs (SForever _ b)           = forkedProcs b
-forkedProcs (SDo _ b _)              = forkedProcs b
-forkedProcs (SWhile _ _ b)           = forkedProcs b
-forkedProcs (SFor _ (minit, _, i) b) = fromMaybe [] (fmap forkedProcs minit) ++ forkedProcs i ++ forkedProcs b
-forkedProcs (SChoice _ ss)           = concatMap forkedProcs ss
-forkedProcs (SITE _ _ t me)          = forkedProcs t ++ fromMaybe [] (fmap forkedProcs me)
-forkedProcs (SCase _ _ cs mdef)      = concatMap (forkedProcs . snd) cs ++
-                                       fromMaybe [] (fmap forkedProcs mdef)
-forkedProcs _                        = []
+forkedProcs (SSeq _ _ ss)              = concatMap forkedProcs ss
+forkedProcs (SPar _ _ ps)              = map (\st -> (sname $ fromJust $ stLab st, st)) ps
+forkedProcs (SForever _ _ b)           = forkedProcs b
+forkedProcs (SDo _ _ b _)              = forkedProcs b
+forkedProcs (SWhile _ _ _ b)           = forkedProcs b
+forkedProcs (SFor _ _ (minit, _, i) b) = fromMaybe [] (fmap forkedProcs minit) ++ forkedProcs i ++ forkedProcs b
+forkedProcs (SChoice _ _ ss)           = concatMap forkedProcs ss
+forkedProcs (SITE _ _ _ t me)          = forkedProcs t ++ fromMaybe [] (fmap forkedProcs me)
+forkedProcs (SCase _ _ _ cs mdef)      = concatMap (forkedProcs . snd) cs ++
+                                         fromMaybe [] (fmap forkedProcs mdef)
+forkedProcs _                          = []
 
 -- Recurse over task invocations
 forkedProcsRec :: (?spec::Spec) => Scope -> Statement -> [(Scope, (String, Statement))]
