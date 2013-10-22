@@ -111,7 +111,7 @@ tslContAbs spec m ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContVar === true
+    H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContLVar === true
 
 tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
 tslUpdateAbs spec m ts avars ops = do
@@ -167,11 +167,11 @@ autoConstr :: (?spec::Spec) => Formula
 autoConstr = fconj $ map ptrFreeBExprToFormula $ [nolepid, notag]
     where 
     -- $cont  <-> $lepid == $nolepid
-    nolepid = EBinOp Or (EBinOp And mkContVar (EBinOp Eq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
-                        (EBinOp And (EUnOp Not mkContVar) (EBinOp Neq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
+    nolepid = EBinOp Or (EBinOp And mkContLVar (EBinOp Eq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
+                        (EBinOp And (EUnOp Not mkContLVar) (EBinOp Neq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
     -- !$cont <-> $tag == $tagnone
-    notag   = EBinOp Or (EBinOp And (EUnOp Not mkContVar) (EBinOp Eq mkTagVar (EConst $ EnumVal mkTagNone)))
-                        (EBinOp And mkContVar             (EBinOp Neq mkTagVar (EConst $ EnumVal mkTagNone)))
+    notag   = EBinOp Or (EBinOp And (EUnOp Not mkContLVar) (EBinOp Eq mkTagVar (EConst $ EnumVal mkTagNone)))
+                        (EBinOp And mkContLVar             (EBinOp Neq mkTagVar (EConst $ EnumVal mkTagNone)))
 
 ----------------------------------------------------------------------------
 -- PDB operations

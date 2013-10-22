@@ -94,12 +94,11 @@ spec2Internal s =
         -- initialise $en vars to false
         peninit = concatMap (mapPTreeFProc (\pid _ -> mkEnVar pid Nothing  I.=== I.false)) $ tmProcess tmMain
         maginit  = mkMagicVar I.=== I.false
-        continit = mkContVar  I.=== I.false
         errinit  = mkErrVar   I.=== I.false in
 
         spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransitions EPIDCont ctran 
                                        , I.tsUTran  = utran
-                                       , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ fairinit ++ [errinit, maginit, continit]))
+                                       , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ fairinit ++ [errinit, maginit]))
                                        , I.tsGoal   = goals
                                        , I.tsFair   = [fairreg]
                                        }}
@@ -207,8 +206,7 @@ mkFair ispec = (mkFairRegVarDecls ispec
 ----------------------------------------------------------------------
 
 mkUpds :: I.Spec -> M.Map String [(I.Expr, I.Expr)]
-mkUpds spec = M.fromList $ (mkContVarName, contUpd) 
-                         : (mkFairSchedVarName, fairSchedUpd spec) 
+mkUpds spec = M.fromList $ (mkFairSchedVarName, fairSchedUpd spec) 
                          : map (\(pid, _) -> (mkFairProcVarName pid, fairProcUpd spec pid)) (I.specAllProcs spec)
 
 -- f_i := cond -> T
@@ -218,7 +216,7 @@ fairRegUpd spec x cond = [ (cond      , I.true)
                          , (I.neg cond, I.conj [x, I.neg $ I.conj $ mkFairRegVars spec])]
 
 fairSchedUpd :: I.Spec -> [(I.Expr, I.Expr)]
-fairSchedUpd spec = fairRegUpd spec mkFairSchedVar $ (mkMagicVar I.=== I.false) `I.lor` (mkContVar I.=== I.true)
+fairSchedUpd spec = fairRegUpd spec mkFairSchedVar $ (mkMagicVar I.=== I.false) `I.lor` (mkContLVar I.=== I.true)
 
 fairProcUpd :: I.Spec -> PrID -> [(I.Expr, I.Expr)]
 fairProcUpd spec pid = fairRegUpd spec (mkFairProcVar pid) $ 
@@ -230,9 +228,9 @@ fairProcUpd spec pid = fairRegUpd spec (mkFairProcVar pid) $
          $ I.cfaDelayLocs cfa)
     where cfa = I.procCFA $ I.specGetProcess spec pid 
 
-contUpd :: [(I.Expr, I.Expr)]
-contUpd = [ (        (I.neg mkContVar) `I.land` mkMagicVar , mkContLVar)
-          , ( I.neg ((I.neg mkContVar) `I.land` mkMagicVar), I.false)]
+--contUpd :: [(I.Expr, I.Expr)]
+--contUpd = [ (        (I.neg mkContVar) `I.land` mkMagicVar , mkContLVar)
+--          , ( I.neg ((I.neg mkContVar) `I.land` mkMagicVar), I.false)]
 
 ----------------------------------------------------------------------
 -- Init and goal conditions
@@ -313,10 +311,10 @@ mkCTran = {- I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar c
                         , ctxVar     = []}
           ctx' = let ?procs = []
                      ?nestedmb = False
-                 in execState (mapM (\(t,s) -> do afttag <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
+                 in execState (mapM (\(t,s) -> do aftcont <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume $ mkContLVar I.=== I.true
+                                                  afttag <- ctxInsTrans' aftcont $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
                                                   aftcall <- procStatToCFA s afttag
-                                                  aftcont <- ctxInsTrans' aftcall $ I.TranStat $ mkContVar I.=: I.false
-                                                  ctxFinal aftcont) 
+                                                  ctxFinal aftcall) 
                                     $ zip mkTagList stats') ctx
 
 ----------------------------------------------------------------------
@@ -324,7 +322,7 @@ mkCTran = {- I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar c
 ----------------------------------------------------------------------
 
 mkVars :: (?spec::Spec) => [I.Var]
-mkVars = mkErrVarDecl : mkContVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires ++ gvars ++ fvars ++ ivars ++ fpvars ++ pvars)
+mkVars = mkErrVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires ++ gvars ++ fvars ++ ivars ++ fpvars ++ pvars)
     where
     -- global variables
     gvars = let ?scope = ScopeTemplate tmMain 
@@ -489,11 +487,11 @@ forkedProcsRec s stat =
 -- CFA to LTS transformation
 ---------------------------------------------------------------
 
-cfaToITransition :: I.CFA -> String -> I.Transition
-cfaToITransition cfa fname = case trans of
-                                  [t] -> {-I.cfaTraceFile (I.tranCFA t) fname $-} t
-                                  _   -> error $ "cfaToITransition: Invalid CFA:\n" ++ (intercalate "\n\n" $ map show trans)
-      where trans = locTrans cfa I.cfaInitLoc
+--cfaToITransition :: I.CFA -> String -> I.Transition
+--cfaToITransition cfa fname = case trans of
+--                                  [t] -> {-I.cfaTraceFile (I.tranCFA t) fname $-} t
+--                                  _   -> error $ "cfaToITransition: Invalid CFA:\n" ++ (intercalate "\n\n" $ map show trans)
+--      where trans = locTrans cfa I.cfaInitLoc
 
 -- Convert CFA to a list of transitions.
 -- Assume that unreachable states have already been pruned.

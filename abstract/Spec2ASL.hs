@@ -40,7 +40,7 @@ spec2ASL spec =
         goal     = head $ mapIdx (\g i -> mkTranPrecondition (goalCond g) ("goal" ++ show i)) $ tsGoal $ specTran ?spec
         fairs    = vcat $ map (\f -> (mkForm $ ptrFreeBExprToFormula $ fairCond f) <> semi) $ tsFair $ specTran ?spec
         constr   = mkForm autoConstr $+$ text "&&" $+$ mkAllPreconditions
-        cont     = mkExpr $ mkContVar === true in
+        cont     = mkExpr $ mkContLVar === true in
     text "STATE"
     $+$
     (vcat $ map (<> semi) sdecls)

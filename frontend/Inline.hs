@@ -208,14 +208,14 @@ mkEPIDLVarDecl :: [EPID] -> (I.Var, I.Enumeration)
 mkEPIDLVarDecl epids = (I.Var False I.VarTmp mkEPIDLVarName (I.Enum mkEPIDEnumName), enum)
     where enum = I.Enumeration mkEPIDEnumName $ mkEPIDNone : map mkEPIDEnumeratorName epids
 
-mkContVarName :: String
-mkContVarName = "$cont"
-
-mkContVar :: I.Expr
-mkContVar = I.EVar mkContVarName
-
-mkContVarDecl :: (?spec::Spec) => I.Var
-mkContVarDecl = I.Var False I.VarState mkContVarName I.Bool
+--mkContVarName :: String
+--mkContVarName = "$cont"
+--
+--mkContVar :: I.Expr
+--mkContVar = I.EVar mkContVarName
+--
+--mkContVarDecl :: (?spec::Spec) => I.Var
+--mkContVarDecl = I.Var False I.VarState mkContVarName I.Bool
 
 mkContLVarName :: String
 mkContLVarName = "$lcont"
@@ -478,21 +478,22 @@ ctxUContInsertSuffixes = do
 
 insertPrefix :: PrID -> I.CFA -> I.Loc -> I.CFA
 insertPrefix pid cfa loc | (null $ G.lsuc cfa loc) = cfa
-                         | otherwise               = I.cfaInsTrans loc loc' (I.TranStat $ I.SAssume lepid) cfa1
+                         | otherwise               = I.cfaInsTrans loc loc' (I.TranStat $ I.SAssume $ lepid `I.land` ucont) cfa1
     where (Just (pre, _, lab, suc), cfa0) = G.match loc cfa 
           loc' = (snd $ G.nodeRange cfa) + 1
           cfa1 = (pre, loc, lab, []) G.& (([], loc', I.LInst I.ActNone, suc) G.& cfa0)
           lepid = mkEPIDLVar I.=== (mkEPIDEnum $ EPIDProc pid)
+          ucont = mkContLVar I.=== I.false
 
 insertSuffix :: PrID -> I.CFA -> I.Loc -> I.CFA
 insertSuffix pid cfa loc | (null $ G.pre cfa loc) = cfa
-                         | otherwise              = cfa2
+                         | otherwise              = cfa1
     where
     (loc', cfa0)  = I.cfaSplitLoc loc cfa
     -- pc
-    (cfa1, aftpc) = I.cfaInsTrans' loc' (mkPCAsn cfa pid (mkPC pid loc))              cfa0
+    cfa1 = I.cfaInsTrans loc' loc (mkPCAsn cfa pid (mkPC pid loc)) cfa0
     -- cont
-    cfa2          = I.cfaInsTrans  aftpc loc (I.TranStat $ mkContVar I.=: mkContLVar) cfa1
+    --cfa2          = I.cfaInsTrans  aftpc loc (I.TranStat $ mkContVar I.=: mkContLVar) cfa1
 
 ctxErrTrans :: I.Loc -> I.Loc -> State CFACtx ()
 ctxErrTrans from to = do
