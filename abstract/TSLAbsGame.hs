@@ -23,6 +23,7 @@ import ISpec
 import TranSpec
 import IExpr
 import IVar
+import IType
 import CFA
 import Predicate
 import Inline
@@ -126,12 +127,21 @@ tslUpdateAbs spec m ts avars ops = do
     upd <- mapM tslUpdateAbsVar avars
     avaraft <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
     let avarnew = S.toList $ S.fromList avaraft S.\\ S.fromList avarbef
-    inconsistent <- case avarnew of
-                         [] -> return $ C.bzero m
-                         _  -> H.compileBDD m ops (avarGroupTag . bavarAVar)
-                               $ H.Disj 
-                               $ map (absVarInconsistent ts . \(x:xs) -> (x, xs ++ avarbef)) 
-                               $ init $ tails avarnew
+    allvars <- Abs.allVars ops
+    let enumcond = H.Disj
+                   $ map (\av@(AVarEnum t) -> let Enum tname = typ t
+                                              in H.Conj 
+                                                 $ mapIdx (\_ i -> H.Not $ H.EqConst (H.NVar $ avarBAVar av) i)
+                                                 $ enumEnums $ getEnumeration tname)
+                   $ filter avarIsEnum $ map bavarAVar allvars
+        contcond = compileFormula $ ptrFreeBExprToFormula $ mkContLVar ==> mkMagicVar
+    inconsistent <- H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond, contcond]
+--    inconsistent <- case avarnew of
+--                         [] -> return $ C.bzero m
+--                         _  -> H.compileBDD m ops (avarGroupTag . bavarAVar)
+--                               $ H.Disj 
+--                               $ map (absVarInconsistent ts . \(x:xs) -> (x, xs ++ avarbef)) 
+--                               $ init $ tails avarnew
     return (upd, inconsistent)
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
