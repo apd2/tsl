@@ -254,7 +254,7 @@ mkTagVar :: I.Expr
 mkTagVar = I.EVar mkTagVarName
 
 mkTagIdle = "$tagidle"
-mkTagNone = "$tagnone"
+-- mkTagNone = "$tagnone"
 
 mkTagVarDecl :: (?spec::Spec) => (I.Var, I.Enumeration)
 mkTagVarDecl = (I.Var False I.VarTmp mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" mkTagList)
@@ -263,8 +263,7 @@ mkTagList :: (?spec::Spec) => [String]
 mkTagList = mkTagIdle :
             (map sname
              $ filter ((== Task Controllable) . methCat)
-             $ tmMethod tmMain) ++
-            [mkTagNone]
+             $ tmMethod tmMain)
 
 mkChoiceTypeName :: Int -> String
 mkChoiceTypeName n = "$choice" ++ show n

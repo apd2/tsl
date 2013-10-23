@@ -76,9 +76,10 @@ spec2ASL spec =
     (vcat $ map (($+$ text "") . (<> semi)) upds)
 
 mkAllPreconditions :: (?spec::Spec) => Doc
-mkAllPreconditions = parens $ vcat $ punctuate (text "||")
-                     $ (mkForm $ ptrFreeBExprToFormula $ mkTagVar /== (EConst $ EnumVal mkTagNone)) :
-                       (mapIdx (\t i -> mkTranPrecondition t (show i)) $ (tsUTran $ specTran ?spec)) -- ++ (tsCTran $ specTran ?spec)
+mkAllPreconditions = text "true"
+--                     parens $ vcat $ punctuate (text "||")
+--                     $ (mkForm $ ptrFreeBExprToFormula $ mkTagVar /== (EConst $ EnumVal mkTagNone)) :
+--                       (mapIdx (\t i -> mkTranPrecondition t (show i)) $ (tsUTran $ specTran ?spec)) -- ++ (tsCTran $ specTran ?spec)
 
 
 mkVarUpd :: (?spec::Spec) => Expr -> Doc
