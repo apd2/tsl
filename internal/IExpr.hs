@@ -12,6 +12,7 @@ module IExpr(LVal(..),
              exprVars,
              (===),
              (/==),
+             (==>),
              disj,
              conj,
              neg,
@@ -224,6 +225,9 @@ e1 === e2 = EBinOp Eq e1 e2
 
 (/==) :: Expr -> Expr -> Expr
 e1 /== e2 = EBinOp Neq e1 e2
+
+(==>) :: Expr -> Expr -> Expr
+e1 ==> e2 = EBinOp Imp e1 e2
 
 disj :: [Expr] -> Expr
 disj [] = false

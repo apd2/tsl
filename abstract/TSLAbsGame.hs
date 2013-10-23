@@ -2,7 +2,8 @@
 
 module TSLAbsGame(tslAbsGame, 
                   bexprToFormula, 
-                  tslUpdateAbsVarAST) where
+                  tslUpdateAbsVarAST,
+                  tslStateLabelConstraintAbs) where
 
 import Prelude hiding (and)
 import Data.List hiding (and)
@@ -95,12 +96,13 @@ tslStateLabelConstraintAbs spec m ops = do
     H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) tslConstraint
 
 tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
-tslConstraint = H.T -- H.Conj [{-compileFormula $ autoConstr,-} pre]
+tslConstraint = H.Conj [magic, pre]
     where 
+    magic = compileFormula $ ptrFreeBExprToFormula $ mkContLVar ==> mkMagicVar
     -- precondition of at least one transition must hold   
---    pre = H.Disj
---          $ (compileFormula $ ptrFreeBExprToFormula $ mkTagVar /== (EConst $ EnumVal mkTagNone)) :
---            (mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) $ (tsUTran $ specTran ?spec)) -- ++ (tsCTran $ specTran ?spec)
+    pre = H.Disj
+          -- $ (compileFormula $ ptrFreeBExprToFormula $ mkTagVar /== (EConst $ EnumVal mkTagNone)) :
+          $ mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
     
 
 tslContAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
