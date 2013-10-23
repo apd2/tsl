@@ -407,7 +407,7 @@ findInstPath _       (SStop _)         = Nothing
 findInstPath True  s@(SBreak _)        = Just [Left s]
 findInstPath False s@(SBreak _)        = Nothing
 findInstPath b     s@(SInvoke _ m mas) = let (_,meth) = getMethod ?scope m
-                                         in if elem (methCat meth) [Function,Procedure] 
+                                         in if elem (methCat meth) [Function,Procedure,Task Uncontrollable, Task Invisible] 
                                                then if all isInstExpr $ catMaybes mas 
                                                        then Just [Left s]
                                                        else Nothing

@@ -366,7 +366,7 @@ mkVars = mkErrVarDecl : mkContVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires
 
 -- Convert normal or forked process to CFA
 procToCFA :: (?spec::Spec, ?procs::[I.Process]) => PrID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
-procToCFA pid@(PrID _ ps) lmap parscope stat =  I.cfaTraceFile (ctxCFA ctx') (show pid) (ctxCFA ctx', ctxVar ctx')
+procToCFA pid@(PrID _ ps) lmap parscope stat =  {-I.cfaTraceFile (ctxCFA ctx') (show pid)-} (ctxCFA ctx', ctxVar ctx')
     where -- top-level processes are not guarded
           guarded = not $ null ps
           guard = if guarded 
