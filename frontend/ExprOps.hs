@@ -269,7 +269,7 @@ isInstExpr (ETerm _ _)              = True
 isInstExpr (ELit _ _ _ _ _)         = True
 isInstExpr (EBool _ _)              = True
 isInstExpr (EApply _ m mas)         = let (_,meth) = getMethod ?scope m
-                                      in if elem (methCat meth) [Function,Procedure]
+                                      in if elem (methCat meth) [Function,Procedure,Task Uncontrollable,Task Invisible]
                                             then all isInstExpr $ catMaybes mas 
                                             else False
 isInstExpr (EField _ s _)           = isInstExpr s
