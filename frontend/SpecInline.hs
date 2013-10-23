@@ -324,7 +324,8 @@ mkCTran = {- I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar c
                      ?nestedmb = False
                  in execState (mapM (\(t,s) -> do afttag <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
                                                   aftcont <- ctxInsTrans' afttag $ I.TranStat $ I.SAssume $ mkContLVar I.=== I.true
-                                                  aftcall <- procStatToCFA s aftcont
+                                                  aftmag <- ctxInsTrans' aftcont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
+                                                  aftcall <- procStatToCFA s aftmag
                                                   ctxFinal aftcall) 
                                     $ zip mkTagList stats') ctx
 
