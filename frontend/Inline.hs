@@ -201,12 +201,12 @@ mkEPIDEnum = I.EConst . I.EnumVal . mkEPIDEnumeratorName
 mkEPIDEnumName :: String
 mkEPIDEnumName = "$epidenum" 
 
-mkEPIDNone :: String
-mkEPIDNone = "$epidnone"
+--mkEPIDNone :: String
+--mkEPIDNone = "$epidnone"
 
 mkEPIDLVarDecl :: [EPID] -> (I.Var, I.Enumeration)
 mkEPIDLVarDecl epids = (I.Var False I.VarTmp mkEPIDLVarName (I.Enum mkEPIDEnumName), enum)
-    where enum = I.Enumeration mkEPIDEnumName $ mkEPIDNone : map mkEPIDEnumeratorName epids
+    where enum = I.Enumeration mkEPIDEnumName $ map mkEPIDEnumeratorName epids
 
 --mkContVarName :: String
 --mkContVarName = "$cont"
@@ -363,6 +363,7 @@ data CFACtx = CFACtx { ctxEPID    :: Maybe EPID                              -- 
                      , ctxGNMap   :: NameMap                                 -- global variables visible in current scope
                      , ctxLastVar :: Int                                     -- counter used to generate unique variable names
                      , ctxVar     :: [I.Var]                                 -- temporary vars
+                     , ctxLabels  :: [String]                                -- statement label stack
                      }
 
 ctxScope :: CFACtx -> Scope
@@ -391,6 +392,12 @@ ctxPushBrkLoc loc = modify (\ctx -> ctx {ctxBrkLocs = loc : (ctxBrkLocs ctx)})
 
 ctxPopBrkLoc :: State CFACtx ()
 ctxPopBrkLoc = modify (\ctx -> ctx {ctxBrkLocs = tail $ ctxBrkLocs ctx})
+
+ctxPushLabel :: String -> State CFACtx ()
+ctxPushLabel lab = modify (\ctx -> ctx {ctxLabels = lab : ctxLabels ctx})
+
+ctxPopLabel :: State CFACtx ()
+ctxPopLabel = modify (\ctx -> ctx {ctxLabels = tail $ ctxLabels ctx})
 
 ctxInsLoc :: State CFACtx I.Loc
 ctxInsLoc = ctxInsLocLab (I.LInst I.ActNone)
@@ -452,7 +459,8 @@ ctxFrames loc = do
 
 ctxPause :: I.Loc -> I.Expr -> I.LocAction -> State CFACtx I.Loc
 ctxPause loc cond act = do
-    after <- ctxInsLocLab (I.LPause act [] cond)
+    labs <- gets ctxLabels
+    after <- ctxInsLocLab (I.LPause act [] labs cond)
     stack <- ctxFrames after
     ctxLocSetStack after stack
     ctxInsTrans loc after $ I.TranNop
@@ -461,7 +469,8 @@ ctxPause loc cond act = do
 
 ctxFinal :: I.Loc -> State CFACtx I.Loc
 ctxFinal loc = do 
-    after <- ctxInsLocLab (I.LFinal I.ActNone [])
+    labs <- gets ctxLabels
+    after <- ctxInsLocLab (I.LFinal I.ActNone [] labs)
     stack <- ctxFrames after
     ctxLocSetStack after stack
     ctxInsTrans loc after $ I.TranNop

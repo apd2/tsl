@@ -147,7 +147,8 @@ mkWires | (null $ tmWire tmMain) = return Nothing
                      , ctxBrkLocs = [error "break outside a loop"]
                      , ctxGNMap   = globalNMap
                      , ctxLastVar = 0
-                     , ctxVar     = []}
+                     , ctxVar     = []
+                     , ctxLabels  = []}
         ctx' = let ?procs =[] 
                    ?nestedmb = False 
                in execState (procStatToCFA stat I.cfaInitLoc) ctx
@@ -186,7 +187,8 @@ mkPrefix | (null $ tmPrefix tmMain) = return Nothing
                      , ctxBrkLocs = [error "break outside a loop"]
                      , ctxGNMap   = globalNMap
                      , ctxLastVar = 0
-                     , ctxVar     = []}
+                     , ctxVar     = []
+                     , ctxLabels  = []}
         ctx' = let ?procs = [] 
                    ?nestedmb = False
                in execState (procStatToCFA stat I.cfaInitLoc) ctx
@@ -278,7 +280,8 @@ mkCond descr s extra = do
                      , ctxBrkLocs = error "break outside a loop"
                      , ctxGNMap   = globalNMap
                      , ctxLastVar = 0
-                     , ctxVar     = []}
+                     , ctxVar     = []
+                     , ctxLabels  = []}
         ctx' = let ?procs = [] 
                    ?nestedmb = False
                in execState (do aft <- procStatToCFA stat I.cfaInitLoc
@@ -315,7 +318,8 @@ mkCTran = {- I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar c
                         , ctxBrkLocs = []
                         , ctxGNMap   = globalNMap
                         , ctxLastVar = 0
-                        , ctxVar     = []}
+                        , ctxVar     = []
+                        , ctxLabels  = []}
           ctx' = let ?procs = []
                      ?nestedmb = False
                  in execState (mapM (\(t,s) -> do aftcont <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume $ mkContLVar I.=== I.true
@@ -384,7 +388,8 @@ procToCFA pid@(PrID _ ps) lmap parscope stat =  {-I.cfaTraceFile (ctxCFA ctx') (
                        , ctxBrkLocs = error "break outside a loop"
                        , ctxGNMap   = globalNMap
                        , ctxLastVar = 0
-                       , ctxVar     = []}
+                       , ctxVar     = []
+                       , ctxLabels  = []}
           ctx' = execState (do aftguard <- if guarded
                                               then ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume guard
                                               else return I.cfaInitLoc

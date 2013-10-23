@@ -100,7 +100,7 @@ lexer = T.makeTokenParser (emptyDef {T.commentStart      = "/*"
                                     ,T.commentEnd        = "*/"
                                     ,T.commentLine       = "//"
                                     ,T.nestedComments    = True
-                                    ,T.identStart        = letter <|> char '_'
+                                    ,T.identStart        = letter <|> char '_' 
                                     ,T.identLetter       = alphaNum <|> char '_'
                                     ,T.reservedOpNames   = reservedOpNames
                                     ,T.reservedNames     = reservedNames
@@ -408,6 +408,7 @@ detterm = parens detexpr <|> detterm'
 
 term' = withPos $
        ( estruct True
+     <|> elabel
      <|> etern   True
      <|> eapply  True
      <|> elit    True
@@ -418,6 +419,7 @@ term' = withPos $
 
 detterm' = withPos $
           ( estruct False
+        <|> elabel
         <|> etern   False
         <|> eapply  False
         <|> elit    False
@@ -426,6 +428,8 @@ detterm' = withPos $
         <|> ecase   False
         <|> econd   False)
 
+
+elabel      = EAtLab nopos <$> (symbol "@" *> ident)
 estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
           anonfields = commaSep1 (expr' det)

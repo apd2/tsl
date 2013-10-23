@@ -50,7 +50,7 @@ statSimplify' (SPar     p _ ss)           = (liftM $ return . SPar p Nothing) $ 
 statSimplify' (SForever p _ s)            = (liftM $ return . SForever p Nothing) $ statSimplify s
 statSimplify' (SDo      p _ b c)          = do (ss,c') <- exprSimplify c
                                                b'      <- statSimplify b
-                                               return [SDo p Nothing (sSeq (pos b) Nothing (b:ss)) c']
+                                               return [SDo p Nothing (sSeq (pos b) Nothing (b':ss)) c']
 statSimplify' (SWhile   p _ c b)          = do (ss,c') <- exprSimplify c
                                                b'      <- statSimplify b
                                                return $ ss ++ [SWhile p Nothing c' (sSeq (pos b) Nothing (b':ss))]
@@ -96,32 +96,39 @@ statSimplify' st                          = return [st{stLab = Nothing}]
 -- Convert statement to CFA
 ----------------------------------------------------------
 statToCFA :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
-statToCFA before   (SSeq _ _ ss)    = foldM statToCFA before ss
-statToCFA before s@(SPause _ _)     = do ctxLocSetAct before (I.ActStat s)
-                                         ctxPause before I.true (I.ActStat s)
-statToCFA before s@(SWait _ _ c)    = do ctxLocSetAct before (I.ActStat s)
-                                         ci <- exprToIExprDet c
-                                         ctxPause before ci (I.ActStat s)
-statToCFA before s@(SStop _ _)      = do ctxLocSetAct before (I.ActStat s)
-                                         ctxFinal before
-statToCFA before   (SVarDecl _ _ v) | isJust (varInit v) = return before
-statToCFA before   (SVarDecl _ _ v) | otherwise = do 
-                                         sc <- gets ctxScope
-                                         let ?scope = sc
-                                         let scalars = exprScalars $ ETerm nopos [name v]
-                                         foldM (\loc e -> do e' <- exprToIExprDet e
-                                                             let val = case tspec $ typ' e of
-                                                                            BoolSpec _    -> I.BoolVal False
-                                                                            UIntSpec _ w  -> I.UIntVal w 0
-                                                                            SIntSpec _ w  -> I.SIntVal w 0
-                                                                            EnumSpec _ es -> I.EnumVal $ sname $ head es
-                                                                            PtrSpec  _ t  -> I.NullVal $ mkType $ Type sc t
-                                                             ctxInsTrans' loc $ I.TranStat $ e' I.=: I.EConst val)
-                                               before scalars
-statToCFA before s@stat             = do ctxLocSetAct before (I.ActStat s)
-                                         after <- ctxInsLoc
-                                         statToCFA' before after stat
-                                         return after
+statToCFA before s = do
+    when (isJust $ stLab s) $ ctxPushLabel (sname $ fromJust $ stLab s)
+    after <- statToCFA0 before s
+    when (isJust $ stLab s) ctxPopLabel
+    return after
+    
+statToCFA0 :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA0 before   (SSeq _ _ ss)    = foldM statToCFA before ss
+statToCFA0 before s@(SPause _ _)     = do ctxLocSetAct before (I.ActStat s)
+                                          ctxPause before I.true (I.ActStat s)
+statToCFA0 before s@(SWait _ _ c)    = do ctxLocSetAct before (I.ActStat s)
+                                          ci <- exprToIExprDet c
+                                          ctxPause before ci (I.ActStat s)
+statToCFA0 before s@(SStop _ _)      = do ctxLocSetAct before (I.ActStat s)
+                                          ctxFinal before
+statToCFA0 before   (SVarDecl _ _ v) | isJust (varInit v) = return before
+statToCFA0 before   (SVarDecl _ _ v) | otherwise = do 
+                                          sc <- gets ctxScope
+                                          let ?scope = sc
+                                          let scalars = exprScalars $ ETerm nopos [name v]
+                                          foldM (\loc e -> do e' <- exprToIExprDet e
+                                                              let val = case tspec $ typ' e of
+                                                                             BoolSpec _    -> I.BoolVal False
+                                                                             UIntSpec _ w  -> I.UIntVal w 0
+                                                                             SIntSpec _ w  -> I.SIntVal w 0
+                                                                             EnumSpec _ es -> I.EnumVal $ sname $ head es
+                                                                             PtrSpec  _ t  -> I.NullVal $ mkType $ Type sc t
+                                                              ctxInsTrans' loc $ I.TranStat $ e' I.=: I.EConst val)
+                                                before scalars
+statToCFA0 before s@stat             = do ctxLocSetAct before (I.ActStat s)
+                                          after <- ctxInsLoc
+                                          statToCFA' before after stat
+                                          return after
 
 -- Only safe to call from statToCFA.  Do not call this function directly!
 statToCFA' :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> I.Loc -> Statement -> State CFACtx ()

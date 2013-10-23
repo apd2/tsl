@@ -122,16 +122,16 @@ instance PP Stack where
     pp stack = vcat $ map pp stack
 
 stackSetLoc :: Stack -> Loc -> Stack
-stackSetLoc ((Frame sc l):frs) l' = (Frame sc l') : frs
+stackSetLoc ((Frame sc _):frs) l' = (Frame sc l') : frs
 
 data LocLabel = LInst  {locAct :: LocAction}
-              | LPause {locAct :: LocAction, locStack :: Stack, locExpr :: Expr}
-              | LFinal {locAct :: LocAction, locStack :: Stack}
+              | LPause {locAct :: LocAction, locStack :: Stack, locLabels :: [String], locExpr :: Expr}
+              | LFinal {locAct :: LocAction, locStack :: Stack, locLabels :: [String]}
 
 instance PP LocLabel where
-    pp (LInst  a)     = pp a
-    pp (LPause a _ e) = text "WAIT" <> (parens $ pp e) $$ pp a
-    pp (LFinal a _)   = text "F"                       $$ pp a
+    pp (LInst  a)          = pp a
+    pp (LPause a _ labs e) = text "WAIT" <> (brackets $ hcat $ punctuate comma $ map pp labs) <> (parens $ pp e) $$ pp a
+    pp (LFinal a _ labs)   = text "F"    <> (brackets $ hcat $ punctuate comma $ map pp labs)                    $$ pp a
 
 instance Show LocLabel where
     show = render . pp
@@ -187,20 +187,20 @@ cfaSave :: CFA -> String -> Bool -> IO String
 cfaSave cfa title tmp = graphSave cfa ("cfa_" ++ title) tmp
 
 isDelayLabel :: LocLabel -> Bool
-isDelayLabel (LPause _ _ _) = True
-isDelayLabel (LFinal _ _)   = True
-isDelayLabel (LInst _)      = False
+isDelayLabel (LPause _ _ _ _) = True
+isDelayLabel (LFinal _ _ _)   = True
+isDelayLabel (LInst _)        = False
 
 isDeadendLoc :: CFA -> Loc -> Bool
 isDeadendLoc cfa loc = G.outdeg cfa loc == 0
 
 cfaLocWaitCond :: CFA -> Loc -> Expr
 cfaLocWaitCond cfa loc = case cfaLocLabel loc cfa of
-                              LPause _ _ c -> c
-                              LFinal _ _   -> true
+                              LPause _ _ _ c -> c
+                              LFinal _ _ _   -> true
 
 newCFA :: F.Scope -> F.Statement -> Expr -> CFA 
-newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame sc cfaInitLoc] initcond) G.empty
+newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame sc cfaInitLoc] [] initcond) G.empty
 
 cfaErrVarName :: String
 cfaErrVarName = "$err"
@@ -210,7 +210,7 @@ cfaInitLoc = 1
 
 cfaNop :: CFA
 cfaNop = cfaInsTrans cfaInitLoc fin TranNop cfa
-    where (cfa, fin) = cfaInsLoc (LFinal ActNone [])
+    where (cfa, fin) = cfaInsLoc (LFinal ActNone [] [])
                        $ G.insNode (cfaInitLoc,LInst ActNone) G.empty
 
 cfaDelayLocs :: CFA -> [Loc]
@@ -277,8 +277,8 @@ cfaSuc loc cfa = map swap $ G.lsuc cfa loc
 
 cfaFinal :: CFA -> [Loc]
 cfaFinal cfa = map fst $ filter (\n -> case snd n of
-                                            LFinal _ _ -> True
-                                            _          -> False) $ G.labNodes cfa
+                                            LFinal _ _ _ -> True
+                                            _            -> False) $ G.labNodes cfa
 
 -- Add types to NullVal expressions introduced by cfaAddNullPtrTrans
 cfaAddNullTypes :: Spec -> CFA -> CFA
