@@ -39,7 +39,7 @@ spec2ASL spec =
         initcond = (\(t, e) -> (mkForm $ ptrFreeBExprToFormula e) <+> text "&&" <+> mkTranPrecondition t "init") $ tsInit $ specTran ?spec
         goal     = head $ mapIdx (\g i -> mkTranPrecondition (goalCond g) ("goal" ++ show i)) $ tsGoal $ specTran ?spec
         fairs    = vcat $ map (\f -> (mkForm $ ptrFreeBExprToFormula $ fairCond f) <> semi) $ tsFair $ specTran ?spec
-        constr   = mkForm autoConstr $+$ text "&&" $+$ mkAllPreconditions
+        constr   = mkAllPreconditions
         cont     = mkExpr $ mkContLVar === true in
     text "STATE"
     $+$

@@ -2,8 +2,7 @@
 
 module TSLAbsGame(tslAbsGame, 
                   bexprToFormula, 
-                  tslUpdateAbsVarAST,
-                  autoConstr) where
+                  tslUpdateAbsVarAST) where
 
 import Prelude hiding (and)
 import Data.List hiding (and)
@@ -96,7 +95,7 @@ tslStateLabelConstraintAbs spec m ops = do
     H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) tslConstraint
 
 tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
-tslConstraint = H.Conj [compileFormula $ autoConstr, pre]
+tslConstraint = H.Conj [{-compileFormula $ autoConstr,-} pre]
     where 
     -- precondition of at least one transition must hold   
     pre = H.Disj
@@ -164,15 +163,15 @@ tslUpdateAbsVarAST (av, n)                                       = H.Disj (uncha
 ----------------------------------------------------------------------------
  
 -- additional constraints over automatic variables
-autoConstr :: (?spec::Spec) => Formula
-autoConstr = fconj $ map ptrFreeBExprToFormula $ [nolepid, notag]
-    where 
-    -- $cont  <-> $lepid == $nolepid
-    nolepid = EBinOp Or (EBinOp And mkContLVar (EBinOp Eq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
-                        (EBinOp And (EUnOp Not mkContLVar) (EBinOp Neq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
-    -- !$cont <-> $tag == $tagnone
-    notag   = EBinOp Or (EBinOp And (EUnOp Not mkContLVar) (EBinOp Eq mkTagVar (EConst $ EnumVal mkTagNone)))
-                        (EBinOp And mkContLVar             (EBinOp Neq mkTagVar (EConst $ EnumVal mkTagNone)))
+--autoConstr :: (?spec::Spec) => Formula
+--autoConstr = fconj $ map ptrFreeBExprToFormula $ [nolepid, notag]
+--    where 
+--    -- $cont  <-> $lepid == $nolepid
+--    nolepid = EBinOp Or (EBinOp And mkContLVar (EBinOp Eq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
+--                        (EBinOp And (EUnOp Not mkContLVar) (EBinOp Neq mkEPIDLVar (EConst $ EnumVal mkEPIDNone)))
+--    -- !$cont <-> $tag == $tagnone
+--    notag   = EBinOp Or (EBinOp And (EUnOp Not mkContLVar) (EBinOp Eq mkTagVar (EConst $ EnumVal mkTagNone)))
+--                        (EBinOp And mkContLVar             (EBinOp Neq mkTagVar (EConst $ EnumVal mkTagNone)))
 
 ----------------------------------------------------------------------------
 -- PDB operations
