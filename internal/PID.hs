@@ -5,7 +5,6 @@ module PID (PrID(..),
             NSID(..),
             pidIdle,
             parsePID,
-            parseEPID,
             childPID,
             epid2nsid) where
 
@@ -53,8 +52,8 @@ instance PP EPID where
 instance Show EPID where
     show = render . pp
 
-parseEPID :: String -> EPID
-parseEPID s = if' (s=="$contproc") EPIDCont (EPIDProc $ parsePID s)
+--parseEPID :: String -> EPID
+--parseEPID s = if' (s=="$contproc") EPIDCont (EPIDProc $ parsePID s)
 
 epid2nsid :: EPID -> Scope -> NSID
 epid2nsid epid sc = NSID mpid mmeth

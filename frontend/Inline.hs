@@ -183,30 +183,30 @@ mkFairRegVars spec = mkFairSchedVar : (map (mkFairProcVar . fst) $ I.specAllProc
 
 -- PID of the process making a transition
 
-mkEPIDLVarName :: String
-mkEPIDLVarName = "$lepid"
+mkPIDLVarName :: String
+mkPIDLVarName = "$lpid"
 
-mkEPIDLVar :: I.Expr
-mkEPIDLVar = I.EVar mkEPIDLVarName
+mkPIDLVar :: I.Expr
+mkPIDLVar = I.EVar mkPIDLVarName
 
-mkEPIDEnumeratorName :: EPID -> String
-mkEPIDEnumeratorName epid = "$" ++ show epid
+mkPIDEnumeratorName :: PrID -> String
+mkPIDEnumeratorName pid = "$" ++ show pid
 
-parseEPIDEnumerator :: String -> EPID
-parseEPIDEnumerator n = parseEPID $ tail n
+parsePIDEnumerator :: String -> PrID
+parsePIDEnumerator n = parsePID $ tail n
 
-mkEPIDEnum :: EPID -> I.Expr
-mkEPIDEnum = I.EConst . I.EnumVal . mkEPIDEnumeratorName
+mkPIDEnum :: PrID -> I.Expr
+mkPIDEnum = I.EConst . I.EnumVal . mkPIDEnumeratorName
 
-mkEPIDEnumName :: String
-mkEPIDEnumName = "$epidenum" 
+mkPIDEnumName :: String
+mkPIDEnumName = "$pidenum" 
 
 --mkEPIDNone :: String
 --mkEPIDNone = "$epidnone"
 
-mkEPIDLVarDecl :: [EPID] -> (I.Var, I.Enumeration)
-mkEPIDLVarDecl epids = (I.Var False I.VarTmp mkEPIDLVarName (I.Enum mkEPIDEnumName), enum)
-    where enum = I.Enumeration mkEPIDEnumName $ map mkEPIDEnumeratorName epids
+mkPIDLVarDecl :: [PrID] -> (I.Var, I.Enumeration)
+mkPIDLVarDecl pids = (I.Var False I.VarTmp mkPIDLVarName (I.Enum mkPIDEnumName), enum)
+    where enum = I.Enumeration mkPIDEnumName $ map mkPIDEnumeratorName pids
 
 --mkContVarName :: String
 --mkContVarName = "$cont"
@@ -490,7 +490,7 @@ insertPrefix pid cfa loc | (null $ G.lsuc cfa loc) = cfa
     where (Just (pre, _, lab, suc), cfa0) = G.match loc cfa 
           loc' = (snd $ G.nodeRange cfa) + 1
           cfa1 = (pre, loc, lab, []) G.& (([], loc', I.LInst I.ActNone, suc) G.& cfa0)
-          lepid = mkEPIDLVar I.=== (mkEPIDEnum $ EPIDProc pid)
+          lepid = mkPIDLVar I.=== (mkPIDEnum pid)
           ucont = mkContLVar I.=== I.false
 
 insertSuffix :: PrID -> I.CFA -> I.Loc -> I.CFA

@@ -3,7 +3,8 @@
 module TSLAbsGame(tslAbsGame, 
                   bexprToFormula, 
                   tslUpdateAbsVarAST,
-                  tslStateLabelConstraintAbs) where
+                  tslStateLabelConstraintAbs,
+                  tslInconsistent) where
 
 import Prelude hiding (and)
 import Data.List hiding (and)
@@ -12,9 +13,10 @@ import qualified Data.Set as S
 import Debug.Trace
 import Data.Maybe
 import Text.PrettyPrint.Leijen.Text
-import Data.Text.Lazy hiding (intercalate, map, take, length, zip, filter, init, tails)
+import Data.Text.Lazy hiding (intercalate, map, take, length, zip, filter, init, tails, last)
 import qualified Data.Graph.Inductive as G
 import Control.Monad
+import Control.Monad.Trans.Class
 
 import TSLUtil
 import Util hiding (trace)
@@ -97,12 +99,11 @@ tslStateLabelConstraintAbs spec m ops = do
     H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) tslConstraint
 
 tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
-tslConstraint = H.Conj [magic, pre]
+tslConstraint = pre
     where 
-    magic = compileFormula $ ptrFreeBExprToFormula $ mkContLVar ==> mkMagicVar
+    -- magic = compileFormula $ ptrFreeBExprToFormula $ mkContLVar ==> mkMagicVar
     -- precondition of at least one transition must hold   
     pre = H.Disj
-          -- $ (compileFormula $ ptrFreeBExprToFormula $ mkTagVar /== (EConst $ EnumVal mkTagNone)) :
           $ mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
     
 
@@ -123,10 +124,26 @@ tslUpdateAbs spec m ts avars ops = do
     let ?spec   = spec
         ?m      = m
         ?pred   = p
-    avarbef <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
+--    avarbef <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
     upd <- mapM tslUpdateAbsVar avars
-    avaraft <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
-    let avarnew = S.toList $ S.fromList avaraft S.\\ S.fromList avarbef
+--    avaraft <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
+--    let avarnew = S.toList $ S.fromList avaraft S.\\ S.fromList avarbef
+    inconsistent <- tslInconsistent spec m ops
+--    inconsistent <- case avarnew of
+--                         [] -> return $ C.bzero m
+--                         _  -> H.compileBDD m ops (avarGroupTag . bavarAVar)
+--                               $ H.Disj 
+--                               $ map (absVarInconsistent ts . \(x:xs) -> (x, xs ++ avarbef)) 
+--                               $ init $ tails avarnew
+    updwithinc <- lift $ C.band m (last upd) (C.bnot inconsistent)
+    lift $ C.deref m inconsistent
+    lift $ C.deref m (last upd)
+    let upd' = init upd ++ [updwithinc]
+    return (upd', C.bzero m{-inconsistent-})
+
+tslInconsistent :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslInconsistent spec m ops = do
+    let ?spec = spec
     allvars <- Abs.allVars ops
     let enumcond = H.Disj
                    $ map (\av@(AVarEnum t) -> let Enum tname = typ t
@@ -134,15 +151,8 @@ tslUpdateAbs spec m ts avars ops = do
                                                  $ mapIdx (\_ i -> H.Not $ H.EqConst (H.NVar $ avarBAVar av) i)
                                                  $ enumEnums $ getEnumeration tname)
                    $ filter avarIsEnum $ map bavarAVar allvars
-        contcond = compileFormula $ ptrFreeBExprToFormula $ mkContLVar ==> mkMagicVar
-    inconsistent <- H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond, contcond]
---    inconsistent <- case avarnew of
---                         [] -> return $ C.bzero m
---                         _  -> H.compileBDD m ops (avarGroupTag . bavarAVar)
---                               $ H.Disj 
---                               $ map (absVarInconsistent ts . \(x:xs) -> (x, xs ++ avarbef)) 
---                               $ init $ tails avarnew
-    return (upd, inconsistent)
+        contcond = compileFormula $ ptrFreeBExprToFormula $ conj [mkContLVar, neg mkMagicVar]
+    H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond, contcond]
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)

@@ -43,7 +43,7 @@ spec2Internal s =
     let -- preprocessing
         ?spec = s in
     let cfas = I.specAllCFAs spec
-        epids = map fst cfas
+        pids = map fst $ I.specAllProcs spec
         -- PC variables and associated enums
         (pcvars, pcenums) = unzip 
                             $ map (\(EPIDProc pid,cfa) -> let enum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) $ I.cfaDelayLocs cfa
@@ -57,7 +57,7 @@ spec2Internal s =
         senum = mapMaybe (\d -> case tspec d of
                                      EnumSpec _ es -> Just $ I.Enumeration (sname d) (map sname es)
                                      _             -> Nothing) (specType ?spec)                                                     
-        (pidlvar, pidenum)  = mkEPIDLVarDecl epids
+        (pidlvar, pidenum)  = mkPIDLVarDecl pids
         vars                = mkVars
         (tvar, tenum)       = mkTagVarDecl
         fairreg = mkFair spec'
@@ -219,7 +219,7 @@ mkFair ispec = mkFairSched : (map mkFairProc $ I.specAllProcs ispec)
 
     mkFairCFA :: I.CFA -> PrID -> I.Expr
     mkFairCFA cfa pid = 
-        ((mkEPIDLVar I./== mkEPIDEnum (EPIDProc pid)) `I.lor` (mkContLVar I.=== I.true)) `I.land`
+        ((mkPIDLVar I./== mkPIDEnum pid) `I.lor` (mkContLVar I.=== I.true)) `I.land`
         (I.disj $ map (\loc -> mkPCEq cfa pid (mkPC pid loc) `I.land` (I.cfaLocWaitCond cfa loc)) 
                 $ filter (not . I.isDeadendLoc cfa) 
                 $ I.cfaDelayLocs cfa)
