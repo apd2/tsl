@@ -135,11 +135,11 @@ tslUpdateAbs spec m ts avars ops = do
 --                               $ H.Disj 
 --                               $ map (absVarInconsistent ts . \(x:xs) -> (x, xs ++ avarbef)) 
 --                               $ init $ tails avarnew
-    updwithinc <- lift $ C.band m (last upd) (C.bnot inconsistent)
-    lift $ C.deref m inconsistent
-    lift $ C.deref m (last upd)
-    let upd' = init upd ++ [updwithinc]
-    return (upd', C.bzero m{-inconsistent-})
+--    updwithinc <- lift $ C.band m (last upd) (C.bnot inconsistent)
+--    lift $ C.deref m inconsistent
+--    lift $ C.deref m (last upd)
+--    let upd' = init upd ++ [updwithinc]
+    return (upd, inconsistent)
 
 tslInconsistent :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
 tslInconsistent spec m ops = do
