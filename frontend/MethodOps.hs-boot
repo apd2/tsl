@@ -9,8 +9,9 @@ import Template
 import Method
 import TVar
 import Statement
+import Name
 
+methLabels   :: (?spec::Spec) => Method -> [Ident]
 methFullVar  :: (?spec::Spec)                       => Template -> Method -> [(Template,Method,Var)]
-validateMeth :: (?spec::Spec, MonadError String me) => Template -> Method -> me ()
 methFullBody :: (?spec::Spec)                       => Template -> Method -> Either (Maybe Statement, Maybe Statement) Statement
 

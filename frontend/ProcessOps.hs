@@ -11,6 +11,7 @@ import Process
 import Template
 import Spec
 import StatementOps
+import StatementValidate
 import NS
 
 validateProc :: (?spec::Spec, MonadError String me) => Template -> Process -> me ()

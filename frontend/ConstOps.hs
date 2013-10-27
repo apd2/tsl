@@ -10,7 +10,7 @@ import Pos
 import Type
 import TypeOps
 import TypeValidate
-import {-# SOURCE #-} ExprOps
+import ExprOps
 import ExprValidate
 import Const
 import Spec

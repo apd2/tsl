@@ -44,13 +44,16 @@ import Spec
 import ConstOps
 import TVar
 import TVarOps
+import TVarValidate
 import ExprOps
 import ExprValidate
 import Method
 import MethodOps
+import MethodValidate
 import Process
 import ProcessOps
 import StatementOps
+import StatementValidate
 import NS
 
 checkConcreteTemplate :: (?spec::Spec, MonadError String me) => Template -> Pos -> me ()

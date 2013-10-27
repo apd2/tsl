@@ -45,7 +45,7 @@ statementParser   = removeTabs *> statement
 statementsParser  = removeTabs *> statements
 statements1Parser = removeTabs *> ((optional whiteSpace) *> statements1)
 
-reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->"]
+reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@"]
 reservedNames = ["after",
                  "prefix",
                  "assert",
@@ -104,6 +104,7 @@ lexer = T.makeTokenParser (emptyDef {T.commentStart      = "/*"
                                     ,T.identLetter       = alphaNum <|> char '_'
                                     ,T.reservedOpNames   = reservedOpNames
                                     ,T.reservedNames     = reservedNames
+                                    ,T.opLetter          = oneOf ":!#$%&*+./<=>?\\^|-~"
                                     ,T.caseSensitive     = True})
 
 reservedOp = T.reservedOp lexer
@@ -407,8 +408,8 @@ detterm = parens detexpr <|> detterm'
 
 
 term' = withPos $
-       ( estruct True
-     <|> elabel
+       ( elabel
+     <|> estruct True
      <|> etern   True
      <|> eapply  True
      <|> elit    True
@@ -418,8 +419,8 @@ term' = withPos $
      <|> econd   True)
 
 detterm' = withPos $
-          ( estruct False
-        <|> elabel
+          ( elabel
+        <|> estruct False
         <|> etern   False
         <|> eapply  False
         <|> elit    False
@@ -429,7 +430,7 @@ detterm' = withPos $
         <|> econd   False)
 
 
-elabel      = EAtLab nopos <$> (symbol "@" *> ident)
+elabel      = EAtLab nopos <$> (reservedOp "@" *> ident)
 estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
           anonfields = commaSep1 (expr' det)

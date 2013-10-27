@@ -10,6 +10,7 @@ module TemplateOps(tmMapExpr,
                    isDescendant,
                    tmParents,
                    tmParentsRec,
+                   tmLabels,
                    tmAllGoal,
                    tmAllMethod,
                    tmAllProcess,
@@ -43,7 +44,7 @@ import TypeOps
 import Template
 import Spec
 import Const
-import ConstOps
+--import ConstOps
 import TVar
 import TVarOps
 import {-# SOURCE #-} MethodOps
@@ -51,7 +52,6 @@ import Expr
 import {-# SOURCE #-} ExprOps
 import Method
 import Process
-import ProcessOps
 import Statement
 import StatementOps
 import NS
@@ -189,6 +189,10 @@ tmLocalDecls t = (map (ObjPort t)                     (tmPort t))     ++
                                            EnumSpec _ es -> map (ObjEnum (Type (ScopeTemplate t) $ tspec d)) es
                                            _             -> []) (tmTypeDecl t))
 
+
+tmLabels :: (?spec::Spec) => Template -> [Ident]
+tmLabels tm = (concatMap (statLabels . procStatement) $ tmAllProcess tm) ++
+              (concatMap methLabels $ tmAllMethod tm)
 
 -- All objects declared in the template or inherited from parents
 tmLocalAndParentDecls :: (?spec::Spec) => Template -> [Obj]

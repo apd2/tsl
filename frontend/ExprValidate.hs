@@ -14,10 +14,11 @@ import Type
 import TypeOps
 import NS
 import Expr
-import {-# SOURCE #-} ExprOps
+import ExprOps
 import Method
 import Spec
 import Template
+import TemplateOps
 
 validateExpr :: (?spec::Spec, ?privoverride::Bool, MonadError String me) => Scope -> Expr -> me ()
 validateExpr s e = let ?scope = s 
@@ -29,6 +30,9 @@ validateExpr' :: (?spec::Spec, ?scope::Scope, ?privoverride::Bool, MonadError St
 validateExpr' (ETerm _ n)        = do {_ <- checkTerm ?scope n; return ()}
 validateExpr' (ELit _ _ _ _ _)   = return ()
 validateExpr' (EBool _ _)        = return ()
+validateExpr' (EAtLab p lab)     = do 
+    assert (?scope /= ScopeTop) p $ "Label used outside template scope"
+    assert (elem lab $ tmLabels (scopeTm ?scope)) p $ "Unknown label " ++ show lab
 
 -- * method application:
 --   - method name refers to a visible method (local or exported)

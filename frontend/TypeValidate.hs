@@ -13,7 +13,7 @@ import NS
 import Spec
 import Type
 import TypeOps
-import {-# SOURCE #-} ExprOps
+import ExprOps
 import ExprValidate
 
 
