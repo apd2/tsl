@@ -10,6 +10,7 @@ import qualified Data.Graph.Inductive as G
 import Data.List
 import Data.Maybe
 import Data.Functor
+import Data.Tuple.Select
 import qualified Data.Map as M
 import Control.Applicative
 
@@ -73,16 +74,13 @@ pruneCFAVar avs cfa = cfa2
     trs = filter (\(_,_,tr) -> any (\av -> isVarRecomputedByTran av tr) avs) 
           $ G.labEdges cfa
     -- Find all predecessors of these transitions
-    keepedges = nub $ concatMap (\e@(fr,_,_) -> e : concatMap (G.inn cfa) (G.rdfs [fr] cfa)) trs
-    -- Add edges that are successors of trs, and that have a sibling in keepedges
-    keepedges' = keepedges ++
-                 (filter (\(fr,_,_) -> any (\e -> elem e keepedges) (G.out cfa fr))
-                         $ ((concatMap (\(_,to,_) -> concatMap (G.out cfa) $ G.dfs [to] cfa) trs) \\ keepedges))
-    keepnodes = nub $ concatMap (\(fr, to, _) -> [fr,to]) keepedges'
+    keepedges = nub $ concatMap (\e@(fr,to,_) -> e : (concatMap (G.inn cfa) (G.rdfs [fr] cfa)) ++
+                                                     (concatMap (G.out cfa) (G.dfs [to] cfa))) trs
+    keepnodes = nub $ concatMap (\(fr, to, _) -> [fr,to]) keepedges
     -- delete irrelevant nodes
     cfa1 = foldl' (\g l -> if' (elem l keepnodes) g (G.delNode l g)) cfa (G.nodes cfa)
     -- delete irrelevant edges connecting relevant nodes
-    cfa2 = foldl' (\g e -> if' (elem e keepedges') g (G.delLEdge e g)) cfa1 (G.labEdges cfa)
+    cfa2 = foldl' (\g e -> if' (elem e keepedges) g (G.delLEdge e g)) cfa1 (G.labEdges cfa)
 
 varRecomputedLoc :: (?spec::Spec, ?pred::[Predicate], ?cfa::CFA) => Loc -> AbsVar -> Loc
 varRecomputedLoc l v | null (G.pre ?cfa l)                                 = l
@@ -108,7 +106,6 @@ simplifyACFA acfa = if' (b1 || b2 || b3 || b4 || b5) (simplifyACFA acfa5) acfa
 -- Find and delete a location that
 -- * has a single outgoing transition that does not contain any variable
 --   updates or preconditions
--- * does not contain any variable updates
 simplifyACFA1 :: ACFA -> (ACFA, Bool)
 simplifyACFA1 acfa = maybe (acfa, False) ((, True) . rm acfa) mcand
     where mcand = find ((\(_, mpre, upds) -> isNothing mpre && null upds) . snd . head . G.lsuc acfa)
@@ -139,15 +136,16 @@ simplifyACFA2 acfa = maybe (acfa, False) ((, True) . rm acfa) mcand
                     g0 = graphUpdNode c (\_ -> (def,use)) g
 
 
--- eliminate conditional nodes (i.e., nodes that have >1 outgoing edges labelled 
--- with preconditions, but no var updates) in case they only have a single successor.
--- The assumption here is that all branches are of the form if-then-else, i.e., 
--- disjunction of branch conditions is true.
+-- eliminate conditional nodes (i.e., nodes that have 2 outgoing edges labelled 
+-- with complementary preconditions, but no var updates) in case they only have a 
+-- single successor.  The assumption here is that all branches are of the form 
+-- if-then-else, i.e., disjunction of branch conditions is true.
 simplifyACFA3 :: ACFA -> (ACFA, Bool)
 simplifyACFA3 acfa = maybe (acfa, False) ((,True) . rm acfa) mcand
-    where mcand = find     (all ((\(_,mpre,upd) -> null upd && isJust mpre) . snd) . G.lsuc acfa)
+    where mcand = find ((\[pre1,pre2] -> pre2 == FNot pre1 || pre1 == FNot pre2) . map (fromJust . sel2 . snd) . G.lsuc acfa)
+                  $ filter     (all ((\(_,mpre,upd) -> null upd && isJust mpre) . snd) . G.lsuc acfa)
                   $ filter ((==1) . length . nub . G.suc acfa)
-                  $ filter ((>1)  . length . G.lsuc acfa)
+                  $ filter ((==2)  . length . G.lsuc acfa)
                   $ G.nodes acfa     
           rm :: ACFA -> Loc -> ACFA
           rm g c = graphUpdNode c (\(def, _) -> (def,M.empty))
