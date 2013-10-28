@@ -231,11 +231,11 @@ e1 ==> e2 = EBinOp Imp e1 e2
 
 disj :: [Expr] -> Expr
 disj [] = false
-disj es = foldl' (\e1 e2 -> EBinOp Or e1 e2) (head es) (tail es)
+disj es = foldl' (\e1 e2 -> if' (e1 == false) e2 $ if' (e2 == false) e1 $ if' ((e1 == true) || (e2 == true)) true $ EBinOp Or e1 e2) (head es) (tail es)
 
 conj :: [Expr] -> Expr
 conj [] = false
-conj es = foldl' (\e1 e2 -> EBinOp And e1 e2) (head es) (tail es)
+conj es = foldl' (\e1 e2 -> if' (e1 == true) e2 $ if' (e2 == true) e1 $ if' ((e1 == false) || (e2 == false)) false $ EBinOp And e1 e2) (head es) (tail es)
 
 neg :: Expr -> Expr
 neg = EUnOp Not

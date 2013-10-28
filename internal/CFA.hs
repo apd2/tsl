@@ -21,6 +21,7 @@ module CFA(Statement(..),
            cfaDelayLocs,
            cfaInsLoc,
            cfaLocLabel,
+           cfaFindLabel,
            cfaLocSetAct,
            cfaLocSetStack,
            cfaLocInline,
@@ -222,6 +223,10 @@ cfaInsLoc lab cfa = (G.insNode (loc,lab) cfa, loc)
 
 cfaLocLabel :: Loc -> CFA -> LocLabel
 cfaLocLabel loc cfa = fromJust $ G.lab cfa loc
+
+cfaFindLabel :: CFA -> String -> [Loc]
+cfaFindLabel cfa lab = filter (\loc -> elem lab $ locLabels $ cfaLocLabel loc cfa) 
+                       $ cfaDelayLocs cfa
 
 cfaLocSetAct :: Loc -> LocAction -> CFA -> CFA
 cfaLocSetAct loc act cfa = graphUpdNode loc (\n -> n {locAct = act}) cfa 

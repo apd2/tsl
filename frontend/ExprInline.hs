@@ -15,6 +15,8 @@ import qualified Data.Map as M
 import qualified IExpr as I
 import qualified IType as I
 import qualified IVar  as I
+import qualified CFA   as I
+import qualified ISpec as I
 import Util hiding (name, trace)
 import NS
 import Pos
@@ -133,15 +135,15 @@ exprFlattenStruct' _ e                                       = e
 -- Convert (simplified) expressions to internal format
 ----------------------------------------------------------------------
 
-exprToIExprDet :: (?spec::Spec) => Expr -> State CFACtx I.Expr
+exprToIExprDet :: (?spec::Spec, ?ispec::I.Spec) => Expr -> State CFACtx I.Expr
 exprToIExprDet e = exprToIExpr e $ error "exprToIExprDet applied to non-deterministic expression"
 
-exprToIExpr :: (?spec::Spec) => Expr -> TypeSpec -> State CFACtx I.Expr
+exprToIExpr :: (?spec::Spec, ?ispec::I.Spec) => Expr -> TypeSpec -> State CFACtx I.Expr
 exprToIExpr e t = do sc <- gets ctxScope
                      exprToIExpr' e (typ' $ Type sc t)
 
 -- Like exprToIExpr, but expand top-level EStruct into a list of fields
-exprToIExprs :: (?spec::Spec) => Expr -> TypeSpec -> State CFACtx [(I.Expr,I.Type)]
+exprToIExprs :: (?spec::Spec, ?ispec::I.Spec) => Expr -> TypeSpec -> State CFACtx [(I.Expr,I.Type)]
 exprToIExprs e@(EStruct _ _ (Left fs)) _ = do 
     sc <- gets ctxScope
     let ?scope = sc
@@ -164,7 +166,7 @@ exprToIExprs e t                              = do
                   _         -> mkType $ typ e
     return [(e', t')]
 
-exprToIExpr' :: (?spec::Spec) => Expr -> Type -> State CFACtx I.Expr
+exprToIExpr' :: (?spec::Spec, ?ispec::I.Spec) => Expr -> Type -> State CFACtx I.Expr
 exprToIExpr' (ETerm _ ssym) _ = do
     sc    <- gets ctxScope
     lmap  <- gets ctxLNMap
@@ -214,6 +216,12 @@ exprToIExpr' (ESlice _ e (l,h)) _           = do sc <- gets ctxScope
                                                  let l' = fromInteger $ evalInt l
                                                      h' = fromInteger $ evalInt h
                                                  return $ I.ESlice e' (l',h')
+exprToIExpr' (EAtLab _ lab) _               = return
+                                              $ I.disj 
+                                              $ map (\(pid, p) -> I.disj 
+                                                                  $ map (\loc -> mkPCEq (I.procCFA p) pid (mkPC pid loc)) 
+                                                                                 $ I.cfaFindLabel (I.procCFA p) (sname lab)) 
+                                              $ I.specAllProcs ?ispec
 exprToIExpr' (ENonDet _) t                  = do v <- ctxInsTmpVar $ mkType t
                                                  return $ I.EVar $ I.varName v
 exprToIExpr' e _                            = error $ "exprToIExpr' " ++ show e

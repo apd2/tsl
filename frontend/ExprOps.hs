@@ -362,6 +362,7 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
     typ (ECond _ cs md)         = maxType $ (map snd cs) ++ maybeToList md
     typ (ESlice p e (l,h))      = Type ?scope $ UIntSpec p (fromInteger (evalInt h - evalInt l + 1))
     typ (EStruct p tn _)        = Type ?scope $ UserTypeSpec p tn
+    typ (EAtLab p l)            = Type ?scope $ BoolSpec p
     typ (ENonDet p)             = Type ?scope $ FlexTypeSpec p
 
 

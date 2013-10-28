@@ -2,8 +2,6 @@
 
 module MethodOps where
 
-import Control.Monad.Error
-
 import Spec
 import Template
 import Method

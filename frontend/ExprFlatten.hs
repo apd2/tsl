@@ -46,4 +46,6 @@ exprFlatten' iid s (EField p e f) =
 
 exprFlatten' iid s (EApply p (MethodRef p' n) as) = EApply p (MethodRef p' [itreeFlattenName (itreeRelToAbsPath iid (init n)) (last n)]) as
 
+exprFlatten' iid s (EAtLab p l) = EAtLab p $ itreeFlattenName iid l
+
 exprFlatten' _ _ e = e

@@ -219,3 +219,4 @@ statLabels' (SFor _ _ (mi,_,s) b) = concatMap statLabels $ b:s:(maybeToList mi)
 statLabels' (SChoice _ _ ss)      = concatMap statLabels ss
 statLabels' (SITE _ _ _ t e)      = statLabels t ++ maybe [] statLabels e
 statLabels' (SCase _ _ _ cs md)   = concatMap statLabels $ (map snd cs) ++ maybeToList md
+statLabels' _                     = []
