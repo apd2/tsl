@@ -137,7 +137,7 @@ instance PP LocLabel where
 instance Show LocLabel where
     show = render . pp
 
-data TranLabel = TranCall F.Method (Maybe Loc) -- method and return location
+data TranLabel = TranCall F.Method Loc -- method and return location
                | TranReturn
                | TranNop
                | TranStat Statement
