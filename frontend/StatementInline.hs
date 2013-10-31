@@ -139,7 +139,7 @@ statToCFA' before _ (SReturn _ _ rval) = do
     case rval of 
          Nothing -> ctxInsTrans before ret I.TranReturn
          Just v  -> case mlhs of
-                         Nothing  -> ctxInsTrans before ret I.TranNop
+                         Nothing  -> ctxInsTrans before ret I.TranReturn
                          Just lhs -> do sc@(ScopeMethod _ m) <- gets ctxScope
                                         let t = fromJust $ methRettyp m
                                         vi <- exprToIExprs v t
