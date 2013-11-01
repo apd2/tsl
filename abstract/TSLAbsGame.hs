@@ -9,14 +9,11 @@ module TSLAbsGame(tslAbsGame,
 import Prelude hiding (and)
 import Data.List hiding (and)
 import qualified Data.Map as M
-import qualified Data.Set as S
 import Debug.Trace
 import Data.Maybe
 import Text.PrettyPrint.Leijen.Text
 import Data.Text.Lazy hiding (intercalate, map, take, length, zip, filter, init, tails, last)
 import qualified Data.Graph.Inductive as G
-import Control.Monad
-import Control.Monad.Trans.Class
 
 import TSLUtil
 import Util hiding (trace)
@@ -37,7 +34,6 @@ import CFA2ACFA
 import ACFA2HAST
 import BFormula
 import Cascade
-import Ops
 import RefineCommon 
 import GroupTag
 

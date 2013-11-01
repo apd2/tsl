@@ -104,10 +104,10 @@ eqUnsatCoreStateLabel spec sps lps =
             _         -> Nothing
 
 mkALit :: (?spec::Spec) => (AbsVar,[Bool]) -> DP.PLit
-mkALit (AVarPred (PAtom op t1 t2), [val]) = DP.PLit (mkOp op val) (mkTerm $ ptermTerm t1) (mkTerm $ ptermTerm t2)
-mkALit (AVarBool t               , [val]) = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe [val]) 1)
-mkALit (AVarInt  t               , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
-mkALit (AVarEnum t               , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
+mkALit (AVarPred (Predicate op [t1, t2]), [val]) = DP.PLit (mkOp op val) (mkTerm $ ptermTerm t1) (mkTerm $ ptermTerm t2)
+mkALit (AVarBool t                      , [val]) = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe [val]) 1)
+mkALit (AVarInt  t                      , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
+mkALit (AVarEnum t                      , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
 
 mkOp :: PredOp -> Bool -> DP.BinOpTyp
 mkOp PEq  True  = DP.Eq

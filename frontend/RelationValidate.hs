@@ -43,7 +43,7 @@ validateApply :: (?spec::Spec, MonadError String me) => Template -> Apply -> me 
 validateApply tm a@Apply{..} = do
     let ?privoverride = False
     -- Relation name refers to a valid relation
-    r@Relation{..} <- checkRelation (ScopeTemplate tm) applyRel
+    (_, r@Relation{..}) <- checkRelation (ScopeTemplate tm) applyRel
     -- Argument list has correct length
     assert (length applyArg == length relArg) (pos a) $ "Relation " ++ sname r ++ " is defined with " ++ show (length relArg) ++ 
                                                         " arguments, but is instantiated with " ++ show (length applyArg) ++ " arguments" 

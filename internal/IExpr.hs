@@ -147,13 +147,14 @@ parseVal (Enum n) str =
          Just enum  -> if' (enumName enum == n) (return $ EnumVal str)
                        $ throwError $ "Enumerator type mismatch" 
 
-data Expr = EVar    String
-          | EConst  Val
-          | EField  Expr String
-          | EIndex  Expr Expr
-          | EUnOp   UOp Expr
-          | EBinOp  BOp Expr Expr
-          | ESlice  Expr Slice
+data Expr = EVar      String
+          | EConst    Val
+          | EField    Expr String
+          | EIndex    Expr Expr
+          | EUnOp     UOp Expr
+          | EBinOp    BOp Expr Expr
+          | ESlice    Expr Slice
+          | ERel      String [Expr]
           deriving (Eq)
 
 instance PP Expr where
@@ -164,6 +165,7 @@ instance PP Expr where
     pp (EUnOp op e)      = parens $ pp op <> pp e
     pp (EBinOp op e1 e2) = parens $ pp e1 <+> pp op <+> pp e2
     pp (ESlice e s)      = pp e <> pp s
+    pp (ERel n as)       = pp n <> (parens $ hcat $ punctuate (text ", ") $ map pp as)
 
 instance Show Expr where
     show = render . pp
@@ -191,6 +193,7 @@ instance (?spec::Spec) => Typed Expr where
                                                        (s1,w1) = (isSigned e1, typeWidth e1)
                                                        (s2,w2) = (isSigned e1, typeWidth e2)
     typ (ESlice _ (l,h))                       = UInt $ h - l + 1
+    typ (ERel _ _)                             = Bool
 
 -- TODO: optimise slicing of concatenations
 exprSlice :: (?spec::Spec) => Expr -> Slice -> Expr
@@ -201,7 +204,7 @@ exprSlice (EBinOp BConcat e1 e2) (l,h) | l > typeWidth e1 - 1           = exprSl
                                        | otherwise                      = econcat [exprSlice e1 (l,typeWidth e1-1), exprSlice e2 (0, h - typeWidth e1)]
 exprSlice e                      s                                      = ESlice e s
 
----- Extract all scalars from expression
+-- Extract all scalars from expression
 exprScalars :: Expr -> Type -> [Expr]
 exprScalars e (Struct fs)  = concatMap (\(Field n t) -> exprScalars (EField e n) t) fs
 exprScalars e (Array  t s) = concatMap (\i -> exprScalars (EIndex e (EConst $ UIntVal (bitWidth $ s-1) $ fromIntegral i)) t) [0..s-1]
@@ -219,6 +222,7 @@ exprVars' (EIndex a i)     = exprVars' a ++ exprVars' i
 exprVars' (EUnOp _ e)      = exprVars' e
 exprVars' (EBinOp _ e1 e2) = exprVars' e1 ++ exprVars' e2
 exprVars' (ESlice e _)     = exprVars' e
+exprVars' (ERel _ as)      = concatMap exprVars' as
 
 (===) :: Expr -> Expr -> Expr
 e1 === e2 = EBinOp Eq e1 e2
@@ -262,6 +266,7 @@ exprPtrSubexpr (EUnOp Deref e)  = e:(exprPtrSubexpr e)
 exprPtrSubexpr (EUnOp _ e)      = exprPtrSubexpr e
 exprPtrSubexpr (EBinOp _ e1 e2) = exprPtrSubexpr e1 ++ exprPtrSubexpr e2
 exprPtrSubexpr (ESlice e _)     = exprPtrSubexpr e
+exprPtrSubexpr (ERel _ as)      = concatMap exprPtrSubexpr as
 exprPtrSubexpr _                = []
 
 isConstExpr :: Expr -> Bool
@@ -273,6 +278,7 @@ isConstExpr (EUnOp AddrOf e) = isConstLExpr e
 isConstExpr (EUnOp _ e)      = isConstExpr e
 isConstExpr (EBinOp _ e1 e2) = isConstExpr e1 && isConstExpr e2
 isConstExpr (ESlice e _)     = isConstExpr e
+isConstExpr (ERel _ _)       = False -- even if all args are constant, it may not evaluate to a constant
 
 isConstLExpr :: Expr -> Bool
 isConstLExpr (EVar _)     = True

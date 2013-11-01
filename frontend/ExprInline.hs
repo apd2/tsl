@@ -83,6 +83,9 @@ exprSimplify' (EStruct p n (Right fs))  = do (ss,fs') <- liftM unzip $ mapM expr
 exprSimplify' e@(ETerm _ t)             = case getTerm ?scope t of
                                                ObjConst _ c -> return ([],constVal c)
                                                _            -> return ([],e)
+exprSimplify' (ERel p n as)             = do 
+    (argss, as') <- liftM unzip $ mapM exprSimplify as
+    return (concat argss, ERel p n as')
 exprSimplify' e                         = return ([], e)
 
 
@@ -222,6 +225,8 @@ exprToIExpr' (EAtLab _ lab) _               = return
                                                                   $ map (\loc -> mkPCEq (I.procCFA p) pid (mkPC pid loc)) 
                                                                                  $ I.cfaFindLabel (I.procCFA p) (sname lab)) 
                                               $ I.specAllProcs ?ispec
+exprToIExpr' (ERel _ n as) _                = do as' <- mapM exprToIExprDet as
+                                                 return $ I.ERel (sname n) as'
 exprToIExpr' (ENonDet _) t                  = do v <- ctxInsTmpVar $ mkType t
                                                  return $ I.EVar $ I.varName v
 exprToIExpr' e _                            = error $ "exprToIExpr' " ++ show e

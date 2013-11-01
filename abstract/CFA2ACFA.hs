@@ -33,10 +33,10 @@ ecasAbsVars' :: (?spec::Spec) => ECascade -> [AbsVar]
 ecasAbsVars' (CasTree bs)             = concatMap (\(f,cas') -> fAbsVars f ++ ecasAbsVars' cas') bs
 ecasAbsVars' (CasLeaf e)  | isBool e  = fAbsVars $ ptrFreeBExprToFormula e
                           | otherwise = case scalarExprToTerm e of 
-                                             (TEnum _)   -> []
-                                             (TUInt _ _) -> []
-                                             (TSInt _ _) -> []
-                                             t           -> if' (isInt t) [AVarInt t] [AVarEnum t]
+                                             TEnum _   -> []
+                                             TUInt _ _ -> []
+                                             TSInt _ _ -> []
+                                             t         -> if' (isInt t) [AVarInt t] [AVarEnum t]
 
 -- Compute ACFA for a list of abstract variables for a location inside
 -- transition CFA. 
@@ -321,14 +321,14 @@ exprExpandPtr   (ESlice e s)      = fmap (\e' -> ESlice e' s) $ exprExpandPtr e
 -- Find predicates of the form (e == AddrOf e')
 ptrPreds :: (?pred::[Predicate]) => Expr -> [(Predicate, Term)]
 ptrPreds e = 
-    mapMaybe (\p@(PAtom _ pt1 pt2) -> case (pt1, pt2) of
-                                           (PTPtr t1, PTPtr t2) -> if' (termToExpr t1 == e) 
-                                                                       (case t2 of
-                                                                             TAddr t' -> Just (p,t')
-                                                                             _        -> Nothing)
-                                                                       (if' (termToExpr t2 == e)
-                                                                            (case t1 of
-                                                                                  TAddr t' -> Just (p,t')
-                                                                                  _        -> Nothing)
-                                                                            Nothing))
+    mapMaybe (\p@(Predicate op pts) -> case (op, pts) of
+                                           (PEq, [PTPtr t1, PTPtr t2]) -> if' (termToExpr t1 == e) 
+                                                                              (case t2 of
+                                                                                    TAddr t' -> Just (p,t')
+                                                                                    _        -> Nothing)
+                                                                              (if' (termToExpr t2 == e)
+                                                                                   (case t1 of
+                                                                                         TAddr t' -> Just (p,t')
+                                                                                         _        -> Nothing)
+                                                                                   Nothing))
              ?pred

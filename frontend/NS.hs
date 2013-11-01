@@ -443,17 +443,17 @@ getWire s n = fromJustMsg "getWire: wire not found" $ lookupWire s n
 
 -- Relation lookup
 
-lookupRelation :: (?spec::Spec) => Scope -> Ident -> Maybe Relation
+lookupRelation :: (?spec::Spec) => Scope -> Ident -> Maybe (Template, Relation)
 lookupRelation s n = case lookupPath s [n] of
-                          Just (ObjRelation _ r) -> Just r
+                          Just (ObjRelation t r) -> Just (t,r)
                           _                      -> Nothing
 
-checkRelation :: (?spec::Spec, MonadError String me) => Scope -> Ident -> me Relation
+checkRelation :: (?spec::Spec, MonadError String me) => Scope -> Ident -> me (Template, Relation)
 checkRelation s n = case lookupRelation s n of
-                         Just r  -> return r
-                         Nothing -> err (pos n) $ "Unknown relation " ++ show n
+                         Just (t,r) -> return (t,r)
+                         Nothing    -> err (pos n) $ "Unknown relation " ++ show n
 
-getRelation :: (?spec::Spec) => Scope -> Ident -> Relation
+getRelation :: (?spec::Spec) => Scope -> Ident -> (Template, Relation)
 getRelation s n = fromJustMsg "getRelation: relation not found" $ lookupRelation s n
 
 

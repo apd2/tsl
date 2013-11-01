@@ -151,8 +151,8 @@ fRel op   e1 e2 | isInt e1 && op == REq            = fRelIntEq (e1, e2)
 -- All atoms must be created by this function
 orientAtom :: RelOp -> PTerm -> PTerm -> Formula
 orientAtom op t1 t2 | t1 > t2    = orientAtom (relOpSwap op) t2 t1
-                    | otherwise  = if' p (FBoolAVar $ AVarPred $ PAtom pop t1 t2) 
-                                         (fnot $ FBoolAVar $ AVarPred $ PAtom pop t1 t2)
+                    | otherwise  = if' p (FBoolAVar $ AVarPred $ Predicate pop [t1, t2]) 
+                                         (fnot $ FBoolAVar $ AVarPred $ Predicate pop [t1, t2])
                                    where (p, pop) = relOpToPredOp op
 
 

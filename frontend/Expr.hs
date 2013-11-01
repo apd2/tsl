@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 
-module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,EAtLab,ENonDet),
+module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,EAtLab,ERel,ENonDet),
             ConstExpr, 
             LExpr,
             Slice,
@@ -58,6 +58,7 @@ data Expr = ETerm   {epos::Pos, ssym::StaticSym}
           | ESlice  {epos::Pos, slexpr::Expr, slice::Slice}
           | EStruct {epos::Pos, typename::StaticSym, fields::(Either [(Ident, Expr)] [Expr])} -- either named or anonymous list of fields
           | EAtLab  {epos::Pos, lab::Ident}
+          | ERel    {epos::Pos, rname::Ident, rargs::[Expr]}
           | ENonDet {epos::Pos}
 
 instance Eq Expr where 
@@ -75,6 +76,7 @@ instance Eq Expr where
    (==) (ESlice _ e1 s1)     (ESlice _ e2 s2)     = e1 == e2 && s1 == s2
    (==) (EStruct _ t1 fs1)   (EStruct _ t2 fs2)   = t1 == t2 && fs1 == fs2
    (==) (EAtLab _ l1)        (EAtLab _ l2)        = l1 == l2
+   (==) (ERel _ n1 as1)      (ERel _ n2 as2)      = n1 == n2 && as1 == as2
    (==) (ENonDet _)          (ENonDet _)          = True
    (==) _                    _                    = False
 
@@ -116,6 +118,7 @@ instance PP Expr where
                                              map (\(n,e) -> char '.' <> pp n <+> char '=' <+> pp e) fs)
     pp (EStruct _ t (Right fs))  = pp t <+> (braces' $ vcat $ punctuate comma $ map pp fs)
     pp (EAtLab _ l)              = char '@' <> pp l
+    pp (ERel _ n as)             = char '?' <> pp n <+> (parens $ hsep $ punctuate comma $ map pp as)
     pp (ENonDet _)               = char '*'
 
 instance Show Expr where

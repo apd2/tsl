@@ -26,7 +26,6 @@ module Predicate(PVarOps,
                  termCategory,
                  termVar,
                  isConstTerm,
-                 --evalConstTerm,
                  RelOp(..),
                  bopToRelOp,
                  relOpToBOp,
@@ -34,7 +33,6 @@ module Predicate(PVarOps,
                  relOpSwap,
                  PredOp(..),
                  relOpToPredOp,
-                 predOpToBOp,
                  Predicate(..),
                  predCategory,
                  predTerm,
@@ -76,7 +74,6 @@ data AbsVar = AVarPred Predicate   -- predicate variable
             | AVarEnum Term        -- unabstracted Enum scalar variable
             | AVarBool Term        -- unabstracted Bool variable
             | AVarInt  Term        -- unabstracted integral variable
---            | AVarEnum String [I.Val]   -- variable with several interesting values
             deriving(Eq, Ord)
 
 avarWidth :: (?spec::Spec) => AbsVar -> Int
@@ -296,12 +293,8 @@ relOpSwap RGte = RLte
 data PredOp = PEq
             | PLt
             | PLte
+            | PUserRel String
             deriving (Eq, Ord)
-
-predOpToBOp :: PredOp -> BOp
-predOpToBOp PEq  = Eq
-predOpToBOp PLt  = Lt
-predOpToBOp PLte = Lte
 
 relOpToPredOp :: RelOp -> (Bool, PredOp)
 relOpToPredOp REq  = (True,  PEq)
@@ -312,22 +305,26 @@ relOpToPredOp RLte = (True,  PLte)
 relOpToPredOp RGte = (False, PLte)
 
 instance PP PredOp where
-    pp = pp . predOpToBOp
+    pp PEq          = text "=="
+    pp PLt          = text "<"
+    pp PLte         = text "<="
+    pp (PUserRel n) = text n
 
 instance Show PredOp where
     show = render . pp
 
 -- Predicates
-data Predicate = PAtom {pOp :: PredOp, pTerm1 :: PTerm, pTerm2 :: PTerm} deriving (Eq, Ord)
+data Predicate = Predicate {pOp :: PredOp, pTerms :: [PTerm]} deriving (Eq, Ord)
 
 instance PP Predicate where
-    pp (PAtom op t1 t2) = pp t1 <> pp op <> pp t2
+    pp (Predicate (PUserRel n) ts)      = text n <> (parens $ hcat $ punctuate (text ",") $ map pp ts)
+    pp (Predicate op           [t1,t2]) = pp t1 <> pp op <> pp t2
 
 instance Show Predicate where
     show = render . pp
 
 predTerm :: Predicate -> [Term]
-predTerm (PAtom _ t1 t2) = [ptermTerm t1, ptermTerm t2]
+predTerm (Predicate _ ts) = map ptermTerm ts
 
 predVar :: (?spec::Spec) => Predicate -> [Var]
 predVar = nub . concatMap termVar . predTerm
@@ -374,4 +371,7 @@ isConstTerm :: Term -> Bool
 isConstTerm = isConstExpr . termToExpr
 
 predToExpr :: Predicate -> Expr
-predToExpr (PAtom op t1 t2) = EBinOp (predOpToBOp op) (ptermToExpr t1) (ptermToExpr t2)
+predToExpr (Predicate PEq          [t1, t2]) = EBinOp Eq  (ptermToExpr t1) (ptermToExpr t2)
+predToExpr (Predicate PLt          [t1, t2]) = EBinOp Lt  (ptermToExpr t1) (ptermToExpr t2)
+predToExpr (Predicate PLte         [t1, t2]) = EBinOp Lte (ptermToExpr t1) (ptermToExpr t2)
+predToExpr (Predicate (PUserRel n) ts)       = ERel n $ map ptermToExpr ts

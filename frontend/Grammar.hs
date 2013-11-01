@@ -46,7 +46,7 @@ statementParser   = removeTabs *> statement
 statementsParser  = removeTabs *> statements
 statements1Parser = removeTabs *> ((optional whiteSpace) *> statements1)
 
-reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@"]
+reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@", "?"]
 reservedNames = ["after",
                  "apply",
                  "prefix",
@@ -108,7 +108,7 @@ lexer = T.makeTokenParser (emptyDef {T.commentStart      = "/*"
                                     ,T.identLetter       = alphaNum <|> char '_'
                                     ,T.reservedOpNames   = reservedOpNames
                                     ,T.reservedNames     = reservedNames
-                                    ,T.opLetter          = oneOf ":!#$%&*+./<=>?\\^|-~"
+                                    ,T.opLetter          = oneOf ":!#$%&*+./<=>\\^|-~"
                                     ,T.caseSensitive     = True})
 
 reservedOp = T.reservedOp lexer
@@ -340,7 +340,7 @@ tgoalDecl    = withPos $ Goal nopos <$  reserved "goal"
 trel         = withPos $ Relation nopos <$  reserved "relation"
                                         <*> ident
                                         <*> (parens $ commaSep rarg)
-                                        <*> (many1 $ reservedOp "|==" *> detexpr)
+                                        <*> (many1 $ reservedOp "|==" *> relexpr)
 tapp         = withPos $ Apply nopos <$  reserved "apply"
                                      <*> ident
                                      <*> (parens $ commaSep detexpr)
@@ -427,6 +427,7 @@ smagic   = SMagic   nopos Nothing <$ ismagic
 
 term    = parens expr <|> term'
 detterm = parens detexpr <|> detterm'
+relterm = parens relexpr <|> relterm'
 
 
 term' = withPos $
@@ -451,8 +452,21 @@ detterm' = withPos $
         <|> ecase   False
         <|> econd   False)
 
+relterm' = withPos $
+          ( elabel
+        <|> erel
+        <|> estruct False
+        <|> etern   False
+        <|> eapply  False
+        <|> elit    False
+        <|> ebool   False
+        <|> eterm   False
+        <|> ecase   False
+        <|> econd   False)
+
 
 elabel      = EAtLab nopos <$> (reservedOp "@" *> ident)
+erel        = ERel nopos <$ (reservedOp "?") <*> ident <*> (parens $ commaSep detexpr)
 estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
           anonfields = commaSep1 (expr' det)
@@ -522,6 +536,11 @@ expr = (withPos $ ENonDet nopos <$ reservedOp "*")
 detexpr =  (reservedOp "*" *> unexpected "unexpected * in deterministic expression")
        <|> buildExpressionParser table detterm
        <?> "expression (deterministic)"
+
+relexpr = (reservedOp "*" *> unexpected "unexpected * in relation interpretation")
+       <|> buildExpressionParser table relterm
+       <?> "expression (relation interpretation)"
+
 
 pref  p = Prefix  . chainl1 p $ return       (.)
 postf p = Postfix . chainl1 p $ return (flip (.))
