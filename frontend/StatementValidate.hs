@@ -6,28 +6,19 @@ module StatementValidate(validateStat,
 import Control.Monad.Error
 import Data.Maybe
 import Data.List
-import Debug.Trace
-import qualified Data.Traversable as Tr
 
 import TSLUtil
 import Util hiding (name, trace)
 import Pos
-import Name
 import Expr
 import ExprOps
-import ExprFlatten
 import ExprValidate
 import Spec
 import NS
 import Statement
-import Type
 import TypeOps
-import TVar
-import TVarOps
 import TVarValidate
 import Method
-import Template
-import InstTree
 
 -------------------------------------------------------------------------
 -- Validation

@@ -242,6 +242,7 @@
                     <keyword>~</keyword>
                     <keyword>\-</keyword>
                     <keyword>\|\|</keyword>
+                    <keyword>\|==</keyword>
                     <keyword>\|</keyword>
                     <keyword>\*</keyword>
                     <keyword>/</keyword>
@@ -274,6 +275,8 @@
                     <keyword>endtemplate</keyword>
                     <keyword>fork</keyword>
                     <keyword>function</keyword>
+                    <keyword>relation</keyword>
+                    <keyword>apply</keyword>
                     <keyword>goal</keyword>
                     <keyword>import</keyword>
                     <keyword>init</keyword>

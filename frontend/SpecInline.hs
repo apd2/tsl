@@ -75,7 +75,7 @@ spec2Internal s =
         specVar            = cvars ++ [tvar, pidlvar] ++ pcvars ++ vars ++ concat tmppvs ++ extraivars
         specCAct           = ctran
         specTran           = error "specTran undefined"
-        specUpds           = mkUpds spec'
+        specUpds           = M.empty -- mkUpds spec'
         spec               = I.Spec {..}
         spec'              = I.specMapCFA (I.cfaAddNullTypes spec) spec
 
@@ -228,8 +228,8 @@ mkFair ispec = mkFairSched : (map mkFairProc $ I.specAllProcs ispec)
 -- Explicit update functions 
 ----------------------------------------------------------------------
 
-mkUpds :: I.Spec -> M.Map String [(I.Expr, I.Expr)]
-mkUpds spec = M.fromList $ []
+--mkUpds :: I.Spec -> M.Map String [(I.Expr, I.Expr)]
+--mkUpds spec = M.fromList $ []
 
 --contUpd :: [(I.Expr, I.Expr)]
 --contUpd = [ (        (I.neg mkContVar) `I.land` mkMagicVar , mkContLVar)

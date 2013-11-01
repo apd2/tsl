@@ -33,9 +33,8 @@ import Control.Monad.Error
 import qualified Data.Graph.Inductive.Graph     as G
 import qualified Data.Graph.Inductive.Tree      as G
 import qualified Data.Graph.Inductive.Query.DFS as G
-import Control.Applicative hiding (Const)
-import Debug.Trace
 
+import Util hiding (name)
 import TSLUtil
 import Pos
 import Name
@@ -44,7 +43,6 @@ import TypeOps
 import Template
 import Spec
 import Const
---import ConstOps
 import TVar
 import TVarOps
 import {-# SOURCE #-} MethodOps
@@ -55,6 +53,7 @@ import Process
 import Statement
 import StatementOps
 import NS
+import Relation
 
 -- Map function over all expressions occurring in the template
 tmMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Template -> Template
@@ -115,11 +114,9 @@ instGraph :: (?spec::Spec) => InstGraph
 instGraph = 
     let tmap = M.fromList $ zip (map name $ specTemplate ?spec) [1..]
         gnodes = foldl' (\g t -> G.insNode (tmap M.! name t, name t) g) G.empty (specTemplate ?spec)
-        g = foldl' (\g t -> foldl' (\g i -> G.insEdge (tmap M.! name t, tmap M.! instTemplate i, ()) g)
-                                   g (tmAllInst t))
-                   gnodes (specTemplate ?spec)
-    in g
-
+    in foldl' (\g t -> foldl' (\g' i -> G.insEdge (tmap M.! name t, tmap M.! instTemplate i, ()) g')
+                              g (tmAllInst t))
+              gnodes (specTemplate ?spec)
 
 -------------------------------------------------------------------
 -- Derivation graph
@@ -130,13 +127,12 @@ type DrvGraph = (G.Gr Ident (), M.Map Ident Int)
 
 -- construct template derivation graph
 drvGraph :: (?spec::Spec) => DrvGraph
-drvGraph = 
-    let tmap = M.fromList $ zip (map name $ specTemplate ?spec) [1..]
-        gnodes = foldl' (\g t -> G.insNode (tmap M.! name t, name t) g) G.empty (specTemplate ?spec)
-        g = foldl' (\g t -> foldl' (\g d -> G.insEdge (tmap M.! name t, tmap M.! drvTemplate d, ()) g)
-                                   g (tmDerive t))
-                   gnodes (specTemplate ?spec)
-    in (g,tmap)
+drvGraph = (g,tmap)
+    where tmap = M.fromList $ zip (map name $ specTemplate ?spec) [1..]
+          gnodes = foldl' (\g' t -> G.insNode (tmap M.! name t, name t) g') G.empty (specTemplate ?spec)
+          g = foldl' (\g' t -> foldl' (\g'' d -> G.insEdge (tmap M.! name t, tmap M.! drvTemplate d, ()) g'')
+                                      g' (tmDerive t))
+                     gnodes (specTemplate ?spec)
 
 
 -------------------------------------------------------------------
@@ -149,19 +145,17 @@ tmScopes :: (?spec::Spec) => Template -> [Scope]
 tmScopes tm = (map (ScopeProcess tm) (tmAllProcess tm)) ++ (map (ScopeMethod tm) (tmAllMethod tm))
 
 callees :: (?spec::Spec) => Scope -> [(Pos, (Template, Method))]
-callees s@(ScopeProcess t p) = statCallees s (procStatement p)
+callees s@(ScopeProcess _ p) = statCallees s (procStatement p)
 callees s@(ScopeMethod t m)  = statCallees s b
     where Right b = methFullBody t m
 
 callGraph :: (?spec::Spec) => CallGraph
 callGraph = 
-    let scopes = zip (concatMap tmScopes $ filter isConcreteTemplate $ specTemplate ?spec) [1..]
-        smap = M.fromList scopes
-        gnodes = foldl' (\g (s,id) -> G.insNode (id, s) g) G.empty scopes
-        g = foldl' (\g (s,id) -> foldl' (\g (p,(t,m)) -> G.insEdge (id, smap M.! (ScopeMethod t m), p) g)
-                                        g (callees s))
-                   gnodes scopes
-    in g
+    let scopes = concatMap tmScopes $ filter isConcreteTemplate $ specTemplate ?spec
+        gnodes = foldIdx (\g s i -> G.insNode (i, s) g) G.empty scopes
+    in foldIdx (\g s i -> foldl' (\g' (p,(t,m)) -> G.insEdge (i, fromJust $ findIndex (==ScopeMethod t m) scopes, p) g')
+                                 g (callees s))
+               gnodes scopes
 
 -------------------------------------------------------------------
 -- Wires
@@ -185,6 +179,7 @@ tmLocalDecls t = (map (ObjPort t)                     (tmPort t))     ++
                  (map (ObjProcess t)                  (tmProcess t))  ++
                  (map (ObjMethod t)                   (tmMethod t))   ++
                  (map (ObjGoal t)                     (tmGoal t))     ++
+                 (map (ObjRelation t)                 (tmRelation t)) ++
                  (concat $ map (\d -> case tspec d of
                                            EnumSpec _ es -> map (ObjEnum (Type (ScopeTemplate t) $ tspec d)) es
                                            _             -> []) (tmTypeDecl t))
@@ -224,7 +219,7 @@ isDescendant anc des =
 
 tmSubprocess :: (?spec::Spec) => Template -> [(Ident, Scope, Statement)]
 tmSubprocess tm = map (\p -> (name p, ScopeTemplate tm, procStatement p)) (tmProcess tm) ++
-                  concatMap (\(scope,st) -> map (\st' -> (fromJust $ stLab st',scope,st')) $ statSubprocessRec st) stats
+                  concatMap (\(sc,st) -> map (\st' -> (fromJust $ stLab st',sc,st')) $ statSubprocessRec st) stats
     where stats = map (\p -> (ScopeProcess tm p, procStatement p)) (tmProcess tm) ++ 
                   map (\m -> (ScopeMethod  tm m, fromRight $ methBody m)) (tmMethod tm)
 
@@ -249,8 +244,8 @@ tmAllPrefix t = tmPrefix t ++ (concatMap tmAllPrefix (tmParents t))
 
 tmAllProcess :: (?spec::Spec) => Template -> [Process]
 tmAllProcess t = concatMap (\o -> case o of
-                                    ObjProcess _ p -> [p]
-                                    _              -> []) 
+                                       ObjProcess _ p -> [p]
+                                       _              -> []) 
                            (tmLocalAndParentDecls t)
 
 tmAllGoal :: (?spec::Spec) => Template -> [Goal]
@@ -259,8 +254,17 @@ tmAllGoal t = concatMap (\o -> case o of
                                     _           -> []) 
                         (tmLocalAndParentDecls t)
 
+tmAllRelation :: (?spec::Spec) => Template -> [Relation]
+tmAllRelation t = concatMap (\o -> case o of
+                                        ObjRelation _ r -> [r]
+                                        _               -> []) 
+                            (tmLocalAndParentDecls t)
+
+tmAllApply :: (?spec::Spec) => Template -> [Apply]
+tmAllApply t = tmApply t ++ (concatMap tmAllApply (tmParents t))
+
 tmAllMethod :: (?spec::Spec) => Template -> [Method]
-tmAllMethod t = map (\(t,m) -> m{methBody = methFullBody t m}) $ tmAllMethod' t
+tmAllMethod t = map (\(t',m) -> m{methBody = methFullBody t' m}) $ tmAllMethod' t
                 
 tmAllMethod' :: (?spec::Spec) => Template -> [(Template,Method)]
 tmAllMethod' t = (map (t,) $ tmMethod t) ++
@@ -290,3 +294,5 @@ tmMergeParents tm = Template (pos tm)
                              (tmAllProcess tm)
                              (tmAllMethod tm)
                              (tmAllGoal tm)
+                             (tmAllRelation tm)
+                             (tmAllApply tm)

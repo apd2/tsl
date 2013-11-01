@@ -20,7 +20,9 @@ module TemplateValidate(checkConcreteTemplate,
                         validateTmMethods2,
                         validateTmProcesses2,
                         validateTmProcesses3,
-                        validateTmGoals2) where
+                        validateTmGoals2,
+                        validateTmRels2,
+                        validateTmApply2) where
 
 import Data.List
 import Data.Maybe
@@ -54,6 +56,7 @@ import Process
 import ProcessOps
 import StatementOps
 import StatementValidate
+import RelationValidate
 import NS
 
 checkConcreteTemplate :: (?spec::Spec, MonadError String me) => Template -> Pos -> me ()
@@ -285,6 +288,16 @@ validateTmProcesses2 tm = do {mapM (validateProc tm) (tmProcess tm); return ()}
 validateTmProcesses3 :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmProcesses3 tm = uniqNames (\n -> "Process " ++ n ++ " declared multiple times in template " ++ sname tm) 
                                     (map sel1 $ tmSubprocess tm)
+
+------------------------------------------------------------------------------
+-- Validate relation and apply declarations
+------------------------------------------------------------------------------
+
+validateTmRels2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmRels2 tm = do {mapM (validateRelation tm) (tmRelation tm); return ()}
+
+validateTmApply2 :: (?spec::Spec, MonadError String me) => Template -> me ()
+validateTmApply2 tm = do {mapM (validateApply tm) (tmApply tm); return ()}
 
 ------------------------------------------------------------------------------
 -- Validate template namespace

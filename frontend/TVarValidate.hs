@@ -6,16 +6,12 @@ module TVarValidate(validateVar,
 import Control.Monad.Error
 
 import TSLUtil
-import Pos
-import Name
 import Spec
 import NS
 import TVar
 import Type
 import TypeOps
 import TypeValidate
-import Expr
-import ExprOps
 import ExprValidate
 
 validateVar :: (?spec::Spec, MonadError String me) => Scope -> Var -> me ()

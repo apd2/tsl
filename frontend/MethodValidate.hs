@@ -38,8 +38,10 @@ methCheckOverride :: (?spec::Spec, MonadError String me) => Template -> Method -
 methCheckOverride t m = do
    case methParent t m of
         Nothing      -> do mapM (validateTypeSpec (ScopeTemplate t) . tspec) (methArg m)
+                           mapM (validateTypeSpec2 (ScopeTemplate t) . tspec) (methArg m)
                            case methRettyp m of 
-                                Just rt -> validateTypeSpec (ScopeTemplate t) rt
+                                Just rt -> do validateTypeSpec (ScopeTemplate t) rt
+                                              validateTypeSpec2 (ScopeTemplate t) rt
                                 Nothing -> return () 
         Just (_,m')  -> do
             assert (methCat m' == methCat m) (pos m) $ 

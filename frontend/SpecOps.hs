@@ -105,6 +105,8 @@ validateSpec s = do
     mapM validateTmTypeDecls2                 (specTemplate s)
     mapM validateTmWires2                     (specTemplate s)
     mapM validateTmGoals2                     (specTemplate s)
+    mapM validateTmRels2                      (specTemplate s)
+    mapM validateTmApply2                     (specTemplate s)
 
     return ()
 
@@ -202,6 +204,8 @@ flatten s = do
         procs = concat $ mapInstTree tmFlattenProcs
         meths = concat $ mapInstTree tmFlattenMeths
         goals = concat $ mapInstTree tmFlattenGoals
+        rels  = concat $ mapInstTree tmFlattenRels
+        apps  = concat $ mapInstTree tmFlattenApps
         main' = Template (pos main)
                          (name main)
                          []              -- tmPort
@@ -216,6 +220,8 @@ flatten s = do
                          procs
                          meths
                          goals
+                         rels
+                         apps
         s'' = s'{specTemplate = [main']}
     validateFlattenedSpec s''
     return $ specSimplify s''

@@ -10,6 +10,7 @@ module ExprOps(mapExpr,
                eval,
                evalInt,
                exprNoSideEffects,
+               exprNoSideEffectsWithPtr,
                applyNoSideEffects,
                exprObjs,
                exprObjsRec,
@@ -231,25 +232,35 @@ isConstExpr (EStruct _ _ (Left fs))  = and $ map (isConstExpr . snd) fs
 isConstExpr (EStruct _ _ (Right fs)) = and $ map isConstExpr fs
 isConstExpr (ENonDet _)              = False
 
--- Side-effect free expression
+
+-- Side-effect free expressions
+
+-- Treat pointer dereference as side-effect-free operation
+exprNoSideEffectsWithPtr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+exprNoSideEffectsWithPtr e = let ?ptrok = True in exprNoSideEffects' e
+
+-- Treat pointer dereference as potentially having side effects
 exprNoSideEffects :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
-exprNoSideEffects (EApply _ m mas)         = applyNoSideEffects m mas
-exprNoSideEffects (EField _ e _)           = exprNoSideEffects e
-exprNoSideEffects (EPField _ e _)          = False -- exprNoSideEffects e
-exprNoSideEffects (EIndex _ a i)           = exprNoSideEffects a && exprNoSideEffects i
-exprNoSideEffects (EUnOp _ Deref _)        = False -- pointer dereference can transition to error state and is therefore considered to have side effects
-exprNoSideEffects (EUnOp _ _ e)            = exprNoSideEffects e
-exprNoSideEffects (EBinOp _ _ e1 e2)       = exprNoSideEffects e1 && exprNoSideEffects e2
-exprNoSideEffects (ETernOp _ e1 e2 e3)     = exprNoSideEffects e1 && exprNoSideEffects e2 && exprNoSideEffects e3
-exprNoSideEffects (ECase _ c cs md)        = exprNoSideEffects c &&
-                                             (and $ map (\(e1,e2) -> exprNoSideEffects e1 && exprNoSideEffects e2) cs) &&
-                                             (and $ map exprNoSideEffects $ maybeToList md)
-exprNoSideEffects (ECond _ cs md)          = (and $ map (\(e1,e2) -> exprNoSideEffects e1 && exprNoSideEffects e2) cs) &&
-                                             (and $ map exprNoSideEffects $ maybeToList md)
-exprNoSideEffects (ESlice _ e (l,h))       = exprNoSideEffects e && exprNoSideEffects l && exprNoSideEffects h
-exprNoSideEffects (EStruct _ _ (Left fs))  = and $ map (exprNoSideEffects . snd) fs 
-exprNoSideEffects (EStruct _ _ (Right fs)) = and $ map exprNoSideEffects fs 
-exprNoSideEffects _ = True
+exprNoSideEffects e = let ?ptrok = False in exprNoSideEffects' e
+
+exprNoSideEffects' :: (?spec::Spec, ?scope::Scope, ?ptrok::Bool) => Expr -> Bool
+exprNoSideEffects' (EApply _ m mas)         = applyNoSideEffects m mas
+exprNoSideEffects' (EField _ e _)           = exprNoSideEffects' e
+exprNoSideEffects' (EPField _ e _)          = if' ?ptrok (exprNoSideEffects' e) False
+exprNoSideEffects' (EIndex _ a i)           = exprNoSideEffects' a && exprNoSideEffects' i
+exprNoSideEffects' (EUnOp _ Deref e)        = if' ?ptrok (exprNoSideEffects' e) False
+exprNoSideEffects' (EUnOp _ _ e)            = exprNoSideEffects' e
+exprNoSideEffects' (EBinOp _ _ e1 e2)       = exprNoSideEffects' e1 && exprNoSideEffects' e2
+exprNoSideEffects' (ETernOp _ e1 e2 e3)     = exprNoSideEffects' e1 && exprNoSideEffects' e2 && exprNoSideEffects' e3
+exprNoSideEffects' (ECase _ c cs md)        = exprNoSideEffects' c &&
+                                              (and $ map (\(e1,e2) -> exprNoSideEffects' e1 && exprNoSideEffects' e2) cs) &&
+                                              (and $ map exprNoSideEffects' $ maybeToList md)
+exprNoSideEffects' (ECond _ cs md)          = (and $ map (\(e1,e2) -> exprNoSideEffects' e1 && exprNoSideEffects' e2) cs) &&
+                                              (and $ map exprNoSideEffects' $ maybeToList md)
+exprNoSideEffects' (ESlice _ e (l,h))       = exprNoSideEffects' e && exprNoSideEffects' l && exprNoSideEffects' h
+exprNoSideEffects' (EStruct _ _ (Left fs))  = and $ map (exprNoSideEffects' . snd) fs 
+exprNoSideEffects' (EStruct _ _ (Right fs)) = and $ map exprNoSideEffects' fs 
+exprNoSideEffects' _                        = True
 
 -- Check that method call is side-effect-free:
 -- The method must be a function, all arguments must be side-effect-free 
@@ -374,7 +385,7 @@ exprScalars e = exprScalars' e (tspec $ typ' e)
 
 exprScalars' :: (?spec::Spec,?scope::Scope) => Expr -> TypeSpec -> [Expr]
 exprScalars' (EStruct _ tn (Right fs)) _                 = concatMap exprScalars         fs
-exprScalars' (EStruct _ tn (Left fs)) _                  = concatMap (exprScalars . snd) fs
+exprScalars' (EStruct _ tn (Left fs))  _                 = concatMap (exprScalars . snd) fs
 exprScalars' e                         (BoolSpec _)      = [e]
 exprScalars' e                         (UIntSpec _ _)    = [e]
 exprScalars' e                         (SIntSpec _ _)    = [e]

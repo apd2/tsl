@@ -7,6 +7,8 @@ module TemplateFlatten(tmFlattenGVars,
                        tmFlattenProcs,
                        tmFlattenMeths,
                        tmFlattenGoals,
+                       tmFlattenRels, 
+                       tmFlattenApps,
                        WireGraph,
                        wireGraph) where
 
@@ -27,6 +29,7 @@ import Process
 import Method
 import ExprOps
 import ExprFlatten
+import Relation
 
 --------------------------------------------------------------------
 -- Flattening individual template components
@@ -80,6 +83,19 @@ tmFlattenGoal :: (?spec::Spec) => IID -> Template -> Goal -> Goal
 tmFlattenGoal iid tm g = g { goalName = itreeFlattenName iid (name g)
                            , goalCond = exprFlatten iid (ScopeTemplate tm) (goalCond g)}
 
+tmFlattenRels :: (?spec::Spec) => IID -> Template -> [Relation]
+tmFlattenRels iid tm = map (tmFlattenRel iid tm) (tmRelation tm)
+
+tmFlattenRel :: (?spec::Spec) => IID -> Template -> Relation -> Relation
+tmFlattenRel iid tm r = r { relName = itreeFlattenName iid (name r)
+                          , relRule = map (exprFlatten iid (ScopeRelation tm r)) (relRule r)}
+
+tmFlattenApps :: (?spec::Spec) => IID -> Template -> [Apply]
+tmFlattenApps iid tm = map (tmFlattenApp iid tm) (tmApply tm)
+
+tmFlattenApp :: (?spec::Spec) => IID -> Template -> Apply -> Apply
+tmFlattenApp iid tm a = a { applyRel = itreeFlattenName iid (applyRel a)
+                          , applyArg = map (exprFlatten iid (ScopeTemplate tm)) (applyArg a)}
 
 --------------------------------------------------------------------
 -- Operations on flattened template

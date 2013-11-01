@@ -1,4 +1,4 @@
-module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst, tmGoal, tmWire, tmInit, tmPrefix), 
+module Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmProcess, tmMethod, tmTypeDecl, tmConst, tmGoal, tmWire, tmInit, tmPrefix, tmRelation, tmApply), 
                 Port(Port,portTemplate), 
                 Instance(Instance, instPort, instTemplate),
                 GVar(GVar,gvarExport, gvarVar),
@@ -22,6 +22,7 @@ import Method
 import Type
 import Expr
 import Statement
+import Relation
 
 -- Template port
 data Port = Port { ppos         :: Pos
@@ -165,7 +166,9 @@ data Template = Template { tpos       :: Pos
                          , tmPrefix   :: [Prefix]
                          , tmProcess  :: [Process]
                          , tmMethod   :: [Method]
-                         , tmGoal     :: [Goal]}
+                         , tmGoal     :: [Goal]
+                         , tmRelation :: [Relation]
+                         , tmApply    :: [Apply]}
 
 instance PP Template where
     pp t = text "template" <+> (pp $ name t) <+> (ppports $ tmPort t) $+$ 
@@ -180,6 +183,8 @@ instance PP Template where
                                ppitems (tmProcess t)  $+$
                                ppitems (tmMethod t)   $+$
                                ppitems (tmGoal t)     $+$
+                               ppitems (tmRelation t) $+$
+                               ppitems (tmApply t)    $+$
            text "endtemplate"
         where ppports [] = text ""
               ppports ports = parens $ hsep $ punctuate comma $ map pp ports
@@ -210,4 +215,6 @@ mergeTemplate tm1 tm2 = Template { tpos       = tpos tm1
                                  , tmPrefix   = tmPrefix tm1 ++ tmPrefix tm2
                                  , tmProcess  = tmProcess tm1 ++ tmProcess tm2
                                  , tmMethod   = tmMethod tm1 ++ tmMethod tm2
-                                 , tmGoal     = tmGoal tm1 ++ tmGoal tm2}
+                                 , tmGoal     = tmGoal tm1 ++ tmGoal tm2
+                                 , tmRelation = tmRelation tm1 ++ tmRelation tm2
+                                 , tmApply    = tmApply tm1 ++ tmApply tm2}

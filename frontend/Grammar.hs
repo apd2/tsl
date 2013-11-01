@@ -36,6 +36,7 @@ import TVar
 import Type
 import Method
 import Const
+import Relation
 
 -- exports: all exported parsers must start with removeTabs to get correct position markers
 litParser         = removeTabs *> ((\(ELit _ w s r v) -> (w,s,r,v)) <$> elit True)
@@ -45,8 +46,9 @@ statementParser   = removeTabs *> statement
 statementsParser  = removeTabs *> statements
 statements1Parser = removeTabs *> ((optional whiteSpace) *> statements1)
 
-reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@"]
+reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@"]
 reservedNames = ["after",
+                 "apply",
                  "prefix",
                  "assert",
                  "assume", 
@@ -80,7 +82,9 @@ reservedNames = ["after",
                  "post", 
                  "procedure", 
                  "process",
+                 "relation",
                  "return",
+                 "rule",
                  "sint",
                  "stop", 
                  "struct",
@@ -229,20 +233,22 @@ template = withPos $ mkTemplate  <$  reserved "template"
                                 <*> option [] (parens $ commaSep $ templateImport) 
                                 <*> ((many $ templateItem <* reservedOp ";") <*  reserved "endtemplate")
 
-data TemplateItem = TDerive        Derive
-                  | TTypeDecl      TypeDecl
-                  | TInstDecl      Instance
-                  | TConstDecl     Const
-                  | TVarDecl       GVar
-                  | TWire          Wire
-                  | TInitBlock     Init
-                  | TPrefix        Template.Prefix
-                  | TProcessDecl   Process
-                  | TMethod        Method
-                  | TGoalDecl      Goal
+data TemplateItem = TDerive      Derive
+                  | TTypeDecl    TypeDecl
+                  | TInstDecl    Instance
+                  | TConstDecl   Const
+                  | TVarDecl     GVar
+                  | TWire        Wire
+                  | TInitBlock   Init
+                  | TPrefix      Template.Prefix
+                  | TProcessDecl Process
+                  | TMethod      Method
+                  | TGoalDecl    Goal
+                  | TRelation    Relation
+                  | TApply       Apply
 
 mkTemplate :: Ident -> [Port] -> [TemplateItem] -> Template
-mkTemplate n ps is = Template nopos n ps drvs consts types vars wires insts inits als procs meths goals
+mkTemplate n ps is = Template nopos n ps drvs consts types vars wires insts inits als procs meths goals rels apps
     where drvs   = mapMaybe (\i -> case i of 
                                         TDerive d -> Just d
                                         _ -> Nothing) is
@@ -276,6 +282,12 @@ mkTemplate n ps is = Template nopos n ps drvs consts types vars wires insts init
           goals  = mapMaybe (\i -> case i of 
                                         TGoalDecl g -> Just g
                                         _ -> Nothing) is
+          rels   = mapMaybe (\i -> case i of
+                                        TRelation r -> Just r
+                                        _ -> Nothing) is
+          apps   = mapMaybe (\i -> case i of
+                                        TApply a -> Just a
+                                        _ -> Nothing) is
  
 
 templateImport = withPos $ Port nopos <$> ident <*> ident
@@ -291,6 +303,8 @@ templateItem =  TDerive      <$> tderive
             <|> TMethod      <$> tmethodDecl
             <|> TGoalDecl    <$> tgoalDecl
             <|> TWire        <$> twire
+            <|> TRelation    <$> trel
+            <|> TApply       <$> tapp
             <?> "declaration"
 
 tderive      = withPos $ Derive nopos <$  reserved "derive" 
@@ -323,6 +337,14 @@ tmethodDecl  = withPos $ Method nopos <$> (option False (True <$ reserved "expor
 tgoalDecl    = withPos $ Goal nopos <$  reserved "goal" 
                                     <*> (ident <* reservedOp "=") 
                                     <*> detexpr
+trel         = withPos $ Relation nopos <$  reserved "relation"
+                                        <*> ident
+                                        <*> (parens $ commaSep rarg)
+                                        <*> (many1 $ reservedOp "|==" *> detexpr)
+tapp         = withPos $ Apply nopos <$  reserved "apply"
+                                     <*> ident
+                                     <*> (parens $ commaSep detexpr)
+
 
 methCateg =  (Function <$ reserved "function")
          <|> (Procedure <$ reserved "procedure")
@@ -334,7 +356,7 @@ arg = withPos $ Arg nopos <$> (option ArgIn (ArgOut <$ reserved "out"))
                               <*> typeSpec 
                               <*> ident
 
-
+rarg = withPos $ RArg nopos <$> typeSpec <*> ident
 
 ----------------------------------------------------------------
 -- Statement
