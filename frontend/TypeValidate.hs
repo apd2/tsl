@@ -29,8 +29,9 @@ validateTypeSpec sc (StructSpec _ fs) = do
     _ <- mapM (validateTypeSpec sc . tspec) fs
     return ()
 
-validateTypeSpec sc (ArraySpec _ t _) = validateTypeSpec sc t
-validateTypeSpec sc (PtrSpec _ t)     = validateTypeSpec sc t
+validateTypeSpec sc (ArraySpec _ t _)  = validateTypeSpec sc t
+validateTypeSpec sc (VarArraySpec _ t) = validateTypeSpec sc t
+validateTypeSpec sc (PtrSpec _ t)      = validateTypeSpec sc t
 
 
 -- * user-defined type names refer to valid types
@@ -49,6 +50,8 @@ validateTypeSpec2 s (ArraySpec _ t l) = do
     assert (isInt l) (pos l)        $ "Array length must be an integer expression"
     assert (evalInt l >= 0) (pos l) $ "Array length must be non-negative"
     validateTypeSpec2 s t
+
+validateTypeSpec2 s (VarArraySpec _ t) = validateTypeSpec2 s t
 
 validateTypeSpec2 s (StructSpec _ fs) = do
     _ <- mapM (validateTypeSpec2 s . tspec) fs

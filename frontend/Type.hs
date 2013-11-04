@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances #-}
 
-module Type(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,UserTypeSpec,TemplateTypeSpec, FlexTypeSpec), 
+module Type(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,VarArraySpec,UserTypeSpec,TemplateTypeSpec, FlexTypeSpec), 
             WithTypeSpec(..),
             TypeDecl(TypeDecl), 
             Enumerator(Enumerator),
@@ -58,6 +58,7 @@ data TypeSpec = BoolSpec         {tpos :: Pos}
               | EnumSpec         {tpos :: Pos, enums  :: [Enumerator]}
               | PtrSpec          {tpos :: Pos, ptype  :: TypeSpec}
               | ArraySpec        {tpos :: Pos, eltype :: TypeSpec, len :: Expr}
+              | VarArraySpec     {tpos :: Pos, eltype :: TypeSpec}
               | UserTypeSpec     {tpos :: Pos, tname  :: StaticSym}
               | TemplateTypeSpec {tpos :: Pos, tmname :: Ident}
               | FlexTypeSpec     {tpos :: Pos}
@@ -71,6 +72,7 @@ instance Eq TypeSpec where
     (==) (EnumSpec _ es1)        (EnumSpec _ es2)        = False
     (==) (PtrSpec _ t1)          (PtrSpec _ t2)          = t1 == t2
     (==) (ArraySpec _ t1 l1)     (ArraySpec _ t2 l2)     = t1 == t2 && l1 == l2
+    (==) (VarArraySpec _ t1)     (VarArraySpec _ t2)     = t1 == t2
     (==) (UserTypeSpec _ n1)     (UserTypeSpec _ n2)     = n1 == n2
     (==) (TemplateTypeSpec _ n1) (TemplateTypeSpec _ n2) = n1 == n2
     (==) _                       _                       = False
@@ -84,6 +86,7 @@ instance PP TypeSpec where
     pp (EnumSpec _ es)        = text "enum" <+> (braces $ nest' $ vcat $ punctuate comma $ map pp es)
     pp (PtrSpec _ t)          = pp t <> char '*'
     pp (ArraySpec _ t l)      = pp t <> (brackets $ pp l)
+    pp (VarArraySpec _ t)     = pp t <> (brackets empty)
     pp (UserTypeSpec _ n)     = pp n
     pp (TemplateTypeSpec _ n) = text "template" <+> pp n
     pp (FlexTypeSpec _)       = text "*"

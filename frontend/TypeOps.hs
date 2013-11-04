@@ -37,6 +37,7 @@ mapTSpec :: (?spec::Spec) => (Scope -> TypeSpec -> TypeSpec) -> Scope -> TypeSpe
 mapTSpec f s (StructSpec p fs)    = f s $ StructSpec p (map (\fl -> Field (pos fl) (mapTSpec f s $ tspec fl) (name fl)) fs)
 mapTSpec f s (PtrSpec p t)        = f s $ PtrSpec p (mapTSpec f s t)
 mapTSpec f s (ArraySpec p t l)    = f s $ ArraySpec p (mapTSpec f s t) l
+mapTSpec f s (VarArraySpec p t)   = f s $ VarArraySpec p (mapTSpec f s t)
 mapTSpec f s t = f s t
 
 -- Map function over expressions in TypeSpec
@@ -69,8 +70,9 @@ isPtr x = case tspec $ typ' x of
 
 isArray :: (?spec::Spec, WithType a) => a -> Bool
 isArray x = case tspec $ typ' x of
-               ArraySpec _ _ _ -> True
-               _               -> False
+               ArraySpec    _ _ _ -> True
+               VarArraySpec _ _   -> True
+               _                  -> False
 
 isStruct :: (?spec::Spec, WithType a) => a -> Bool
 isStruct x = case tspec $ typ' x of
@@ -100,6 +102,7 @@ typeIso x y =
             (PtrSpec _ ptx      , PtrSpec _ pty)      -> typeIso (Type sx ptx) (Type sy pty)
             (ArraySpec _  atx lx, ArraySpec _ aty ly) -> typeIso (Type sx atx) (Type sy aty) &&
                                                          (let ?scope = sx in evalInt lx) == (let ?scope = sy in evalInt ly)
+            (VarArraySpec _ atx , VarArraySpec _ aty) -> typeIso (Type sx atx) (Type sy aty)
             (_                  , _)                  -> False
 
 
@@ -122,6 +125,7 @@ typeMatch x y =
             (PtrSpec _ ptx      , PtrSpec _ pty)      -> typeIso (Type sx ptx) (Type sy pty)
             (ArraySpec _  atx lx, ArraySpec _ aty ly) -> typeMatch (Type sx atx) (Type sy aty) &&
                                                          (let ?scope = sx in evalInt lx) == (let ?scope = sy in evalInt ly)
+            (VarArraySpec _  atx, VarArraySpec _ aty) -> typeMatch (Type sx atx) (Type sy aty)
             (_                  , FlexTypeSpec _)     -> True
             (_                  , _)                  -> False
 
@@ -154,6 +158,7 @@ typeComparable x y =
             (PtrSpec _ ptx      , PtrSpec _ pty)      -> typeIso (Type sx ptx) (Type sy pty)
             (ArraySpec _  atx lx, ArraySpec _ aty ly) -> typeMatch (Type sx atx) (Type sy aty) &&
                                                          (let ?scope = sx in evalInt lx) == (let ?scope = sy in evalInt ly)
+            (VarArraySpec _  atx, VarArraySpec _ aty) -> typeMatch (Type sx atx) (Type sy aty)
             (_                  , _)                  -> False
 
 

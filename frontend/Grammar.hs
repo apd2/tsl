@@ -154,11 +154,11 @@ staticsym = sepBy1 ident (reservedOp "::")
 methname = withPos $ MethodRef nopos <$> sepBy1 ident dot
 
 varDecl = withPos $ Var nopos <$> option False (True <$ reserved "mem")
-                              <*> typeSpec 
+                              <*> typeSpec False
                               <*> ident 
                               <*> optionMaybe (reservedOp "=" *> detexpr)
 
-typeDef = withPos $ TypeDecl nopos <$ reserved "typedef" <*> typeSpec <*> ident
+typeDef = withPos $ TypeDecl nopos <$ reserved "typedef" <*> typeSpec False <*> ident
 
 slice = brackets $ (,) <$> detexpr <*> (colon *> detexpr)
 index = brackets detexpr
@@ -167,18 +167,28 @@ ptrfield = reservedOp "->" *> ident
 
 -- Constant declaration
 constant = withPos $ Const nopos <$  reserved "const" 
-                                     <*> typeSpec 
+                                     <*> typeSpec False
                                      <*> ident 
                                      <*> (reservedOp "=" *> detexpr)
 
-data TypeMod = ModPtr | ModDim Expr
+data TypeMod = ModPtr | ModDim (Maybe Expr)
 
-typeSpec = mkType <$> (withPos $ sintType <|> uintType <|> boolType <|> userType <|> enumType <|> structType) 
-                  <*> (many $ (,) <$> ((ModDim <$> brackets detexpr) <|> (ModPtr <$ reservedOp "*")) <*> getPosition)
+-- Only parse VarArray if rel is true.  Makes sure that VarArray's can only
+-- appear as relation arguments
+typeSpec rel = mkType <$> (withPos $  sintType 
+                                  <|> uintType 
+                                  <|> boolType 
+                                  <|> userType 
+                                  <|> enumType 
+                                  <|> structType) 
+                      <*> (many $ (,) <$> ((ModDim <$> (brackets $ if' rel (optionMaybe detexpr) (Just <$> detexpr))) 
+                                      <|>  (ModPtr <$ reservedOp "*")) 
+                                      <*> getPosition)
 
 mkType :: TypeSpec -> [(TypeMod, SourcePos)] -> TypeSpec
 mkType t [] = t
-mkType t ((ModDim e, p):es) = mkType (ArraySpec (fst $ pos t, p) t e) es
+mkType t ((ModDim Nothing , p):es) = mkType (VarArraySpec (fst $ pos t, p) t) es
+mkType t ((ModDim (Just e), p):es) = mkType (ArraySpec (fst $ pos t, p) t e) es
 mkType t ((ModPtr, p):es)   = mkType (PtrSpec (fst $ pos t, p) t) es
 
 sintType   = SIntSpec     nopos <$  reserved "sint" <*> (fromIntegral <$> angles decimal)
@@ -186,7 +196,7 @@ uintType   = UIntSpec     nopos <$  reserved "uint" <*> (fromIntegral <$> angles
 boolType   = BoolSpec     nopos <$  reserved "bool"
 userType   = UserTypeSpec nopos <$> staticsym
 enumType   = EnumSpec     nopos <$  reserved "enum" <*> (braces $ commaSep1 enum)
-structType = StructSpec   nopos <$  reserved "struct" <*> (braces $ many1 $ withPos $ Field nopos <$> typeSpec <*> (ident <* semi))
+structType = StructSpec   nopos <$  reserved "struct" <*> (braces $ many1 $ withPos $ Field nopos <$> typeSpec False <*> (ident <* semi))
 
 enum = withPos $ Enumerator nopos <$> ident
 
@@ -317,7 +327,7 @@ tvarDecl     = withPos $ GVar nopos <$> (option False (True <$ reserved "export"
                                     <*> varDecl
 twire        = withPos $ Wire nopos <$> (option False (True <$ reserved "export")) 
                                     <*  reserved "wire" 
-                                    <*> typeSpec 
+                                    <*> typeSpec False
                                     <*> ident 
                                     <*> optionMaybe (reservedOp "=" *> detexpr)
 tinitBlock   = withPos $ Init nopos <$ reserved "init" <*> detexpr
@@ -327,7 +337,7 @@ tprocessDecl = withPos $ Process nopos <$  reserved "process"
                                        <*> statement
 tmethodDecl  = withPos $ Method nopos <$> (option False (True <$ reserved "export")) 
                                           <*> methCateg
-                                          <*> ((Nothing <$ reserved "void") <|> (Just <$> typeSpec))
+                                          <*> ((Nothing <$ reserved "void") <|> (Just <$> typeSpec False))
                                           <*> ident
                                           <*> (parens $ commaSep arg)
                                           <*> (option (Left (Nothing, Nothing)) $
@@ -353,10 +363,10 @@ methCateg =  (Function <$ reserved "function")
                                                           <|> Invisible <$ reserved "invisible"))
    
 arg = withPos $ Arg nopos <$> (option ArgIn (ArgOut <$ reserved "out")) 
-                              <*> typeSpec 
+                              <*> typeSpec False
                               <*> ident
 
-rarg = withPos $ RArg nopos <$> typeSpec <*> ident
+rarg = withPos $ RArg nopos <$> typeSpec True <*> ident
 
 ----------------------------------------------------------------
 -- Statement

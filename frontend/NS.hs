@@ -116,6 +116,7 @@ instance (?spec::Spec) => PP Type where
                                        (braces $ nest' $ vcat $ map ((<> semi) . (\f -> pp (Type (scope t) (tspec f)) <+> pp (name f))) fs)
                 PtrSpec _      pt   -> pp (Type (scope t) pt) <> char '*'
                 ArraySpec _    at l -> pp (Type (scope t) at) <> (brackets $ pp l)
+                VarArraySpec _ at   -> pp (Type (scope t) at) <> (brackets $ empty)
                 _                   -> pp $ tspec t
 
 instance (?spec::Spec) => Show Type where
