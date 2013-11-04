@@ -333,14 +333,15 @@ valToIVal (TVal _ (EnumVal n))     = I.EnumVal $ sname n
 mkType :: (?spec::Spec) => Type -> I.Type
 mkType t = 
     case typ' t of
-         Type _ (BoolSpec   _)      -> I.Bool
-         Type _ (SIntSpec   _ w)    -> I.SInt w
-         Type _ (UIntSpec   _ w)    -> I.UInt w
-         Type s (StructSpec _ fs)   -> I.Struct $ map (\(Field _ t' n) -> I.Field (sname n) (mkType (Type s t'))) fs 
-         Type _ (EnumSpec   _ es)   -> I.Enum $ getEnumName $ name $ head es
-         Type s (PtrSpec    _ t')   -> I.Ptr $ mkType $ Type s t'
-         Type s (ArraySpec  _ t' l) -> let ?scope = s in I.Array (mkType $ Type s t') (fromInteger $ evalInt l)
-         Type _ t'                  -> error $ "mkType: " ++ show t'
+         Type _ (BoolSpec     _)      -> I.Bool
+         Type _ (SIntSpec     _ w)    -> I.SInt w
+         Type _ (UIntSpec     _ w)    -> I.UInt w
+         Type s (StructSpec   _ fs)   -> I.Struct $ map (\(Field _ t' n) -> I.Field (sname n) (mkType (Type s t'))) fs 
+         Type _ (EnumSpec     _ es)   -> I.Enum $ getEnumName $ name $ head es
+         Type s (PtrSpec      _ t')   -> I.Ptr $ mkType $ Type s t'
+         Type s (ArraySpec    _ t' l) -> let ?scope = s in I.Array (mkType $ Type s t') (fromInteger $ evalInt l)
+         Type s (VarArraySpec _ t')   -> let ?scope = s in I.VarArray (mkType $ Type s t')
+         Type _ t'                    -> error $ "mkType: " ++ show t'
 
 
 getEnumName :: (?spec::Spec) => Ident -> String

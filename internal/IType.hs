@@ -29,16 +29,18 @@ data Type = Bool
           | Struct   [Field]
           | Ptr      Type
           | Array    Type Int
+          | VarArray Type
           deriving (Eq,Ord)
 
 instance PP Type where
-    pp Bool        = text "bool"
-    pp (SInt i)    = text "sint" <> char '<' <> pp i <> char '>'
-    pp (UInt i)    = text "uint" <> char '<' <> pp i <> char '>'
-    pp (Enum e)    = text e
-    pp (Struct fs) = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
-    pp (Ptr t)     = pp t <> char '*'
-    pp (Array t l) = pp t <> char '[' <> pp l <> char ']'
+    pp Bool         = text "bool"
+    pp (SInt i)     = text "sint" <> char '<' <> pp i <> char '>'
+    pp (UInt i)     = text "uint" <> char '<' <> pp i <> char '>'
+    pp (Enum e)     = text e
+    pp (Struct fs)  = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
+    pp (Ptr t)      = pp t <> char '*'
+    pp (Array t l)  = pp t <> char '[' <> pp l <> char ']'
+    pp (VarArray t) = pp t <> char '[' <> char ']'
 
 instance Show Type where
     show = render . pp

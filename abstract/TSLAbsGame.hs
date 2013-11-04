@@ -1,7 +1,6 @@
 {-# LANGUAGE ImplicitParams, ScopedTypeVariables, RecordWildCards #-}
 
 module TSLAbsGame(tslAbsGame, 
-                  bexprToFormula, 
                   tslUpdateAbsVarAST,
                   tslStateLabelConstraintAbs,
                   tslInconsistent) where

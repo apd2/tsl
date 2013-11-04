@@ -29,6 +29,7 @@ import CFA
 import IVar
 import IType
 import IExpr
+import IRelation
 import TranSpec
 import PP
 import PID
@@ -47,6 +48,7 @@ data Spec = Spec {
     specProc   :: [Process],                   -- processes
     specCAct   :: CFA,                         -- controllable transitions
     specUpds   :: M.Map String [(Expr, Expr)], -- variable update functions specified explicitly
+    specRels   :: [Relation],
     specTran   :: TranSpec                     -- info required for variable update
                                                -- computation
 }

@@ -29,6 +29,7 @@ import Expr
 import ExprInline
 import Template
 import TemplateFlatten
+import RelationInline
 import TVar
 import Method
 import Process
@@ -61,13 +62,14 @@ spec2Internal s =
         vars                = mkVars
         (tvar, tenum)       = mkTagVarDecl
         fairreg = mkFair spec'
-        ((specWire, specPrefix, inittran, goals), (_, extratmvars)) = let ?ispec = spec' in 
+        ((specWire, specPrefix, inittran, goals, specRels), (_, extratmvars)) = let ?ispec = spec' in 
             runState (do wire      <- mkWires
                          prefix    <- mkPrefix
                          inittr    <- mkInit
                          usergoals <- mapM mkGoal $ tmGoal tmMain
                          maggoal   <- mkMagicGoal
-                         return (wire, prefix, inittr, maggoal:usergoals))
+                         rel       <- mapM (relToIRel s) $ tmRelation tmMain
+                         return (wire, prefix, inittr, maggoal:usergoals, rel))
                      (0,[])
         extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) (NSID Nothing Nothing) v) extratmvars
         (specProc, tmppvs) = let ?ispec = spec' in unzip $ (map procToCProc $ tmProcess tmMain) 
