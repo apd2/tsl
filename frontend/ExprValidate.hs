@@ -76,6 +76,14 @@ validateExpr' (EIndex _ a i) = do
     assert (isInt i) (pos i) $ show i ++ " is not of integral type"
     assert (isArray a) (pos i) $ show a ++ " is not an array"
 
+validateExpr' (ERange _ a fi ti) = do
+    validateExpr' a
+    validateExpr' fi
+    validateExpr' ti
+    assert (isInt fi) (pos fi)  $ show fi ++ " is not of integral type"
+    assert (isInt ti) (pos ti)  $ show ti ++ " is not of integral type"
+    assert (isArray a) (pos fi) $ show a ++ " is not an array"
+
 validateExpr' (EUnOp p UMinus e) = do
     validateExpr' e
     assert (isInt e) p $ "Unary minus applied to expression " ++ show e ++ " of non-integral type"

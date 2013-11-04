@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 
-module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,EAtLab,ERel,ENonDet),
+module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,ERange,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,EAtLab,ERel,ENonDet),
             ConstExpr, 
             LExpr,
             Slice,
@@ -50,6 +50,7 @@ data Expr = ETerm   {epos::Pos, ssym::StaticSym}
           | EField  {epos::Pos, struct::Expr, field::Ident}
           | EPField {epos::Pos, struct::Expr, field::Ident}
           | EIndex  {epos::Pos, arr::Expr, idx::Expr}
+          | ERange  {epos::Pos, arr::Expr, ifrom::Expr, ito::Expr}
           | EUnOp   {epos::Pos, uop::UOp, arg1::Expr}
           | EBinOp  {epos::Pos, bop::BOp, arg1::Expr, arg2::Expr}
           | ETernOp {epos::Pos, arg1::Expr, arg2::Expr, arg3::Expr}
@@ -68,6 +69,7 @@ instance Eq Expr where
    (==) (EApply _ m1 as1)    (EApply _ m2 as2)    = m1 == m2 && as1 == as2
    (==) (EField _ e1 f1)     (EField _ e2 f2)     = e1 == e2 && f1 == f2
    (==) (EIndex _ a1 i1)     (EIndex _ a2 i2)     = a1 == a2 && i1 == i2
+   (==) (ERange _ a1 f1 t1)  (ERange _ a2 f2 t2)  = a1 == a2 && f1 == f2 && t1 == t2
    (==) (EUnOp _ o1 e1)      (EUnOp _ o2 e2)      = o1 == o2 && e1 == e2
    (==) (EBinOp _ o1 x1 y1)  (EBinOp _ o2 x2 y2)  = o1 == o2 && x1 == x2 && y1 == y2
    (==) (ETernOp _ x1 y1 z1) (ETernOp _ x2 y2 z2) = x1 == x2 && y1 == y2 && z1 == z2
@@ -102,6 +104,7 @@ instance PP Expr where
     pp (EBool _ False)           = text "false"
     pp (EApply _ m args)         = pp m <+> (parens $ hsep $ punctuate comma $ map pp args)
     pp (EIndex _ e i)            = pp e <> char '[' <> pp i <> char ']'
+    pp (ERange _ e f t)          = pp e <> char '[' <> pp f <> text ".." <> pp t <> char ']'
     pp (EField _ e f)            = pp e <> char '.' <> pp f
     pp (EPField _ e f)           = pp e <> text "->" <> pp f
     pp (EUnOp _ op e)            = parens $ pp op <> pp e

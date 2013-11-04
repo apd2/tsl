@@ -51,6 +51,7 @@ mapExpr f s e =
          EField p st n          -> EField  p (mapExpr f s st) n
          EPField p st n         -> EPField p (mapExpr f s st) n
          EIndex p arr i         -> EIndex  p (mapExpr f s arr) (mapExpr f s i)
+         ERange p arr fi ti     -> ERange  p (mapExpr f s arr) (mapExpr f s fi) (mapExpr f s ti)
          EUnOp p op a           -> EUnOp   p op (mapExpr f s a)
          EBinOp p op a1 a2      -> EBinOp  p op (mapExpr f s a1) (mapExpr f s a2)
          ETernOp p a1 a2 a3     -> ETernOp p (mapExpr f s a1) (mapExpr f s a2) (mapExpr f s a3)
@@ -68,6 +69,7 @@ exprCallees s (EApply  p mref mas)      = (p,getMethod s mref):(concatMap (exprC
 exprCallees s (EField  _ e _)           = exprCallees s e
 exprCallees s (EPField _ e _)           = exprCallees s e
 exprCallees s (EIndex  _ e idx)         = exprCallees s e ++ exprCallees s idx
+exprCallees s (ERange  _ e fi ti)       = concatMap (exprCallees s) [e, fi, ti]
 exprCallees s (EUnOp   _ _ e)           = exprCallees s e
 exprCallees s (EBinOp  _ _ e1 e2)       = exprCallees s e1 ++ exprCallees s e2
 exprCallees s (ETernOp _ e1 e2 e3)      = exprCallees s e1 ++ exprCallees s e2 ++ exprCallees s e3
@@ -166,6 +168,7 @@ isLExpr (EField  _       e f) = isLExpr e &&
                                      _            -> True
 isLExpr (EPField _       e _) = True
 isLExpr (EIndex  _       e _) = isLExpr e
+isLExpr (ERange  _ _  _ _)    = False -- TODO: support range expressions in LHS if needed
 isLExpr (ESlice  _       e _) = isLExpr e
 isLExpr (EUnOp   _ Deref e  ) = True
 isLExpr _                     = False
@@ -186,6 +189,7 @@ isMemExpr (EField  _       e f) = isMemExpr e &&
                                        _            -> True
 isMemExpr (EPField _       e _) = True
 isMemExpr (EIndex  _       e _) = isMemExpr e
+isMemExpr (ERange  _     e _ _) = isMemExpr e
 isMemExpr (ESlice  _       e _) = isMemExpr e
 isMemExpr (EUnOp   _ Deref e  ) = True
 isMemExpr _                     = False
@@ -201,6 +205,7 @@ isLocalLHS (ETerm _ n)         = case getTerm ?scope n of
 isLocalLHS (EField  _ e f)     = isLocalLHS e
 isLocalLHS (EPField _ e _)     = False
 isLocalLHS (EIndex  _ e _)     = isLocalLHS e
+isLocalLHS (ERange  _ e _ _)   = isLocalLHS e
 isLocalLHS (ESlice  _ e _)     = isLocalLHS e
 isLocalLHS (EUnOp   _ Deref e) = False
 isLocalLHS _                   = False
@@ -218,6 +223,7 @@ isConstExpr (EApply _ _ _)           = False -- TODO: constant functions
 isConstExpr (EField _ s _)           = isConstExpr s
 isConstExpr (EPField _ _ _)          = False
 isConstExpr (EIndex _ a i)           = False --isConstExpr a && isConstExpr i
+isConstExpr (ERange _ a _ _)         = False
 isConstExpr (EUnOp _ _ e)            = isConstExpr e
 isConstExpr (EBinOp _ _ e1 e2)       = isConstExpr e1 && isConstExpr e2
 isConstExpr (ETernOp _ e1 e2 e3)     = isConstExpr e1 && isConstExpr e2 && isConstExpr e3
@@ -252,6 +258,7 @@ exprNoSideEffects' (EApply _ m mas)         = applyNoSideEffects m mas
 exprNoSideEffects' (EField _ e _)           = exprNoSideEffects' e
 exprNoSideEffects' (EPField _ e _)          = if' ?ptrok (exprNoSideEffects' e) False
 exprNoSideEffects' (EIndex _ a i)           = exprNoSideEffects' a && exprNoSideEffects' i
+exprNoSideEffects' (ERange _ a fi ti)       = all exprNoSideEffects' [a,fi,ti]
 exprNoSideEffects' (EUnOp _ Deref e)        = if' ?ptrok (exprNoSideEffects' e) False
 exprNoSideEffects' (EUnOp _ _ e)            = exprNoSideEffects' e
 exprNoSideEffects' (EBinOp _ _ e1 e2)       = exprNoSideEffects' e1 && exprNoSideEffects' e2
@@ -294,6 +301,7 @@ isPureExpr (EApply  _ mr as)        = False -- TODO: check for pure functions
 isPureExpr (EField  _ s _)          = isPureExpr s
 isPureExpr (EPField _ _ _)          = False
 isPureExpr (EIndex  _ a i)          = isPureExpr a && isPureExpr i
+isPureExpr (ERange  _ a fi ti)      = all isPureExpr [a,fi,ti]
 isPureExpr (EUnOp   _ Deref _)      = False
 isPureExpr (EUnOp   _ _ a)          = isPureExpr a
 isPureExpr (EBinOp  _ _ a1 a2)      = isPureExpr a1 && isPureExpr a2
@@ -320,6 +328,7 @@ isInstExpr (EApply _ m mas)         = let (_,meth) = getMethod ?scope m
 isInstExpr (EField _ s _)           = isInstExpr s
 isInstExpr (EPField _ s _)          = isInstExpr s
 isInstExpr (EIndex _ a i)           = isInstExpr a && isInstExpr i
+isInstExpr (ERange _ a fi ti)       = all isInstExpr [a,fi,ti]
 isInstExpr (EUnOp _ _ e)            = isInstExpr e
 isInstExpr (EBinOp _ _ e1 e2)       = isInstExpr e1 && isInstExpr e2
 isInstExpr (ETernOp _ e1 e2 e3)     = isInstExpr e1 && (isInstExpr e2 || isInstExpr e3)
@@ -342,6 +351,7 @@ exprObjs (EField  _ e f)          = (objGet (ObjType $ typ e) f) :
                                     exprObjs e
 exprObjs (EPField _ e f)          = exprObjs e
 exprObjs (EIndex  _ a i)          = exprObjs a ++ exprObjs i
+exprObjs (ERange  _ a fi ti)      = concatMap exprObjs [a,fi,ti]
 exprObjs (EUnOp   _ op a1)        = exprObjs a1
 exprObjs (EBinOp  _ op a1 a2)     = exprObjs a1 ++ exprObjs a2
 exprObjs (ETernOp _ a1 a2 a3)     = exprObjs a1 ++ exprObjs a2 ++ exprObjs a3
@@ -389,7 +399,12 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
     typ (EApply  _ mref _)      = Type (ScopeTemplate t) $ fromJust $ methRettyp m where (t,m) = getMethod ?scope mref
     typ (EField  _ e f)         = typ $ objGet (ObjType $ typ e) f 
     typ (EPField _ e f)         = typ $ objGet (ObjType $ Type s t) f where Type s (PtrSpec _ t) = typ' e
-    typ (EIndex  _ e i)         = Type s t where Type s (ArraySpec _ t _) = typ' e
+    typ (EIndex  _ e i)         = case typ' e of
+                                       Type s (ArraySpec _ t _)  -> Type s t
+                                       Type s (VarArraySpec _ t) -> Type s t
+    typ (ERange  p e _ _)       = case typ' e of
+                                       Type s (ArraySpec _ t _)  -> Type s $ VarArraySpec p t
+                                       Type s (VarArraySpec _ t) -> Type s $ VarArraySpec p t
     typ (EUnOp   p op e) | isArithUOp op = case arithUOpType op (s,w) of
                                                 (True, w')  -> Type ?scope (SIntSpec p w')
                                                 (False, w') -> Type ?scope (UIntSpec p w')
