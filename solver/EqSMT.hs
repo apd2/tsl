@@ -4,6 +4,8 @@ module EqSMT(eqTheorySolver) where
 
 import Data.List
 import qualified Data.Set as S
+import Control.Monad.State.Lazy
+import Control.Monad.ST
 
 import qualified DecisionProcedure as DP
 import qualified Var               as DP
@@ -75,7 +77,7 @@ eqUnsatCore spec ps =
 --          then Just (S.toList core)
 --          else Nothing
 
-eqEquant :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> [(AbsVar,[Bool])] -> [String] -> PDB pdb s u (C.DDNode s u)
+eqEquant :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> [(AbsVar,[Bool])] -> [String] -> StateT pdb (ST s) (C.DDNode s u)
 eqEquant spec m ops avs vs = do
     let ?spec = spec
         ?m    = m
@@ -88,7 +90,7 @@ eqEquant spec m ops avs vs = do
     H.compileBDD m ops (avarGroupTag . bavarAVar) (compileFormula $ dnfToForm dnf)
    
 
-eqEquantTmp :: Spec -> C.STDdManager s u -> [(AbsVar,[Bool])] -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+eqEquantTmp :: Spec -> C.STDdManager s u -> [(AbsVar,[Bool])] -> PVarOps pdb s u -> StateT pdb (ST s) (C.DDNode s u)
 eqEquantTmp spec m avs ops = 
     let ?spec = spec
     in eqEquant spec m ops avs
