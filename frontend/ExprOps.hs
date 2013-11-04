@@ -7,6 +7,7 @@ module ExprOps(mapExpr,
                isLocalLHS,
                isConstExpr,
                isInstExpr,
+               isPureExpr,
                eval,
                evalInt,
                exprNoSideEffects,
@@ -276,6 +277,35 @@ applyNoSideEffects mref mas =  (all isLocalLHS $ catMaybes oargs)
     where m       = snd $ getMethod ?scope mref
           oidx    = findIndices ((== ArgOut) . argDir) (methArg m)
           oargs   = map (mas !!) oidx
+
+-- True if expression is pure, i.e., does not depend on any global variables 
+-- or wires.  A pure expression can depend on variables and arguments declared
+-- in local scope.
+isPureExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+isPureExpr (ETerm   _ t)            = (\o -> (not $ isObjMutable o) ||
+                                             case o of
+                                                  ObjArg _ _  -> True
+                                                  ObjVar  _ _ -> True
+                                                  _           -> False)
+                                      $ getTerm ?scope t
+isPureExpr (ELit    _ _ _ _ _)      = True
+isPureExpr (EBool   _ _)            = True
+isPureExpr (EApply  _ mr as)        = False -- TODO: check for pure functions
+isPureExpr (EField  _ s _)          = isPureExpr s
+isPureExpr (EPField _ _ _)          = False
+isPureExpr (EIndex  _ a i)          = isPureExpr a && isPureExpr i
+isPureExpr (EUnOp   _ Deref _)      = False
+isPureExpr (EUnOp   _ _ a)          = isPureExpr a
+isPureExpr (EBinOp  _ _ a1 a2)      = isPureExpr a1 && isPureExpr a2
+isPureExpr (ETernOp _ a1 a2 a3)     = all isPureExpr [a1,a2,a3]
+isPureExpr (ECase   _ c cs md)      = all isPureExpr $ c : map fst cs ++ map snd cs ++ maybeToList md
+isPureExpr (ECond   _ cs md)        = all isPureExpr $ map fst cs ++ map snd cs ++ maybeToList md
+isPureExpr (ESlice  _ e (l,h))      = all isPureExpr [e,l,h]
+isPureExpr (EStruct _ _ (Left fs))  = all isPureExpr $ map snd fs
+isPureExpr (EStruct _ _ (Right fs)) = all isPureExpr fs
+isPureExpr (EAtLab  _ _)            = False
+isPureExpr (ERel    _ _ as)         = all isPureExpr as
+isPureExpr (ENonDet _)              = False
 
 -- True if expression _can_ terminate instantaneously 
 -- (but is not necessarily guaranteed to always do so)

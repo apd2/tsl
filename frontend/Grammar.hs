@@ -453,8 +453,7 @@ detterm' = withPos $
         <|> econd   False)
 
 relterm' = withPos $
-          ( elabel
-        <|> erel
+          ( erel
         <|> estruct False
         <|> etern   False
         <|> eapply  False

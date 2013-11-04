@@ -14,7 +14,7 @@ module NS(Scope(..),
           lookupGoal    , checkGoal    , getGoal,
           lookupWire    , checkWire    , getWire,
           lookupRelation, checkRelation, getRelation,
-          Obj(..), objLookup, objGet,
+          Obj(..), objLookup, objGet, isObjMutable,
           specNamespace) where
 
 import Control.Monad.Error
@@ -227,6 +227,25 @@ instance (?spec::Spec) => WithType Obj where
 instance (?spec::Spec) => WithTypeSpec Obj where
     tspec = tspec . typ
 
+-- True if the value of the object can change at run time
+isObjMutable :: Obj -> Bool
+isObjMutable ObjSpec            = False
+isObjMutable (ObjTemplate _)    = False
+isObjMutable (ObjPort _ _)      = False
+isObjMutable (ObjInstance _ _)  = False
+isObjMutable (ObjProcess _ _)   = False
+isObjMutable (ObjMethod _ _)    = False
+isObjMutable (ObjVar _ _)       = True
+isObjMutable (ObjGVar _ _)      = True
+isObjMutable (ObjWire _ _)      = True
+isObjMutable (ObjArg _ _)       = True
+isObjMutable (ObjRArg _ _)      = False
+isObjMutable (ObjType _)        = False
+isObjMutable (ObjTypeDecl _ _)  = False
+isObjMutable (ObjConst _ _)     = False
+isObjMutable (ObjEnum _ _)      = False
+isObjMutable (ObjGoal _ _)      = False
+isObjMutable (ObjRelation _ _)  = False
 
 objLookup :: (?spec::Spec) => Obj -> Ident -> Maybe Obj
 objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c,e]

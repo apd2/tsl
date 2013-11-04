@@ -34,8 +34,9 @@ validateRelation tm r@Relation{..} = do
     -- validate rule expressions
     _ <- mapM (validateExpr (ScopeRelation tm r)) relRule
     _ <- mapM (\rl -> do let ?scope = ScopeRelation tm r 
-                         assert (isBool rl) (pos rl) "Relation interpretation must be a boolean expression"
-                         assert (exprNoSideEffectsWithPtr rl) (pos rl) "Relation interpretation must be a side-effect-free expression"
+                         assert (isBool rl)            (pos rl) "Relation interpretation must be a boolean expression"
+                         assert (exprNoSideEffects rl) (pos rl) "Relation interpretation must be a side-effect-free expression"
+                         assert (isPureExpr rl)        (pos rl) "Relation interpretation must be a pure expression"
                          return ()) relRule
     return ()
 
