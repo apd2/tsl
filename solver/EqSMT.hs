@@ -49,12 +49,12 @@ eqTheorySolver spec m = TheorySolver { unsatCoreState      = eqUnsatCore        
 --predVars spec (PAtom _ t1 t2) = let ?spec = spec
 --                                in S.toList $ S.fromList $ map (\v -> (varName v, varCat v)) $ termVar t1 ++ termVar t2
 
-eqCheckSat :: Spec -> [(AbsVar,[Bool])] -> Maybe Bool
-eqCheckSat spec ps = 
-    let ?spec = spec
-    in if DP.dpSAT (DP.dpContext::EUF) (DP.DNF [map mkALit ps])
-          then Just True
-          else Just False
+--eqCheckSat :: Spec -> [(AbsVar,[Bool])] -> Maybe Bool
+--eqCheckSat spec ps = 
+--    let ?spec = spec
+--    in if DP.dpSAT (DP.dpContext::EUF) (DP.DNF [map mkALit ps])
+--          then Just True
+--          else Just False
 
 eqUnsatCore :: Spec -> [(AbsVar,[Bool])] -> Maybe [(AbsVar,[Bool])]
 eqUnsatCore spec ps = 
@@ -63,7 +63,8 @@ eqUnsatCore spec ps =
         Just (Right _)   -> Nothing
         Nothing          -> error $ "eqUnsatCore: could not solve instance: " ++ show forms
     where solver = newSMTLib2Solver spec z3Config
-          forms  = map (\(av,b) -> avarAsnToFormula av (boolArrToBitsBe b)) ps
+          forms  = map (\(av,b) -> avarAsnToFormula av (boolArrToBitsBe b)) 
+                   $ filter (not . avarIsUserPred . fst) ps
 
 --    let res = eqCheckSat spec ps
 --        core = foldl' (\pset p -> if eqCheckSat spec (S.toList $ S.delete p pset) == Just False
@@ -79,7 +80,7 @@ eqEquant spec m ops avs vs = do
     let ?spec = spec
         ?m    = m
         ?ops  = ops
-    let dnf0 = DP.DNF [map mkALit avs]
+    let dnf0 = DP.DNF [map mkALit $ filter (not . avarIsUserPred . fst) avs]
         vs'  = S.toList $ S.fromList vs
         qvs  = map mkVar vs'
         dnf  = {-trace ("eqEquant " ++ show dnf0 ++ " qvars: " ++ show qvs) $-} DP.dpEQuantVars (DP.dpContext::EUF) dnf0 qvs

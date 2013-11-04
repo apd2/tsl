@@ -7,6 +7,7 @@ module Predicate(PVarOps,
                  AbsVar(..),
                  avarWidth,
                  avarIsPred,
+                 avarIsUserPred,
                  avarIsEnum,
                  avarCategory,
                  avarVar,
@@ -91,6 +92,10 @@ avarCategory (AVarInt  t) = termCategory t
 avarIsPred :: AbsVar -> Bool
 avarIsPred (AVarPred _) = True
 avarIsPred _            = False
+
+avarIsUserPred :: AbsVar -> Bool
+avarIsUserPred (AVarPred (Predicate (PUserRel _) _)) = True
+avarIsUserPred _                                     = False
 
 avarIsEnum :: AbsVar -> Bool
 avarIsEnum (AVarEnum _) = True
