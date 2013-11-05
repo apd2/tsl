@@ -232,18 +232,13 @@ exprToIExpr' e _                            = error $ "exprToIExpr' " ++ show e
 
 -- postprocessing
 exprExpandLabels :: I.Spec -> I.Expr -> I.Expr
-exprExpandLabels spec e@(I.EVar n)          | head n == '@' = 
+exprExpandLabels spec e = I.mapExpr (exprExpandLabels' spec) e
+
+exprExpandLabels' :: I.Spec -> I.Expr -> I.Expr
+exprExpandLabels' spec (I.EVar n) | head n == '@' = 
     I.disj 
     $ map (\(pid, p) -> I.disj 
                         $ map (\loc -> mkPCEq (I.procCFA p) pid (mkPC pid loc)) 
                         $ I.cfaFindLabel (I.procCFA p) (tail n))
           $ I.specAllProcs spec
-
-                                            | otherwise     = e
-exprExpandLabels spec e@(I.EConst _)        = e
-exprExpandLabels spec   (I.EField e f)      = I.EField (exprExpandLabels spec e) f
-exprExpandLabels spec   (I.EIndex a i)      = I.EIndex (exprExpandLabels spec a) (exprExpandLabels spec i)
-exprExpandLabels spec   (I.EUnOp op e)      = I.EUnOp op $ exprExpandLabels spec e
-exprExpandLabels spec   (I.EBinOp op e1 e2) = I.EBinOp op (exprExpandLabels spec e1) (exprExpandLabels spec e2)
-exprExpandLabels spec   (I.ESlice e (l,h))  = I.ESlice (exprExpandLabels spec e) (l, h)
-exprExpandLabels spec   (I.ERel r es)       = I.ERel r $ map (exprExpandLabels spec) es
+exprExpandLabels' _    e                          = e

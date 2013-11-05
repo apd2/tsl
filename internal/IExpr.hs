@@ -26,7 +26,8 @@ module IExpr(LVal(..),
              evalConstExpr,
              evalLExpr,
              isMemExpr,
-             exprPtrSubexpr) where
+             exprPtrSubexpr,
+             mapExpr) where
 
 import Data.Maybe
 import Data.List
@@ -341,3 +342,14 @@ isMemExpr (EField s _) = isMemExpr s
 isMemExpr (EIndex a _) = isMemExpr a
 isMemExpr (ESlice e _) = isMemExpr e
 isMemExpr _            = False
+
+mapExpr :: (Expr -> Expr) -> Expr -> Expr
+mapExpr f e0 = case f e0 of
+                    e@(EVar _)      -> e
+                    e@(EConst _)    -> e
+                    EField e n      -> EField (mapExpr f e) n
+                    EIndex a i      -> EIndex (mapExpr f a) (mapExpr f i)
+                    EUnOp op e      -> EUnOp op (mapExpr f e)
+                    EBinOp op e1 e2 -> EBinOp op (mapExpr f e1) (mapExpr f e2)
+                    ESlice e s      -> ESlice (mapExpr f e) s
+                    ERel n as       -> ERel n $ map (mapExpr f) as
