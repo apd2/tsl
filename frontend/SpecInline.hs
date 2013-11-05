@@ -68,7 +68,7 @@ spec2Internal s =
                          inittr    <- mkInit
                          usergoals <- mapM mkGoal $ tmGoal tmMain
                          maggoal   <- mkMagicGoal
-                         rel       <- mapM (relToIRel s) $ tmRelation tmMain
+                         rel       <- mapM relToIRel $ tmRelation tmMain
                          return (wire, prefix, inittr, maggoal:usergoals, rel))
                      (0,[])
         extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) (NSID Nothing Nothing) v) extratmvars
