@@ -79,8 +79,8 @@ spec2Internal s =
         specTran           = error "specTran undefined"
         specUpds           = M.empty -- mkUpds spec'
         spec0              = I.Spec {..}
-        spec               = I.specMapCFA (cfaExpandLabels spec0) spec0
-        spec'              = I.specMapCFA (cfaAddNullTypes spec) spec
+        spec               = I.specMapCFA (\cfa -> I.cfaMapExpr cfa $ exprExpandLabels spec) spec0
+        spec'              = I.specMapCFA (\cfa -> I.cfaMapStat cfa $ statAddNullTypes spec) spec
 
         -- Controllable transitions
         (ctran, cvars)     = mkCTran 
@@ -106,19 +106,6 @@ spec2Internal s =
                                         }} in
        {-I.cfaTraceFiles (zip (map (("tr" ++) . show) [0..]) $ map I.tranCFA $ (I.tsUTran $ I.specTran res) ++ (I.tsCTran $ I.specTran res)) $-} res
       
--- Add types to NullVal expressions introduced by cfaAddNullPtrTrans
-cfaAddNullTypes :: I.Spec -> I.CFA -> I.CFA
-cfaAddNullTypes spec cfa = G.emap (\l -> case l of 
-                                              I.TranStat st -> I.TranStat $ statAddNullTypes spec st
-                                              _             -> l) cfa
-
--- Replace labels with conditions over $pc variables
-cfaExpandLabels :: I.Spec -> I.CFA -> I.CFA
-cfaExpandLabels spec cfa = G.emap (\l -> case l of 
-                                              I.TranStat st -> I.TranStat $ statExpandLabels spec st
-                                              _             -> l) cfa
-
-
 ------------------------------------------------------------------------------
 -- Preprocess all statements and expressions before inlining.  
 -- In the preprocessed spec:

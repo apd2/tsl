@@ -36,6 +36,8 @@ module CFA(Statement(..),
            cfaPruneUnreachable,
            cfaReachInst,
            cfaPrune,
+           cfaMapStat,
+           cfaMapExpr,
            cfaTrace,
            cfaTraceFile,
            cfaTraceFileMany,
@@ -53,12 +55,9 @@ import Text.PrettyPrint
 
 import Name
 import PP
-import Ops
 import Util hiding (name)
 import TSLUtil
 import IExpr
-import IType
-import {-# SOURCE #-} ISpec
 
 -- Frontend imports
 import qualified NS        as F
@@ -314,6 +313,16 @@ cfaReachInst' cfa found frontier = if S.null frontier'
 cfaPrune :: CFA -> S.Set Loc -> CFA
 cfaPrune cfa locs = foldl' (\g l -> if S.member l locs then g else G.delNode l g) cfa (G.nodes cfa)
 
+
+cfaMapStat :: CFA -> (Statement -> Statement) -> CFA
+cfaMapStat cfa f = G.emap (\l -> case l of 
+                                      TranStat st -> TranStat $ f st
+                                      _           -> l) cfa
+
+cfaMapExpr :: CFA -> (Expr -> Expr) -> CFA
+cfaMapExpr cfa f = cfaMapStat cfa f'
+    where f' (SAssume e)   = SAssume $ f e
+          f' (SAssign l r) = SAssign (f l) (f r)
 
 -- Split location into 2, one containing all outgoing edges and one containing
 -- all incoming edges of the original location

@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
-module RelationInline(relToIRel) where
+module RelationInline(relToIRel,
+                      applyToIApply) where
 
 import qualified Data.Map as M
 import Control.Monad.State
@@ -10,7 +11,6 @@ import RelationOps
 import Inline
 import Statement
 import Expr
-import Ops
 import Spec
 import ExprInline
 import StatementInline
@@ -18,9 +18,7 @@ import NS
 import Name
 import Pos
 import qualified IRelation as I
-import qualified IVar      as I
 import qualified IExpr     as I
-import qualified ISpec     as I
 import qualified CFA       as I
 
 relToIRel :: (?spec::Spec) => Relation -> NameGen I.Relation 
@@ -49,5 +47,17 @@ relToIRel rel = do
     return $ I.Relation {relName = sname rel,..}
 
 
---applyToIApply :: (?spec::Spec) => Apply -> I.Apply
---applyToIApply 
+applyToIApply :: (?spec::Spec) => Apply -> [I.Expr]
+applyToIApply Apply{..} = map aargToIExpr applyArg
+
+aargToIExpr :: (?spec::Spec) => Expr -> I.Expr
+aargToIExpr e = evalState (exprToIExprDet e) ctx
+    -- no simplification should be required
+    where ctx = CFACtx { ctxEPID    = Nothing
+                       , ctxStack   = [(ScopeTemplate tmMain, error $ "return from apply argument", Nothing, M.empty)]
+                       , ctxCFA     = I.newCFA (ScopeTemplate tmMain) (SSeq nopos Nothing []) I.true
+                       , ctxBrkLocs = error "break outside a loop"
+                       , ctxGNMap   = globalNMap
+                       , ctxLastVar = 0
+                       , ctxVar     = []
+                       , ctxLabels  = []}

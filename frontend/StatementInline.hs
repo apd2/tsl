@@ -2,7 +2,6 @@
 
 module StatementInline(statSimplify, 
                        statAddNullTypes,
-                       statExpandLabels,
                        procStatToCFA) where
 
 import Control.Monad
@@ -402,10 +401,6 @@ statAddNullTypes :: I.Spec -> I.Statement -> I.Statement
 statAddNullTypes spec (I.SAssume (I.EBinOp Eq e (I.EConst (I.NullVal _)))) = let ?spec = spec in
                                                                              I.SAssume (I.EBinOp Eq e (I.EConst $ I.NullVal $ I.typ e))
 statAddNullTypes _    s = s
-
-statExpandLabels :: I.Spec -> I.Statement -> I.Statement
-statExpandLabels spec (I.SAssume e)   = I.SAssume $ exprExpandLabels spec e
-statExpandLabels spec (I.SAssign l r) = I.SAssign l $ exprExpandLabels spec r
 
 ----------------------------------------------------------
 -- Top-level function: convert process statement to CFA

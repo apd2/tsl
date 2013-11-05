@@ -341,5 +341,3 @@ isMemExpr (EField s _) = isMemExpr s
 isMemExpr (EIndex a _) = isMemExpr a
 isMemExpr (ESlice e _) = isMemExpr e
 isMemExpr _            = False
-
-
