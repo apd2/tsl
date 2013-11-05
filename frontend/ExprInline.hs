@@ -5,7 +5,8 @@ module ExprInline(NameGen,
                   exprSimplifyAsn,
                   exprToIExprDet,
                   exprToIExpr,
-                  exprToIExprs) where
+                  exprToIExprs,
+                  exprExpandLabels) where
 
 import Data.List
 import Data.Maybe
@@ -138,15 +139,15 @@ exprFlattenStruct' _ e                                       = e
 -- Convert (simplified) expressions to internal format
 ----------------------------------------------------------------------
 
-exprToIExprDet :: (?spec::Spec, ?ispec::I.Spec) => Expr -> State CFACtx I.Expr
+exprToIExprDet :: (?spec::Spec) => Expr -> State CFACtx I.Expr
 exprToIExprDet e = exprToIExpr e $ error "exprToIExprDet applied to non-deterministic expression"
 
-exprToIExpr :: (?spec::Spec, ?ispec::I.Spec) => Expr -> TypeSpec -> State CFACtx I.Expr
+exprToIExpr :: (?spec::Spec) => Expr -> TypeSpec -> State CFACtx I.Expr
 exprToIExpr e t = do sc <- gets ctxScope
                      exprToIExpr' e (typ' $ Type sc t)
 
 -- Like exprToIExpr, but expand top-level EStruct into a list of fields
-exprToIExprs :: (?spec::Spec, ?ispec::I.Spec) => Expr -> TypeSpec -> State CFACtx [(I.Expr,I.Type)]
+exprToIExprs :: (?spec::Spec) => Expr -> TypeSpec -> State CFACtx [(I.Expr,I.Type)]
 exprToIExprs e@(EStruct _ _ (Left fs)) _ = do 
     sc <- gets ctxScope
     let ?scope = sc
@@ -169,7 +170,7 @@ exprToIExprs e t                              = do
                   _         -> mkType $ typ e
     return [(e', t')]
 
-exprToIExpr' :: (?spec::Spec, ?ispec::I.Spec) => Expr -> Type -> State CFACtx I.Expr
+exprToIExpr' :: (?spec::Spec) => Expr -> Type -> State CFACtx I.Expr
 exprToIExpr' (ETerm _ ssym) _ = do
     sc    <- gets ctxScope
     lmap  <- gets ctxLNMap
@@ -219,14 +220,30 @@ exprToIExpr' (ESlice _ e (l,h)) _           = do sc <- gets ctxScope
                                                  let l' = fromInteger $ evalInt l
                                                      h' = fromInteger $ evalInt h
                                                  return $ I.ESlice e' (l',h')
-exprToIExpr' (EAtLab _ lab) _               = return
-                                              $ I.disj 
-                                              $ map (\(pid, p) -> I.disj 
-                                                                  $ map (\loc -> mkPCEq (I.procCFA p) pid (mkPC pid loc)) 
-                                                                                 $ I.cfaFindLabel (I.procCFA p) (sname lab)) 
-                                              $ I.specAllProcs ?ispec
+exprToIExpr' (EAtLab _ lab) _               = -- hack: encode label name as variable name, to be replaced with proper
+                                              -- condition at the next pass
+                                              return $ I.EVar $ "@" ++ sname lab 
 exprToIExpr' (ERel _ n as) _                = do as' <- mapM exprToIExprDet as
                                                  return $ I.ERel (sname n) as'
 exprToIExpr' (ENonDet _) t                  = do v <- ctxInsTmpVar $ mkType t
                                                  return $ I.EVar $ I.varName v
 exprToIExpr' e _                            = error $ "exprToIExpr' " ++ show e
+
+
+-- postprocessing
+exprExpandLabels :: I.Spec -> I.Expr -> I.Expr
+exprExpandLabels spec e@(I.EVar n)          | head n == '@' = 
+    I.disj 
+    $ map (\(pid, p) -> I.disj 
+                        $ map (\loc -> mkPCEq (I.procCFA p) pid (mkPC pid loc)) 
+                        $ I.cfaFindLabel (I.procCFA p) (tail n))
+          $ I.specAllProcs spec
+
+                                            | otherwise     = e
+exprExpandLabels spec e@(I.EConst _)        = e
+exprExpandLabels spec   (I.EField e f)      = I.EField (exprExpandLabels spec e) f
+exprExpandLabels spec   (I.EIndex a i)      = I.EIndex (exprExpandLabels spec a) (exprExpandLabels spec i)
+exprExpandLabels spec   (I.EUnOp op e)      = I.EUnOp op $ exprExpandLabels spec e
+exprExpandLabels spec   (I.EBinOp op e1 e2) = I.EBinOp op (exprExpandLabels spec e1) (exprExpandLabels spec e2)
+exprExpandLabels spec   (I.ESlice e (l,h))  = I.ESlice (exprExpandLabels spec e) (l, h)
+exprExpandLabels spec   (I.ERel r es)       = I.ERel r $ map (exprExpandLabels spec) es

@@ -62,7 +62,7 @@ spec2Internal s =
         vars                = mkVars
         (tvar, tenum)       = mkTagVarDecl
         fairreg = mkFair spec'
-        ((specWire, specPrefix, inittran, goals, specRels), (_, extratmvars)) = let ?ispec = spec' in 
+        ((specWire, specPrefix, inittran, goals, specRels), (_, extratmvars)) =  
             runState (do wire      <- mkWires
                          prefix    <- mkPrefix
                          inittr    <- mkInit
@@ -72,17 +72,18 @@ spec2Internal s =
                          return (wire, prefix, inittr, maggoal:usergoals, rel))
                      (0,[])
         extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) (NSID Nothing Nothing) v) extratmvars
-        (specProc, tmppvs) = let ?ispec = spec' in unzip $ (map procToCProc $ tmProcess tmMain) 
+        (specProc, tmppvs) = unzip $ (map procToCProc $ tmProcess tmMain) 
         specEnum           = choiceenum ++ (tenum : pidenum : (senum ++ pcenums))
         specVar            = cvars ++ [tvar, pidlvar] ++ pcvars ++ vars ++ concat tmppvs ++ extraivars
         specCAct           = ctran
         specTran           = error "specTran undefined"
         specUpds           = M.empty -- mkUpds spec'
-        spec               = I.Spec {..}
-        spec'              = I.specMapCFA (I.cfaAddNullTypes spec) spec
+        spec0              = I.Spec {..}
+        spec               = I.specMapCFA (cfaExpandLabels spec0) spec0
+        spec'              = I.specMapCFA (cfaAddNullTypes spec) spec
 
         -- Controllable transitions
-        (ctran, cvars)     = let ?ispec = spec' in mkCTran 
+        (ctran, cvars)     = mkCTran 
         -- Uncontrollable transitions
         utran = concatMap (\(epid, cfa) -> cfaToITransitions epid cfa) 
                           $ filter ((/= EPIDCont) . fst)
@@ -97,7 +98,7 @@ spec2Internal s =
         errinit  = mkErrVar   I.=== I.false 
 
         res = 
-         spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransitions EPIDCont ctran 
+         spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransitions EPIDCont $ I.specCAct spec'
                                         , I.tsUTran  = utran
                                         , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ [errinit, maginit]))
                                         , I.tsGoal   = goals
@@ -105,6 +106,19 @@ spec2Internal s =
                                         }} in
        {-I.cfaTraceFiles (zip (map (("tr" ++) . show) [0..]) $ map I.tranCFA $ (I.tsUTran $ I.specTran res) ++ (I.tsCTran $ I.specTran res)) $-} res
       
+-- Add types to NullVal expressions introduced by cfaAddNullPtrTrans
+cfaAddNullTypes :: I.Spec -> I.CFA -> I.CFA
+cfaAddNullTypes spec cfa = G.emap (\l -> case l of 
+                                              I.TranStat st -> I.TranStat $ statAddNullTypes spec st
+                                              _             -> l) cfa
+
+-- Replace labels with conditions over $pc variables
+cfaExpandLabels :: I.Spec -> I.CFA -> I.CFA
+cfaExpandLabels spec cfa = G.emap (\l -> case l of 
+                                              I.TranStat st -> I.TranStat $ statExpandLabels spec st
+                                              _             -> l) cfa
+
+
 ------------------------------------------------------------------------------
 -- Preprocess all statements and expressions before inlining.  
 -- In the preprocessed spec:
@@ -135,7 +149,7 @@ methSimplify tm m = let ?scope = ScopeMethod tm m
 
 -- Generate transition that assigns all wire variables.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkWires :: (?spec::Spec, ?ispec::I.Spec) => NameGen (Maybe I.CFA)
+mkWires :: (?spec::Spec) => NameGen (Maybe I.CFA)
 mkWires | (null $ tmWire tmMain) = return Nothing
         | otherwise              = do
     let wires = orderWires
@@ -177,7 +191,7 @@ orderWires' g | G.noNodes g == 0  = []
 
 -- Generate transition that performs all prefix actions.  It will be
 -- implicitly prepended to all "regular" transitions.
-mkPrefix :: (?spec::Spec, ?ispec::I.Spec) => NameGen (Maybe I.CFA)
+mkPrefix :: (?spec::Spec) => NameGen (Maybe I.CFA)
 mkPrefix | (null $ tmPrefix tmMain) = return Nothing
          | otherwise                = do
     stat <- let ?scope = ScopeTemplate tmMain
@@ -246,7 +260,7 @@ mkFair ispec = mkFairSched : (map mkFairProc $ I.specAllProcs ispec)
 -- Init and goal conditions
 ----------------------------------------------------------------------
 
-mkInit :: (?spec::Spec, ?ispec::I.Spec) => NameGen I.Transition
+mkInit :: (?spec::Spec) => NameGen I.Transition
 mkInit = do 
     -- conjunction of initial variable assignments
     let ass = SSeq nopos Nothing
@@ -261,16 +275,16 @@ mkInit = do
 noerror :: I.Expr
 noerror = I.EUnOp Not mkErrVar
 
-mkGoal :: (?spec::Spec, ?ispec::I.Spec) => Goal -> NameGen I.Goal
+mkGoal :: (?spec::Spec) => Goal -> NameGen I.Goal
 mkGoal g = -- Add $err==false to the goal condition
            (liftM $ I.Goal (sname g)) $ mkCond (sname g) (SAssume nopos Nothing $ goalCond g) [{-I.EUnOp Not mkMagicVar, noerror-}]
 
 -- In addition to regular goals, we are required to be outside a magic block
 -- infinitely often
-mkMagicGoal :: (?spec::Spec, ?ispec::I.Spec) => NameGen I.Goal
+mkMagicGoal :: (?spec::Spec) => NameGen I.Goal
 mkMagicGoal = (liftM $ I.Goal "$magic_goal") $ mkCond "$magic_goal" (SAssume nopos Nothing $ EBool nopos True) [I.EUnOp Not mkMagicVar, noerror]
 
-mkCond :: (?spec::Spec, ?ispec::I.Spec) => String -> Statement -> [I.Expr] -> NameGen I.Transition
+mkCond :: (?spec::Spec) => String -> Statement -> [I.Expr] -> NameGen I.Transition
 mkCond descr s extra = do
     -- simplify and convert into a statement
     stat <- let ?scope = ScopeTemplate tmMain 
@@ -304,7 +318,7 @@ mkCond descr s extra = do
 --I.true]
 
 -- generate CFA that represents all possible controllable transitions
-mkCTran :: (?spec::Spec, ?ispec::I.Spec) => (I.CFA, [I.Var])
+mkCTran :: (?spec::Spec) => (I.CFA, [I.Var])
 mkCTran = {- I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar ctx')
     where sc   = ScopeTemplate tmMain
           ctasks = filter ((== Task Controllable) . methCat) $ tmMethod tmMain
@@ -376,7 +390,7 @@ mkVars = mkErrVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires ++ gvars ++ fva
 ----------------------------------------------------------------------
 
 -- Convert normal or forked process to CFA
-procToCFA :: (?spec::Spec, ?ispec::I.Spec, ?procs::[I.Process]) => PrID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
+procToCFA :: (?spec::Spec, ?procs::[I.Process]) => PrID -> NameMap -> Scope -> Statement -> (I.CFA, [I.Var])
 procToCFA pid@(PrID _ ps) lmap parscope stat =  {-I.cfaTraceFile (ctxCFA ctx') (show pid)-} (ctxCFA ctx', ctxVar ctx')
     where -- top-level processes are not guarded
           guarded = not $ null ps
@@ -414,10 +428,10 @@ cfaShortcut' cfa l | (I.isDelayLabel $ fromJust $ G.lab cfa l) && (l /= I.cfaIni
                    | otherwise                                                        = cfaShortcut' cfa $ head $ G.suc cfa l
 
 -- Recursively construct CFA's for the process and its children
-procToCProc :: (?spec::Spec, ?ispec::I.Spec) => Process -> (I.Process, [I.Var])
+procToCProc :: (?spec::Spec) => Process -> (I.Process, [I.Var])
 procToCProc p = fprocToCProc Nothing ((ScopeProcess tmMain p), (sname p, (procStatement p)))
 
-fprocToCProc :: (?spec::Spec, ?ispec::I.Spec) => Maybe PrID -> (Scope, (String, Statement)) -> (I.Process, [I.Var])
+fprocToCProc :: (?spec::Spec) => Maybe PrID -> (Scope, (String, Statement)) -> (I.Process, [I.Var])
 fprocToCProc mparpid (sc, (n,stat)) = (I.Process{..}, pvs ++ concat cvs)
     where lmap                = scopeLMap mparpid sc 
           pid                 = maybe (PrID n []) (\parpid -> childPID parpid n) mparpid

@@ -1,6 +1,8 @@
 {-# LANGUAGE ImplicitParams, TupleSections #-}
 
 module StatementInline(statSimplify, 
+                       statAddNullTypes,
+                       statExpandLabels,
                        procStatToCFA) where
 
 import Control.Monad
@@ -30,6 +32,7 @@ import qualified IExpr as I
 import qualified CFA   as I
 import qualified IVar  as I
 import qualified ISpec as I
+import qualified IType as I
 
 statSimplify :: (?spec::Spec, ?scope::Scope) => Statement -> NameGen Statement
 statSimplify s = (liftM $ sSeq (pos s) (stLab s)) $ statSimplify' s
@@ -95,14 +98,14 @@ statSimplify' st                          = return [st{stLab = Nothing}]
 ----------------------------------------------------------
 -- Convert statement to CFA
 ----------------------------------------------------------
-statToCFA :: (?spec::Spec, ?ispec::I.Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA before s = do
     when (isJust $ stLab s) $ ctxPushLabel (sname $ fromJust $ stLab s)
     after <- statToCFA0 before s
     when (isJust $ stLab s) ctxPopLabel
     return after
     
-statToCFA0 :: (?spec::Spec, ?ispec::I.Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA0 :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA0 before   (SSeq _ _ ss)    = foldM statToCFA before ss
 statToCFA0 before s@(SPause _ _)     = do ctxLocSetAct before (I.ActStat s)
                                           ctxPause before I.true (I.ActStat s)
@@ -131,7 +134,7 @@ statToCFA0 before s@stat             = do ctxLocSetAct before (I.ActStat s)
                                           return after
 
 -- Only safe to call from statToCFA.  Do not call this function directly!
-statToCFA' :: (?spec::Spec, ?ispec::I.Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
+statToCFA' :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
 statToCFA' before _ (SReturn _ _ rval) = do
     -- add transition before before to return location
     mlhs  <- gets ctxLHS
@@ -326,7 +329,7 @@ statToCFA' before after (SMagExit _ _) = do
 --    aftpid  <- ctxInsTrans' aftcont $ I.TranStat $ mkPIDVar   I.=: mkPIDEnum pidCont
     ctxInsTrans before after $ I.TranStat $ mkMagicVar I.=: I.false
 
-methInline :: (?spec::Spec, ?ispec::I.Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> I.Loc -> Method -> [Maybe Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
+methInline :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> I.Loc -> Method -> [Maybe Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
 methInline before after meth margs mlhs act = do
     -- save current context
     mepid <- gets ctxEPID
@@ -365,7 +368,7 @@ methInline before after meth margs mlhs act = do
     ctxPopBrkLoc
 
 -- assign input arguments to a method
-setArgs :: (?spec::Spec, ?ispec::I.Spec) => I.Loc -> Method -> [Maybe Expr] -> State CFACtx I.Loc 
+setArgs :: (?spec::Spec) => I.Loc -> Method -> [Maybe Expr] -> State CFACtx I.Loc 
 setArgs before meth margs = do
     mepid  <- gets ctxEPID
     let nsid = maybe (NSID Nothing Nothing) (\epid -> epid2nsid epid (ScopeMethod tmMain meth)) mepid
@@ -377,7 +380,7 @@ setArgs before meth margs = do
           before $ filter (\(a,_) -> argDir a == ArgIn) $ zip (methArg meth) margs
 
 -- copy out arguments
-copyOutArgs :: (?spec::Spec, ?ispec::I.Spec) => I.Loc -> Method -> [Maybe Expr] -> State CFACtx I.Loc
+copyOutArgs :: (?spec::Spec) => I.Loc -> Method -> [Maybe Expr] -> State CFACtx I.Loc
 copyOutArgs loc meth margs = do
     mepid <- gets ctxEPID
     let nsid = maybe (NSID Nothing Nothing) (\epid -> epid2nsid epid (ScopeMethod tmMain meth)) mepid
@@ -391,11 +394,24 @@ copyOutArgs loc meth margs = do
           $ filter ((== ArgOut) . argDir . fst) 
           $ zip (methArg meth) margs
 
+------------------------------------------------------------------------------
+-- Postprocessing
+------------------------------------------------------------------------------
+
+statAddNullTypes :: I.Spec -> I.Statement -> I.Statement
+statAddNullTypes spec (I.SAssume (I.EBinOp Eq e (I.EConst (I.NullVal _)))) = let ?spec = spec in
+                                                                             I.SAssume (I.EBinOp Eq e (I.EConst $ I.NullVal $ I.typ e))
+statAddNullTypes _    s = s
+
+statExpandLabels :: I.Spec -> I.Statement -> I.Statement
+statExpandLabels spec (I.SAssume e)   = I.SAssume $ exprExpandLabels spec e
+statExpandLabels spec (I.SAssign l r) = I.SAssign l $ exprExpandLabels spec r
+
 ----------------------------------------------------------
 -- Top-level function: convert process statement to CFA
 ----------------------------------------------------------
 
-procStatToCFA :: (?spec::Spec, ?ispec::I.Spec, ?procs::[I.Process], ?nestedmb::Bool) => Statement -> I.Loc -> State CFACtx I.Loc
+procStatToCFA :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => Statement -> I.Loc -> State CFACtx I.Loc
 procStatToCFA stat before = do
     after <- statToCFA before stat
     ctxAddNullPtrTrans

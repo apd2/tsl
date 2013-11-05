@@ -23,7 +23,7 @@ import qualified IExpr     as I
 import qualified ISpec     as I
 import qualified CFA       as I
 
-relToIRel :: (?ispec::I.Spec, ?spec::Spec) => Relation -> NameGen I.Relation 
+relToIRel :: (?spec::Spec) => Relation -> NameGen I.Relation 
 relToIRel rel = do
     let relArgs = let ?scope = ScopeTemplate tmMain in map (\a -> (sname a, mkType $ typ a)) $ relArg rel
         -- Variable map used to compile rules.  One var per argument.

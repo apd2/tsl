@@ -33,7 +33,6 @@ module CFA(Statement(..),
            cfaErrTrans,
            cfaSuc,
            cfaFinal,
-           cfaAddNullTypes,
            cfaPruneUnreachable,
            cfaReachInst,
            cfaPrune,
@@ -285,16 +284,6 @@ cfaFinal cfa = map fst $ filter (\n -> case snd n of
                                             LFinal _ _ _ -> True
                                             _            -> False) $ G.labNodes cfa
 
--- Add types to NullVal expressions introduced by cfaAddNullPtrTrans
-cfaAddNullTypes :: Spec -> CFA -> CFA
-cfaAddNullTypes spec cfa = G.emap (\l -> case l of 
-                                              TranStat st -> TranStat $ (statAddNullTypes spec) st
-                                              _           -> l) cfa
-
-statAddNullTypes :: Spec -> Statement -> Statement
-statAddNullTypes spec (SAssume (EBinOp Eq e (EConst (NullVal _)))) = let ?spec = spec in
-                                                                     SAssume (EBinOp Eq e (EConst $ NullVal $ typ e))
-statAddNullTypes _    s = s
 
 
 cfaPruneUnreachable :: CFA -> [Loc] -> CFA
