@@ -224,6 +224,7 @@ termCategory t = if any ((==VarTmp) . varCat) $ termVar t
 
 termWidth :: (?spec::Spec) => Term -> Int
 termWidth t = case typ t of
+                   Ptr _    -> 64
                    Bool     -> 1
                    Enum n   -> bitWidth $ (length $ enumEnums $ getEnumeration n) - 1
                    (UInt w) -> w

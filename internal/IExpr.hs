@@ -18,6 +18,7 @@ module IExpr(LVal(..),
              neg,
              land,
              lor,
+             plus,
              econcat,
              true,
              false,
@@ -250,6 +251,10 @@ land = EBinOp And
 
 lor :: Expr -> Expr -> Expr
 lor = EBinOp Or
+
+plus :: [Expr] -> Expr
+plus [e] = e
+plus (e:es) = EBinOp Plus e $ plus es
 
 -- TODO: merge adjacent expressions
 econcat :: [Expr] -> Expr
