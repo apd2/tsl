@@ -92,14 +92,16 @@ equant' vs rels =
            Nothing           -> error $ "bvEquant failed on: " ++ show atoms
     where solver        = newSMTLib2Solver ?spec z3Config
           forms         = map (\(r, t1, t2) -> ptrFreeBExprToFormula $ EBinOp (bvRelToOp r) (termToExpr t1) (termToExpr t2)) rels
-          (atoms, vmap) = runState (mapM relToAtom rels) M.empty
-          qvs           = map mkVar $ nub vs
+          ((atoms, qvs), vmap) = runState (do _atoms <- mapM relToAtom rels
+                                              _qvs   <- mapM mkVar vs
+                                              return (_atoms, concat _qvs)) M.empty
 
-mkVar :: (?spec::Spec) => String -> BV.Var
-mkVar n | (not $ isScalar v) = error $ "BVSMT:mkVar: cannot quantify away non-scalar variable " ++ n
-        | otherwise          = BV.Var n w
-    where v = getVar n
-          w = termWidth $ TVar n
+mkVar :: (?spec::Spec) => String -> State VarMap [BV.Var]
+mkVar n = do
+    let scalars = map scalarExprToTerm $ exprScalars (EVar n) (typ $ EVar n)
+    mapM (\t -> do varMapInsert t
+                   return $ BV.Var (show t) (termWidth t)) scalars
+
 --------------------------------------------------------------------
 -- Conversion to data structures of the BV library
 --------------------------------------------------------------------
@@ -107,17 +109,19 @@ mkVar n | (not $ isScalar v) = error $ "BVSMT:mkVar: cannot quantify away non-sc
 varMapInsert :: Term -> State VarMap ()
 varMapInsert t = modify (M.insert (show t) t)
 
-avarToRel :: (AbsVar, [Bool]) -> (BV.Rel, Term, Term)
-avarToRel (AVarPred (Predicate op [t1, t2]), [val]) = case (op, val) of
-                                                           (PEq , True ) -> (BV.Eq , ptermTerm t1, ptermTerm t2)
-                                                           (PEq , False) -> (BV.Neq, ptermTerm t1, ptermTerm t2)
-                                                           (PLt , True ) -> (BV.Lt , ptermTerm t1, ptermTerm t2)
-                                                           (PLt , False) -> (BV.Lte, ptermTerm t2, ptermTerm t1)
-                                                           (PLte, True ) -> (BV.Lte, ptermTerm t1, ptermTerm t2)
-                                                           (PLte, False) -> (BV.Lt , ptermTerm t2, ptermTerm t1)
-avarToRel (AVarBool t                      , val)   = (BV.Eq, t, TUInt (length val) (boolArrToBitsBe val)) 
-avarToRel (AVarInt  t                      , val)   = (BV.Eq, t, TUInt (length val) (boolArrToBitsBe val))
-avarToRel (AVarEnum t                      , val)   = (BV.Eq, t, TUInt (length val) (boolArrToBitsBe val))
+avarToRel :: (?spec::Spec) => (AbsVar, [Bool]) -> (BV.Rel, Term, Term)
+avarToRel (AVarPred (Predicate op [t1, t2]), [val])   = case (op, val) of
+                                                             (PEq , True ) -> (BV.Eq , ptermTerm t1, ptermTerm t2)
+                                                             (PEq , False) -> (BV.Neq, ptermTerm t1, ptermTerm t2)
+                                                             (PLt , True ) -> (BV.Lt , ptermTerm t1, ptermTerm t2)
+                                                             (PLt , False) -> (BV.Lte, ptermTerm t2, ptermTerm t1)
+                                                             (PLte, True ) -> (BV.Lte, ptermTerm t1, ptermTerm t2)
+                                                             (PLte, False) -> (BV.Lt , ptermTerm t2, ptermTerm t1)
+avarToRel (AVarBool t                      , [True])  = (BV.Eq , t, TTrue) 
+avarToRel (AVarBool t                      , [False]) = (BV.Neq, t, TTrue) 
+avarToRel (AVarInt  t                      , val)     = (BV.Eq , t, TUInt (length val) (boolArrToBitsBe val))
+avarToRel (AVarEnum t                      , val)     = (BV.Eq , t, TEnum $ (enumEnums $ getEnumeration n) !! (boolArrToBitsBe val))
+                                                        where Enum n = typ t
 
 -- TODO: Add pair-wise inequality constraints between
 -- AddrOf terms
@@ -222,6 +226,8 @@ termToBVTerm   (TUnOp ABNeg t)          = do t' <- termToBVTerm t
                                              return $ BV.TNeg t'
 termToBVTerm   (TSInt w i)              = return $ BV.tConst i w
 termToBVTerm   (TUInt w i)              = return $ BV.tConst i w
+termToBVTerm   TTrue                    = return $ BV.tConst 1 1
+termToBVTerm t@(TEnum n)                = return $ BV.tConst (toInteger $ enumToInt n) (termWidth t)
 termToBVTerm t@(TVar _)                 = do varMapInsert t
                                              return $ BV.TVar (BV.Var (show t) (termWidth t))
 termToBVTerm t@(TField _ _)             = do varMapInsert t

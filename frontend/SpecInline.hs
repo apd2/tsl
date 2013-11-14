@@ -79,7 +79,7 @@ spec2Internal s =
         specTran           = error "specTran undefined"
         specUpds           = M.empty -- mkUpds spec'
         spec0              = I.Spec {..}
-        spec               = I.specMapCFA (\cfa -> I.cfaMapExpr cfa $ exprExpandLabels spec) spec0
+        spec               = I.specMapCFA (\cfa -> I.cfaMapExpr cfa $ exprExpandLabels spec0) spec0
         spec'              = I.specMapCFA (\cfa -> I.cfaMapStat cfa $ statAddNullTypes spec) spec
 
         -- Controllable transitions
