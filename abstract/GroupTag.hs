@@ -4,10 +4,10 @@ import Predicate
 import Inline
 
 avarGroupTag :: AbsVar -> Maybe String
-avarGroupTag (AVarBool t)                                  | (isFairVarName $ show t)          = Just "$fair"
-avarGroupTag (AVarPred (Predicate _ [PTInt t1, PTInt t2])) | isSimpleTerm t1 && isConstTerm t2 = fmap show $ simpleTermAtom t1
-avarGroupTag (AVarPred (Predicate _ [PTInt t1, PTInt t2])) | isConstTerm t1 && isSimpleTerm t2 = fmap show $ simpleTermAtom t2
-avarGroupTag _                                                                                 = Nothing
+avarGroupTag (AVarBool t)                               | (isFairVarName $ show t)          = Just "$fair"
+avarGroupTag (AVarPred (PAtom _ (PTInt t1) (PTInt t2))) | isSimpleTerm t1 && isConstTerm t2 = fmap show $ simpleTermAtom t1
+avarGroupTag (AVarPred (PAtom _ (PTInt t1) (PTInt t2))) | isConstTerm t1 && isSimpleTerm t2 = fmap show $ simpleTermAtom t2
+avarGroupTag _                                                                              = Nothing
 
 -- A simple term depends on at most one scalar variable
 -- x[const]  - yes

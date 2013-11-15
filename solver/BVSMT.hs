@@ -47,7 +47,7 @@ bvUnsatCore spec ps =
     trace "bvUnsatCore" $
     case smtGetModel (newSMTLib2Solver spec z3Config) 
          $ map (uncurry avarAsnToFormula . mapSnd boolArrToBitsBe) 
-         $ filter (not . avarIsUserPred . fst) ps of
+         $ filter (not . avarIsRelPred . fst) ps of
          Just (Left core) -> Just $ map (ps !!) core
          Just (Right _)   -> Nothing
          Nothing          -> error $ "bvUnsatCore: could not solve instance: " ++ show ps
@@ -75,7 +75,7 @@ bvEquant spec m ops avs vs = do
               $ resolveIndices 
               $ return 
               $ map avarToRel 
-              $ filter (not . avarIsUserPred . fst) avs
+              $ filter (not . avarIsRelPred . fst) avs
         f = fdisj $ map (equant' vs) dnf
     H.compileBDD m ops (avarGroupTag . bavarAVar) $ compileFormula $ trace ("bvEquant " ++ show avs ++ " = " ++ show f) $ f
 
@@ -110,18 +110,18 @@ varMapInsert :: Term -> State VarMap ()
 varMapInsert t = modify (M.insert (show t) t)
 
 avarToRel :: (?spec::Spec) => (AbsVar, [Bool]) -> (BV.Rel, Term, Term)
-avarToRel (AVarPred (Predicate op [t1, t2]), [val])   = case (op, val) of
-                                                             (PEq , True ) -> (BV.Eq , ptermTerm t1, ptermTerm t2)
-                                                             (PEq , False) -> (BV.Neq, ptermTerm t1, ptermTerm t2)
-                                                             (PLt , True ) -> (BV.Lt , ptermTerm t1, ptermTerm t2)
-                                                             (PLt , False) -> (BV.Lte, ptermTerm t2, ptermTerm t1)
-                                                             (PLte, True ) -> (BV.Lte, ptermTerm t1, ptermTerm t2)
-                                                             (PLte, False) -> (BV.Lt , ptermTerm t2, ptermTerm t1)
-avarToRel (AVarBool t                      , [True])  = (BV.Eq , t, TTrue) 
-avarToRel (AVarBool t                      , [False]) = (BV.Neq, t, TTrue) 
-avarToRel (AVarInt  t                      , val)     = (BV.Eq , t, TUInt (length val) (boolArrToBitsBe val))
-avarToRel (AVarEnum t                      , val)     = (BV.Eq , t, TEnum $ (enumEnums $ getEnumeration n) !! (boolArrToBitsBe val))
-                                                        where Enum n = typ t
+avarToRel (AVarPred (PAtom op t1 t2), [val])   = case (op, val) of
+                                                      (PEq , True ) -> (BV.Eq , ptermTerm t1, ptermTerm t2)
+                                                      (PEq , False) -> (BV.Neq, ptermTerm t1, ptermTerm t2)
+                                                      (PLt , True ) -> (BV.Lt , ptermTerm t1, ptermTerm t2)
+                                                      (PLt , False) -> (BV.Lte, ptermTerm t2, ptermTerm t1)
+                                                      (PLte, True ) -> (BV.Lte, ptermTerm t1, ptermTerm t2)
+                                                      (PLte, False) -> (BV.Lt , ptermTerm t2, ptermTerm t1)
+avarToRel (AVarBool t               , [True])  = (BV.Eq , t, TTrue) 
+avarToRel (AVarBool t               , [False]) = (BV.Neq, t, TTrue) 
+avarToRel (AVarInt  t               , val)     = (BV.Eq , t, TUInt (length val) (boolArrToBitsBe val))
+avarToRel (AVarEnum t               , val)     = (BV.Eq , t, TEnum $ (enumEnums $ getEnumeration n) !! (boolArrToBitsBe val))
+                                                 where Enum n = typ t
 
 -- TODO: Add pair-wise inequality constraints between
 -- AddrOf terms

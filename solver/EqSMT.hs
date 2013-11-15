@@ -66,7 +66,7 @@ eqUnsatCore spec ps =
         Nothing          -> error $ "eqUnsatCore: could not solve instance: " ++ show forms
     where solver = newSMTLib2Solver spec z3Config
           forms  = map (\(av,b) -> avarAsnToFormula av (boolArrToBitsBe b)) 
-                   $ filter (not . avarIsUserPred . fst) ps
+                   $ filter (not . avarIsRelPred . fst) ps
 
 --    let res = eqCheckSat spec ps
 --        core = foldl' (\pset p -> if eqCheckSat spec (S.toList $ S.delete p pset) == Just False
@@ -82,7 +82,7 @@ eqEquant spec m ops avs vs = do
     let ?spec = spec
         ?m    = m
         ?ops  = ops
-    let dnf0 = DP.DNF [map mkALit $ filter (not . avarIsUserPred . fst) avs]
+    let dnf0 = DP.DNF [map mkALit $ filter (not . avarIsRelPred . fst) avs]
         vs'  = S.toList $ S.fromList vs
         qvs  = map mkVar vs'
         dnf  = {-trace ("eqEquant " ++ show dnf0 ++ " qvars: " ++ show qvs) $-} DP.dpEQuantVars (DP.dpContext::EUF) dnf0 qvs
@@ -107,10 +107,10 @@ eqUnsatCoreStateLabel spec sps lps =
             _         -> Nothing
 
 mkALit :: (?spec::Spec) => (AbsVar,[Bool]) -> DP.PLit
-mkALit (AVarPred (Predicate op [t1, t2]), [val]) = DP.PLit (mkOp op val) (mkTerm $ ptermTerm t1) (mkTerm $ ptermTerm t2)
-mkALit (AVarBool t                      , [val]) = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe [val]) 1)
-mkALit (AVarInt  t                      , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
-mkALit (AVarEnum t                      , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
+mkALit (AVarPred (PAtom op t1 t2), [val]) = DP.PLit (mkOp op val) (mkTerm $ ptermTerm t1) (mkTerm $ ptermTerm t2)
+mkALit (AVarBool t               , [val]) = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe [val]) 1)
+mkALit (AVarInt  t               , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
+mkALit (AVarEnum t               , val)   = DP.PLit DP.Eq         (mkTerm t)  (DP.TLit (boolArrToBitsBe val) (length val))
 
 mkOp :: PredOp -> Bool -> DP.BinOpTyp
 mkOp PEq  True  = DP.Eq

@@ -321,14 +321,15 @@ exprExpandPtr   (ESlice e s)      = fmap (\e' -> ESlice e' s) $ exprExpandPtr e
 -- Find predicates of the form (e == AddrOf e')
 ptrPreds :: (?pred::[Predicate]) => Expr -> [(Predicate, Term)]
 ptrPreds e = 
-    mapMaybe (\p@(Predicate op pts) -> case (op, pts) of
-                                           (PEq, [PTPtr t1, PTPtr t2]) -> if' (termToExpr t1 == e) 
-                                                                              (case t2 of
-                                                                                    TAddr t' -> Just (p,t')
-                                                                                    _        -> Nothing)
-                                                                              (if' (termToExpr t2 == e)
-                                                                                   (case t1 of
-                                                                                         TAddr t' -> Just (p,t')
-                                                                                         _        -> Nothing)
-                                                                                   Nothing))
+    mapMaybe (\p -> case p of
+                         PAtom PEq (PTPtr t1) (PTPtr t2) -> if' (termToExpr t1 == e) 
+                                                                (case t2 of
+                                                                      TAddr t' -> Just (p,t')
+                                                                      _        -> Nothing)
+                                                                (if' (termToExpr t2 == e)
+                                                                     (case t1 of
+                                                                           TAddr t' -> Just (p,t')
+                                                                           _        -> Nothing)
+                                                                     Nothing)
+                         _                               -> Nothing)
              ?pred

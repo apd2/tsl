@@ -148,7 +148,7 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Formula where
     smtpp (FNot f)                    = parens $ text "not" <+> smtpp f
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Predicate where
-    smtpp (Predicate op [t1, t2]) = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
+    smtpp (PAtom op t1 t2) = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TVar n)               = text $ mkIdent n
