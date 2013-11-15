@@ -19,7 +19,6 @@ import qualified IExpr    as I
 import qualified CFA      as I
 import qualified IType    as I
 import qualified IVar     as I
-import AbsRelation
 import PID
 import Pos
 import Name
@@ -79,6 +78,7 @@ spec2Internal s =
         specCAct           = ctran
         specTran           = error "specTran undefined"
         specUpds           = M.empty -- mkUpds spec'
+        specApply          = map applyToIApply $ tmApply tmMain
         spec0              = I.Spec {..}
         spec               = I.specMapCFA (\cfa -> I.cfaMapExpr cfa $ exprExpandLabels spec0) spec0
         spec'              = I.specMapCFA (\cfa -> I.cfaMapStat cfa $ statAddNullTypes spec) spec

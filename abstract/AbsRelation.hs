@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
-module AbsRelation (instantiateRelation) where
+module AbsRelation (RelInst,
+                    instantiateRelation) where
 
 import IRelation
 import Predicate
@@ -19,12 +20,11 @@ instantiateRelation Relation{..} args = (p, asts)
     where
     p@PRel{..} = mkPRel relName args
     substs = zip (map fst relArgs) pArgs
-    asts = map (\r -> let cfa' = cfaMapExpr r exprSubst
+    asts = map (\r -> let cfa' = cfaMapExpr r (mapExpr exprSubst)
                       in compileACFA [] $ tranCFAToACFA [] cfaInitLoc cfa') relRules
+
     exprSubst :: Expr -> Expr
-    exprSubst = mapExpr exprSubst'
-    exprSubst' :: Expr -> Expr
-    exprSubst' e@(EVar v) = case lookup v substs of
-                                 Nothing -> e
-                                 Just e' -> e'
-    exprSubst' e          = e
+    exprSubst e@(EVar v) = case lookup v substs of
+                                Nothing -> e
+                                Just e' -> e'
+    exprSubst e          = e

@@ -1,8 +1,6 @@
 {-# LANGUAGE ImplicitParams #-}
 
 module Predicate(PVarOps,
-                 AbsPriv,
-                 PDB,
                  bavarAVar,
                  avarBAVar,
                  AbsVar(..),
@@ -57,12 +55,8 @@ import IExpr
 import IVar
 import IType
 import Interface hiding(getVar)
-import Control.Monad.State
-import Control.Monad.ST
 
-type AbsPriv = ()
 type PVarOps pdb s u = VarOps pdb (BAVar AbsVar AbsVar) s u
-type PDB pdb s u     = StateT AbsPriv (StateT pdb (ST s))
 
 bavarAVar :: BAVar AbsVar AbsVar -> AbsVar
 bavarAVar (StateVar av _) = av

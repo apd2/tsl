@@ -49,6 +49,7 @@ data Spec = Spec {
     specCAct   :: CFA,                         -- controllable transitions
     specUpds   :: M.Map String [(Expr, Expr)], -- variable update functions specified explicitly
     specRels   :: [Relation],
+    specApply  :: [Apply],
     specTran   :: TranSpec                     -- info required for variable update
                                                -- computation
 }

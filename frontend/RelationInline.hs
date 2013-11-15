@@ -47,8 +47,8 @@ relToIRel rel = do
     return $ I.Relation {relName = sname rel,..}
 
 
-applyToIApply :: (?spec::Spec) => Apply -> [I.Expr]
-applyToIApply Apply{..} = map aargToIExpr applyArg
+applyToIApply :: (?spec::Spec) => Apply -> I.Apply
+applyToIApply Apply{..} = I.Apply (sname applyRel) $ map aargToIExpr applyArg
 
 aargToIExpr :: (?spec::Spec) => Expr -> I.Expr
 aargToIExpr e = evalState (exprToIExprDet e) ctx

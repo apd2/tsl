@@ -283,8 +283,6 @@ cfaFinal cfa = map fst $ filter (\n -> case snd n of
                                             LFinal _ _ _ -> True
                                             _            -> False) $ G.labNodes cfa
 
-
-
 cfaPruneUnreachable :: CFA -> [Loc] -> CFA
 cfaPruneUnreachable cfa keep = 
     let unreach = filter (\n -> (not $ elem n keep) && (null $ G.pre cfa n)) $ G.nodes cfa

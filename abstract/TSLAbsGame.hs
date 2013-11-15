@@ -1,6 +1,7 @@
-{-# LANGUAGE ImplicitParams, ScopedTypeVariables, RecordWildCards #-}
+{-# LANGUAGE ImplicitParams, ScopedTypeVariables, RecordWildCards, TupleSections #-}
 
-module TSLAbsGame(tslAbsGame, 
+module TSLAbsGame(AbsPriv,
+                  tslAbsGame, 
                   tslUpdateAbsVarAST,
                   tslStateLabelConstraintAbs,
                   tslInconsistent) where
@@ -11,7 +12,7 @@ import qualified Data.Map as M
 import Debug.Trace
 import Data.Maybe
 import Text.PrettyPrint.Leijen.Text
-import Data.Text.Lazy hiding (intercalate, map, take, length, zip, filter, init, tails, last)
+import Data.Text.Lazy hiding (intercalate, map, take, length, zip, filter, init, tails, last, find)
 import qualified Data.Graph.Inductive as G
 import Control.Monad.Trans.Class
 import Control.Monad.State.Lazy
@@ -25,6 +26,7 @@ import TranSpec
 import IExpr
 import IVar
 import IType
+import IRelation
 import CFA
 import Predicate
 import Inline
@@ -34,18 +36,21 @@ import qualified HAST.HAST   as H
 import qualified HAST.BDD    as H
 import CFA2ACFA
 import ACFA2HAST
+import AbsRelation
 import BFormula
 import Cascade
 import RefineCommon 
 import GroupTag
 
+type AbsPriv s u = [(RelInst [C.DDNode s u] [C.DDNode s u] (C.DDNode s u), Bool)]
+type PDB pdb s u = StateT (AbsPriv s u) (StateT pdb (ST s))
 
 -----------------------------------------------------------------------
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar AbsPriv
-tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = ()
+tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar (AbsPriv s u)
+tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = tslInitialState            spec
                                       , Abs.goalAbs                 = tslGoalAbs                 spec m
                                       , Abs.fairAbs                 = tslFairAbs                 spec m
                                       , Abs.initAbs                 = tslInitAbs                 spec m
@@ -54,6 +59,15 @@ tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = ()
                                       , Abs.stateLabelConstraintAbs = lift . tslStateLabelConstraintAbs spec m
                                       , Abs.updateAbs               = tslUpdateAbs               spec m ts
                                       }
+
+tslInitialState :: Spec -> AbsPriv s u
+tslInitialState spec = 
+    let ?spec = spec
+        ?pred = []
+    in map (, False)
+       $ map (\Apply{..} -> let rel = fromJust $ find ((==applyRel) . relName) $ specRels spec
+                            in instantiateRelation rel applyArgs)
+       $ specApply spec
 
 tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslGoalAbs spec m ops = do
@@ -222,7 +236,7 @@ absVarInconsistent ts (AVarPred p, avs) =
                                    Just _ -> f
                                    _      -> FFalse)
                 $ filter (\p' -> p' /= p && predVar p' == predVar p) 
-                $ map (\(AVarPred p) -> p) 
+                $ map (\(AVarPred p') -> p') 
                 $ filter avarIsPred avs
          _   -> H.F
 
