@@ -19,6 +19,7 @@ import qualified IExpr    as I
 import qualified CFA      as I
 import qualified IType    as I
 import qualified IVar     as I
+import AbsRelation
 import PID
 import Pos
 import Name

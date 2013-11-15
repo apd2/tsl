@@ -7,6 +7,7 @@ import Predicate
 import BVSMT
 import ISpec
 import IExpr
+import IType
 
 -- All atoms must be created by this function
 mkPAtom :: (?spec::Spec) => RelOp -> PTerm -> PTerm -> Either Bool Predicate
@@ -19,5 +20,17 @@ mkPAtom op pt1 pt2 =
                                                           PTPtr _ -> (PTPtr t1, PTPtr t2)
                                                           PTInt _ -> (PTInt t1, PTInt t2)
 
+-- Assumes that all dereference operations have already been expanded
 mkPRel :: (?spec::Spec) => String -> [Expr] -> Predicate
-mkPRel r as = undefined
+mkPRel r as = PRel r $ map exprNormalise as
+
+-- Apply bvTermNormalise to scalar sub-terms of the expression
+exprNormalise :: (?spec::Spec) => Expr -> Expr
+exprNormalise = mapExpr exprNormalise'
+
+exprNormalise' :: (?spec::Spec) => Expr -> Expr
+exprNormalise' e = case typ e of
+                        UInt _ -> e'
+                        SInt _ -> e'
+                        _      -> e
+    where e' = termToExpr $ bvTermNormalise $ scalarExprToTerm e

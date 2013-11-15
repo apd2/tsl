@@ -4,7 +4,8 @@
 {-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
 module BVSMT(bvSolver, 
-             bvRelNormalise) where
+             bvRelNormalise,
+             bvTermNormalise) where
 
 import Data.Maybe
 import Data.List
@@ -34,13 +35,48 @@ import qualified HAST.BDD as H
 
 type VarMap = M.Map String Term
 
+--------------------------------------------------------------------
+-- Normalisation interface
+--------------------------------------------------------------------
+
+bvRelNormalise :: (?spec::Spec) => RelOp -> Term -> Term -> Either Bool (PredOp, Term, Term)
+bvRelNormalise REq  t1 t2 = bvRelNormalise' BV.Eq  t1 t2
+bvRelNormalise RNeq _  _  = error "Unexpected '!=' in bvRelNormalise"
+bvRelNormalise RLt  t1 t2 = bvRelNormalise' BV.Lt  t1 t2
+bvRelNormalise RGt  t1 t2 = bvRelNormalise' BV.Lt  t2 t1
+bvRelNormalise RLte t1 t2 = bvRelNormalise' BV.Lte t1 t2
+bvRelNormalise RGte t1 t2 = bvRelNormalise' BV.Lte t2 t1
+
+bvRelNormalise' :: (?spec::Spec) => BV.Rel -> Term -> Term -> Either Bool (PredOp, Term, Term)
+bvRelNormalise' r t1 t2 = 
+    case BV.atomToCAtom a of
+         Left b                       -> Left b
+         Right (BV.CAtom op' ct1 ct2) -> let ?vmap = vmap in
+                                         let pop = case op' of
+                                                        BV.Eq  -> PEq
+                                                        BV.Lt  -> PLt
+                                                        BV.Lte -> PLte in
+                                         Right (pop, scalarExprToTerm $ ctermToExp ct1, scalarExprToTerm $ ctermToExp ct2)
+    where a = BV.Atom r t1' t2'
+          ((t1', t2'), vmap) = runState (do _t1 <- termToBVTerm t1
+                                            _t2 <- termToBVTerm t2
+                                            return (_t1, _t2)) M.empty
+
+bvTermNormalise :: (?spec::Spec) => Term -> Term
+bvTermNormalise t = let ?vmap = vmap in scalarExprToTerm $ ctermToExp ct
+    where (t', vmap) = runState (termToBVTerm t) M.empty
+          ct = BV.termToCTerm t'
+
+--------------------------------------------------------------------
+-- SMT solver interface
+--------------------------------------------------------------------
+
 bvSolver :: Spec -> SMTSolver -> C.STDdManager s u  -> TheorySolver s u AbsVar AbsVar Var
 bvSolver spec solver m = TheorySolver { unsatCoreState      = bvUnsatCore           spec solver
                                       , unsatCoreStateLabel = bvUnsatCoreStateLabel spec solver
                                       , eQuant              = bvEquantTmp           spec solver m
                                       , getVarsLabel        = let ?spec = spec in (\av -> filter ((==VarTmp) . varCat) $ avarVar av)
                                       }
-
 
 bvUnsatCore :: Spec -> SMTSolver -> [(AbsVar,[Bool])] -> Maybe [(AbsVar,[Bool])]
 bvUnsatCore _ solver ps = 
@@ -283,27 +319,3 @@ ctvarToExpr w (c, (v,(l,h))) = vmul
                  if' (h - l + 1 < w)  (EBinOp BConcat vslice (EConst $ UIntVal (w - (h - l + 1)) 0)) $
                  exprSlice vslice (0, w - 1)
           vmul = if' (c == 1) vext (EBinOp Mul (EConst $ UIntVal w 0) vext)
-
-
-bvRelNormalise :: (?spec::Spec) => RelOp -> Term -> Term -> Either Bool (PredOp, Term, Term)
-bvRelNormalise REq  t1 t2 = bvRelNormalise' BV.Eq  t1 t2
-bvRelNormalise RNeq _  _  = error "Unexpected '!=' in bvRelNormalise"
-bvRelNormalise RLt  t1 t2 = bvRelNormalise' BV.Lt  t1 t2
-bvRelNormalise RGt  t1 t2 = bvRelNormalise' BV.Lt  t2 t1
-bvRelNormalise RLte t1 t2 = bvRelNormalise' BV.Lte t1 t2
-bvRelNormalise RGte t1 t2 = bvRelNormalise' BV.Lte t2 t1
-
-bvRelNormalise' :: (?spec::Spec) => BV.Rel -> Term -> Term -> Either Bool (PredOp, Term, Term)
-bvRelNormalise' r t1 t2 = 
-    case BV.atomToCAtom a of
-         Left b                       -> Left b
-         Right (BV.CAtom op' ct1 ct2) -> let ?vmap = vmap in
-                                         let pop = case op' of
-                                                        BV.Eq  -> PEq
-                                                        BV.Lt  -> PLt
-                                                        BV.Lte -> PLte in
-                                         Right (pop, scalarExprToTerm $ ctermToExp ct1, scalarExprToTerm $ ctermToExp ct2)
-    where a = BV.Atom r t1' t2'
-          ((t1', t2'), vmap) = runState (do _t1 <- termToBVTerm t1
-                                            _t2 <- termToBVTerm t2
-                                            return (_t1, _t2)) M.empty

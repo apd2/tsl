@@ -321,7 +321,7 @@ instance Show PredOp where
 
 -- Predicates
 data Predicate = PAtom {pOp  :: PredOp, pTerm1 :: PTerm, pTerm2 :: PTerm}
-               | PRel  {pRel :: String, pTerms :: [Expr]}
+               | PRel  {pRel :: String, pArgs :: [Expr]}
                deriving (Eq, Ord)
 
 instance PP Predicate where
@@ -333,7 +333,7 @@ instance Show Predicate where
 
 predTerm :: Predicate -> [Term]
 predTerm (PAtom _ t1 t2) = map ptermTerm [t1,t2]
-predTerm (PRel  _ as)    = []
+predTerm (PRel  _ _)     = []
 
 predVar :: (?spec::Spec) => Predicate -> [Var]
 predVar = nub . concatMap termVar . predTerm
