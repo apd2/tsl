@@ -3,7 +3,8 @@
 
 {-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
-module BVSMT(bvSolver) where
+module BVSMT(bvSolver, 
+             bvRelNormalise) where
 
 import Data.Maybe
 import Data.List
@@ -19,7 +20,6 @@ import qualified BV.Canonize as BV
 import qualified BV.Util     as BV
 import qualified CuddExplicitDeref as C
 import SMTSolver
-import SMTLib2
 import Predicate
 import BFormula
 import ISpec
@@ -34,41 +34,40 @@ import qualified HAST.BDD as H
 
 type VarMap = M.Map String Term
 
-bvSolver :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var
-bvSolver spec m = TheorySolver { unsatCoreState      = bvUnsatCore           spec
-                               , unsatCoreStateLabel = bvUnsatCoreStateLabel spec
-                               , eQuant              = bvEquantTmp           spec m
-                               , getVarsLabel        = let ?spec = spec in (\av -> filter ((==VarTmp) . varCat) $ avarVar av)
-                               }
+bvSolver :: Spec -> SMTSolver -> C.STDdManager s u  -> TheorySolver s u AbsVar AbsVar Var
+bvSolver spec solver m = TheorySolver { unsatCoreState      = bvUnsatCore           spec solver
+                                      , unsatCoreStateLabel = bvUnsatCoreStateLabel spec solver
+                                      , eQuant              = bvEquantTmp           spec solver m
+                                      , getVarsLabel        = let ?spec = spec in (\av -> filter ((==VarTmp) . varCat) $ avarVar av)
+                                      }
 
 
-bvUnsatCore :: Spec -> [(AbsVar,[Bool])] -> Maybe [(AbsVar,[Bool])]
-bvUnsatCore spec ps = 
-    trace "bvUnsatCore" $
-    case smtGetModel (newSMTLib2Solver spec z3Config) 
+bvUnsatCore :: Spec -> SMTSolver -> [(AbsVar,[Bool])] -> Maybe [(AbsVar,[Bool])]
+bvUnsatCore _ solver ps = 
+    case smtGetModel solver 
          $ map (uncurry avarAsnToFormula . mapSnd boolArrToBitsBe) 
          $ filter (not . avarIsRelPred . fst) ps of
          Just (Left core) -> Just $ map (ps !!) core
          Just (Right _)   -> Nothing
          Nothing          -> error $ "bvUnsatCore: could not solve instance: " ++ show ps
 
-bvUnsatCoreStateLabel :: Spec -> [(AbsVar, [Bool])] -> [(AbsVar, [Bool])] -> Maybe ([(AbsVar, [Bool])], [(AbsVar, [Bool])])
-bvUnsatCoreStateLabel spec sps lps = 
-    case bvUnsatCore spec (lps++sps) of
+bvUnsatCoreStateLabel :: Spec -> SMTSolver -> [(AbsVar, [Bool])] -> [(AbsVar, [Bool])] -> Maybe ([(AbsVar, [Bool])], [(AbsVar, [Bool])])
+bvUnsatCoreStateLabel spec solver sps lps = 
+    case bvUnsatCore spec solver (lps++sps) of
          Just core -> let ?spec = spec in Just $ partition ((==VarState) . avarCategory . fst) core
          _         -> Nothing
 
-bvEquantTmp :: Spec -> C.STDdManager s u -> [(AbsVar,[Bool])] -> PVarOps pdb s u -> StateT pdb (ST s) (C.DDNode s u)
-bvEquantTmp spec m avs ops = 
+bvEquantTmp :: Spec -> SMTSolver -> C.STDdManager s u -> [(AbsVar,[Bool])] -> PVarOps pdb s u -> StateT pdb (ST s) (C.DDNode s u)
+bvEquantTmp spec solver m avs ops = 
     let ?spec = spec
-    in bvEquant spec m ops avs
+    in bvEquant spec solver m ops avs
        $ nub
        $ map varName
        $ filter ((== VarTmp) . varCat) 
        $ concatMap (avarVar . fst) avs
 
-bvEquant :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> [(AbsVar,[Bool])] -> [String] -> StateT pdb (ST s) (C.DDNode s u)
-bvEquant spec m ops avs vs = do
+bvEquant :: Spec -> SMTSolver -> C.STDdManager s u -> PVarOps pdb s u -> [(AbsVar,[Bool])] -> [String] -> StateT pdb (ST s) (C.DDNode s u)
+bvEquant spec solver m ops avs vs = do
     let ?spec = spec
     let -- Deal with arrays and pointers. 
         dnf = resolveAddresses 
@@ -76,11 +75,11 @@ bvEquant spec m ops avs vs = do
               $ return 
               $ map avarToRel 
               $ filter (not . avarIsRelPred . fst) avs
-        f = fdisj $ map (equant' vs) dnf
+        f = fdisj $ map (equant' vs solver) dnf
     H.compileBDD m ops (avarGroupTag . bavarAVar) $ compileFormula $ trace ("bvEquant " ++ show avs ++ " = " ++ show f) $ f
 
-equant' :: (?spec::Spec) => [String] -> [(BV.Rel, Term, Term)] -> Formula
-equant' vs rels = 
+equant' :: (?spec::Spec) => [String] -> SMTSolver -> [(BV.Rel, Term, Term)] -> Formula
+equant' vs solver rels = 
     -- Check formula's satisfiability and validity using SMT solver first.
     -- The BV solver only detects unsat and valid formulas in few special cases.
     if' (smtCheckSAT solver forms == Just False)                      FFalse
@@ -90,8 +89,7 @@ equant' vs rels =
            Just (Left False) -> FFalse
            Just (Right cas)  -> fconj $ map (catomToForm vmap) cas
            Nothing           -> error $ "bvEquant failed on: " ++ show atoms
-    where solver        = newSMTLib2Solver ?spec z3Config
-          forms         = map (\(r, t1, t2) -> ptrFreeBExprToFormula $ EBinOp (bvRelToOp r) (termToExpr t1) (termToExpr t2)) rels
+    where forms         = map (\(r, t1, t2) -> ptrFreeBExprToFormula $ EBinOp (bvRelToOp r) (termToExpr t1) (termToExpr t2)) rels
           ((atoms, qvs), vmap) = runState (do _atoms <- mapM relToAtom rels
                                               _qvs   <- mapM mkVar vs
                                               return (_atoms, concat _qvs)) M.empty
@@ -285,3 +283,27 @@ ctvarToExpr w (c, (v,(l,h))) = vmul
                  if' (h - l + 1 < w)  (EBinOp BConcat vslice (EConst $ UIntVal (w - (h - l + 1)) 0)) $
                  exprSlice vslice (0, w - 1)
           vmul = if' (c == 1) vext (EBinOp Mul (EConst $ UIntVal w 0) vext)
+
+
+bvRelNormalise :: (?spec::Spec) => RelOp -> Term -> Term -> Either Bool (PredOp, Term, Term)
+bvRelNormalise REq  t1 t2 = bvRelNormalise' BV.Eq  t1 t2
+bvRelNormalise RNeq _  _  = error "Unexpected '!=' in bvRelNormalise"
+bvRelNormalise RLt  t1 t2 = bvRelNormalise' BV.Lt  t1 t2
+bvRelNormalise RGt  t1 t2 = bvRelNormalise' BV.Lt  t2 t1
+bvRelNormalise RLte t1 t2 = bvRelNormalise' BV.Lte t1 t2
+bvRelNormalise RGte t1 t2 = bvRelNormalise' BV.Lte t2 t1
+
+bvRelNormalise' :: (?spec::Spec) => BV.Rel -> Term -> Term -> Either Bool (PredOp, Term, Term)
+bvRelNormalise' r t1 t2 = 
+    case BV.atomToCAtom a of
+         Left b                       -> Left b
+         Right (BV.CAtom op' ct1 ct2) -> let ?vmap = vmap in
+                                         let pop = case op' of
+                                                        BV.Eq  -> PEq
+                                                        BV.Lt  -> PLt
+                                                        BV.Lte -> PLte in
+                                         Right (pop, scalarExprToTerm $ ctermToExp ct1, scalarExprToTerm $ ctermToExp ct2)
+    where a = BV.Atom r t1' t2'
+          ((t1', t2'), vmap) = runState (do _t1 <- termToBVTerm t1
+                                            _t2 <- termToBVTerm t2
+                                            return (_t1, _t2)) M.empty
