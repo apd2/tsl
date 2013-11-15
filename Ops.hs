@@ -19,7 +19,7 @@ data UOp = UMinus
          | BNeg
          | Deref
          | AddrOf
-         deriving (Eq)
+         deriving (Eq, Ord)
 
 instance PP UOp where
     pp UMinus = char '-'
@@ -48,7 +48,7 @@ data BOp = Eq
          | BinMinus 
          | Mod
          | Mul
-         deriving(Eq)
+         deriving(Eq,Ord)
 
 isRelBOp :: BOp -> Bool
 isRelBOp op = elem op [Eq,Neq,Lt,Gt,Lte,Gte] 

@@ -50,7 +50,7 @@ import {-# SOURCE #-} ISpec
 data LVal = LVar String
           | LField LVal String
           | LIndex LVal Integer
-          deriving (Eq)
+          deriving (Eq,Ord)
 
 lvalToExpr :: LVal -> Expr 
 lvalToExpr (LVar n)     = EVar n
@@ -75,7 +75,7 @@ data Val = BoolVal   Bool
          | EnumVal   String
          | PtrVal    LVal
          | NullVal   Type
-         deriving (Eq)
+         deriving (Eq, Ord)
 
 ivalIsSigned :: Val -> Bool
 ivalIsSigned (SIntVal _ _) = True
@@ -157,7 +157,7 @@ data Expr = EVar      String
           | EBinOp    BOp Expr Expr
           | ESlice    Expr Slice
           | ERel      String [Expr]
-          deriving (Eq)
+          deriving (Eq, Ord)
 
 instance PP Expr where
     pp (EVar n)          = pp n

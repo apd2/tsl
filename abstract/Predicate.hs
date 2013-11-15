@@ -321,19 +321,19 @@ instance Show PredOp where
 
 -- Predicates
 data Predicate = PAtom {pOp  :: PredOp, pTerm1 :: PTerm, pTerm2 :: PTerm}
-               | PRel  {pRel :: String, pTerms :: [Term]}
+               | PRel  {pRel :: String, pTerms :: [Expr]}
                deriving (Eq, Ord)
 
 instance PP Predicate where
     pp (PAtom op t1 t2) = pp t1 <> pp op <> pp t2
-    pp (PRel  rel ts)   = text rel <> (parens $ hcat $ punctuate (text ",") $ map pp ts)
+    pp (PRel  rel as)   = text rel <> (parens $ hcat $ punctuate (text ",") $ map pp as)
 
 instance Show Predicate where
     show = render . pp
 
 predTerm :: Predicate -> [Term]
 predTerm (PAtom _ t1 t2) = map ptermTerm [t1,t2]
-predTerm (PRel  _ ts)    = ts
+predTerm (PRel  _ as)    = []
 
 predVar :: (?spec::Spec) => Predicate -> [Var]
 predVar = nub . concatMap termVar . predTerm
@@ -383,4 +383,4 @@ predToExpr :: Predicate -> Expr
 predToExpr (PAtom PEq  t1 t2) = EBinOp Eq  (ptermToExpr t1) (ptermToExpr t2)
 predToExpr (PAtom PLt  t1 t2) = EBinOp Lt  (ptermToExpr t1) (ptermToExpr t2)
 predToExpr (PAtom PLte t1 t2) = EBinOp Lte (ptermToExpr t1) (ptermToExpr t2)
-predToExpr (PRel  rel  ts)    = ERel rel $ map termToExpr ts
+predToExpr (PRel  rel  as)    = ERel rel as

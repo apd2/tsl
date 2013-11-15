@@ -149,7 +149,7 @@ fRel op   e1 e2 | isInt e1 && op == REq            = fRelIntEq (e1, e2)
                 | isInt e1                         = mkAtomForm op (PTInt $ scalarExprToTerm e1) (PTInt $ scalarExprToTerm e2)
 
 mkAtomForm :: (?spec::Spec) => RelOp -> PTerm -> PTerm -> Formula
-mkAtomForm op t1 t2 = case mkAtom op t1 t2 of
+mkAtomForm op t1 t2 = case mkPAtom op t1 t2 of
                            Left True  -> FTrue
                            Left False -> FFalse
                            Right p    -> FBoolAVar $ AVarPred p
