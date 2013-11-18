@@ -13,6 +13,7 @@ module ISpec(Spec(..),
              cfaLocInlineWirePrefix,
              lookupVar,
              getVar,
+             getRelation,
              lookupEnumerator,
              getEnumerator,
              getEnumeration,
@@ -83,6 +84,10 @@ getEnumeration :: (?spec::Spec) => String -> Enumeration
 getEnumeration e = fromJustMsg ("getEnumeration: enumeration " ++ e ++ " not found")
                    $ find ((==e) . enumName) $ specEnum ?spec
 
+getRelation :: (?spec::Spec) => String -> Relation
+getRelation r = fromJustMsg ("getRelation: relation " ++ r ++ " not found")
+                $ find ((==r) . relName) $ specRels ?spec
+
 -- Get sequence number of an enumerator
 enumToInt :: (?spec::Spec) => String -> Int
 enumToInt n = fst $ fromJust $ find ((==n) . snd) $ zip [0..] (enumEnums $ getEnumerator n)
@@ -149,4 +154,4 @@ cfaLocInlineWirePrefix spec cfa loc =
                     Just a  -> cfaLocInline cfa loc a
                in case specWire spec of
                        Nothing -> cfa1
-                       Just w  -> cfaLocInline cfa1 loc w    
+                       Just w  -> cfaLocInline cfa1 loc w

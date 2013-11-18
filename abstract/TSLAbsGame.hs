@@ -6,13 +6,12 @@ module TSLAbsGame(AbsPriv,
                   tslStateLabelConstraintAbs,
                   tslInconsistent) where
 
-import Prelude hiding (and)
-import Data.List hiding (and)
-import qualified Data.Map as M
+import Data.List
+import qualified Data.Map             as M
 import Debug.Trace
 import Data.Maybe
 import Text.PrettyPrint.Leijen.Text
-import Data.Text.Lazy hiding (intercalate, map, take, length, zip, filter, init, tails, last, find)
+import qualified Data.Text.Lazy       as T
 import qualified Data.Graph.Inductive as G
 import Control.Monad.Trans.Class
 import Control.Monad.State.Lazy
@@ -34,6 +33,7 @@ import qualified Interface   as Abs
 import qualified TermiteGame as Abs
 import qualified HAST.HAST   as H
 import qualified HAST.BDD    as H
+import ACFA
 import CFA2ACFA
 import ACFA2HAST
 import AbsRelation
@@ -42,14 +42,14 @@ import Cascade
 import RefineCommon 
 import GroupTag
 
-type AbsPriv s u = [(RelInst [C.DDNode s u] [C.DDNode s u] (C.DDNode s u), Bool)]
-type PDB pdb s u = StateT (AbsPriv s u) (StateT pdb (ST s))
+type AbsPriv = [(RelInst, Bool)]
+type PDB pdb s u = StateT AbsPriv (StateT pdb (ST s))
 
 -----------------------------------------------------------------------
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar (AbsPriv s u)
+tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar AbsPriv
 tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = tslInitialState            spec
                                       , Abs.goalAbs                 = tslGoalAbs                 spec m
                                       , Abs.fairAbs                 = tslFairAbs                 spec m
@@ -60,7 +60,7 @@ tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = tslInitial
                                       , Abs.updateAbs               = tslUpdateAbs               spec m ts
                                       }
 
-tslInitialState :: Spec -> AbsPriv s u
+tslInitialState :: Spec -> AbsPriv
 tslInitialState spec = 
     let ?spec = spec
         ?pred = []
@@ -169,8 +169,9 @@ tslInconsistent spec m ops = do
     H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond, contcond]
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
-tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av)
-                          $ lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
+tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av) $ do
+    rast <- promoteRelations av
+    lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ H.And (tslUpdateAbsVarAST (av,n)) rast
 
 
 tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
@@ -274,6 +275,45 @@ varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++
     where
     acfa = tranCFAToACFA (map fst vs) loc cfa
     ast  = compileACFA vs acfa
-    vs'  = map (\(av,_) -> (av, text $ pack $ show av ++ "'")) vs
+    vs'  = map (\(av,_) -> (av, text $ T.pack $ show av ++ "'")) vs
     vlst = intercalate "_" $ map (show . snd) vs'
     ast'::(TAST Doc Doc Doc) = compileACFA vs' acfa
+
+---------------------------------------------------------------------------
+-- Relation reification
+---------------------------------------------------------------------------
+
+-- Trigger relation processing when variable av is being promoted to a state variable:
+-- Check if av occurs in the RHS of one of instantiated relations that has not been
+-- reified (i.e., added to the transition relation) yet, and reify all such relations.
+-- 
+promoteRelations :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> PDB pdb s u (TAST f e c)
+promoteRelations av = do
+    rels <- get
+    (rels', asts) <- liftM unzip
+                     $ mapM (\i@((p,acfas), r) -> if' r (return (i, H.T)) $
+                                                  if' (elem av $ concatMap acfaAVars acfas) 
+                                                      (do ast <- reifyRelation acfas
+                                                          return (((p,acfas),True), ast))
+                                                      (return (i, H.T)))
+                       rels
+    put rels'
+    return $ H.Conj asts
+
+-- * Compile relation
+-- * Instantiate RHS relations
+-- * Update AbsPriv
+reifyRelation :: (?spec::Spec, ?pred::[Predicate]) => [ACFA] -> PDB pdb s u (TAST f e c)
+reifyRelation acfas = do
+    rels <- get
+    let asts = map (compileACFA []) acfas
+        -- relations occurring in ACFAs
+        ps = mapMaybe (\av -> case av of
+                                   AVarPred p@(PRel _ _) -> Just p
+                                   _                     -> Nothing) 
+             $ concatMap acfaAVars acfas
+        -- filter out ones that have already been instantiated
+        newps = ps \\ (map (fst . fst) rels)
+        newrels = map (\PRel{..} -> (instantiateRelation (getRelation pRel) pArgs, False)) newps
+    put $ rels ++ newrels
+    return $ H.Conj asts

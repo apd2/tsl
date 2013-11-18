@@ -1,8 +1,10 @@
 module ACFA(ACFA, 
-            acfaTraceFile) where 
+            acfaTraceFile,
+            acfaAVars) where 
 
 import qualified Data.Graph.Inductive as G
 import qualified Data.Map             as M
+import Data.List
 
 import Predicate
 import Cascade
@@ -19,3 +21,5 @@ type ACFA = G.Gr ([AbsVar], M.Map AbsVar Loc) (Int,Maybe Formula,[ECascade])
 acfaTraceFile :: ACFA -> String -> a -> a
 acfaTraceFile acfa title = graphTraceFile (G.emap (\(num, mpre, upd) -> show num ++ ": " ++ (maybe "" show mpre)  ++ ": " ++ (show $ length upd)) acfa) title
 
+acfaAVars :: ACFA -> [AbsVar]
+acfaAVars = nub . concatMap (M.keys . snd . snd) . G.labNodes
