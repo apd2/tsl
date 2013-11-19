@@ -225,6 +225,10 @@ exprToIExpr' (EAtLab _ lab) _               = -- hack: encode label name as vari
                                               return $ I.EVar $ "@" ++ sname lab 
 exprToIExpr' (ERel _ n as) _                = do as' <- mapM exprToIExprDet as
                                                  return $ I.ERel (sname n) as'
+exprToIExpr' (ERange _ a l r) _             = do a' <- exprToIExprDet a
+                                                 l' <- exprToIExprDet l
+                                                 r' <- exprToIExprDet r
+                                                 return $ I.ERange a' l' r'
 exprToIExpr' (ENonDet _) t                  = do v <- ctxInsTmpVar $ mkType t
                                                  return $ I.EVar $ I.varName v
 exprToIExpr' e _                            = error $ "exprToIExpr' " ++ show e

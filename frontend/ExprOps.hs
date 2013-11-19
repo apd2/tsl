@@ -17,7 +17,6 @@ module ExprOps(mapExpr,
                exprObjsRec,
                exprScalars) where
 
-import Control.Monad.Error
 import Data.Maybe
 import Data.Bits
 import Data.List

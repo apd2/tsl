@@ -153,6 +153,7 @@ data Expr = EVar      String
           | EConst    Val
           | EField    Expr String
           | EIndex    Expr Expr
+          | ERange    Expr Expr Expr
           | EUnOp     UOp Expr
           | EBinOp    BOp Expr Expr
           | ESlice    Expr Slice
@@ -164,6 +165,7 @@ instance PP Expr where
     pp (EConst v)        = pp v
     pp (EField e f)      = pp e <> char '.' <> pp f
     pp (EIndex a i)      = pp a <> char '[' <> pp i <> char ']'
+    pp (ERange a l r)    = pp a <> char '[' <> pp l <> text ".." <> pp r <> char ']'
     pp (EUnOp op e)      = parens $ pp op <> pp e
     pp (EBinOp op e1 e2) = parens $ pp e1 <+> pp op <+> pp e2
     pp (ESlice e s)      = pp e <> pp s
@@ -177,7 +179,12 @@ instance (?spec::Spec) => Typed Expr where
     typ (EConst v)                             = typ v
     typ (EField s f)                           = let Struct fs = typ s
                                                  in typ $ fromJust $ find (\(Field n _) -> n == f) fs 
-    typ (EIndex a _)                           = t where Array t _ = typ a
+    typ (EIndex a _)                           = case typ a of
+                                                      Array t _  -> t
+                                                      VarArray t -> t
+    typ (ERange a _ _)                         = case typ a of
+                                                      Array t _  -> VarArray t
+                                                      VarArray t -> VarArray t
     typ (EUnOp op e) | isArithUOp op           = if s 
                                                     then SInt w
                                                     else UInt w
@@ -210,6 +217,7 @@ exprSlice e                      s                                      = ESlice
 exprScalars :: Expr -> Type -> [Expr]
 exprScalars e (Struct fs)  = concatMap (\(Field n t) -> exprScalars (EField e n) t) fs
 exprScalars e (Array  t s) = concatMap (\i -> exprScalars (EIndex e (EConst $ UIntVal (bitWidth $ s-1) $ fromIntegral i)) t) [0..s-1]
+exprScalars e (VarArray t) = error $ "exprScalars VarArray " ++ show e
 exprScalars e _            = [e]
 
 -- Variables involved in the expression
@@ -221,6 +229,7 @@ exprVars' (EVar n)         = [getVar n]
 exprVars' (EConst _)       = []
 exprVars' (EField e _)     = exprVars' e
 exprVars' (EIndex a i)     = exprVars' a ++ exprVars' i
+exprVars' (ERange a l r)   = exprVars' a ++ exprVars' l ++ exprVars' r
 exprVars' (EUnOp _ e)      = exprVars' e
 exprVars' (EBinOp _ e1 e2) = exprVars' e1 ++ exprVars' e2
 exprVars' (ESlice e _)     = exprVars' e
@@ -268,6 +277,7 @@ false = EConst $ BoolVal False
 exprPtrSubexpr :: Expr -> [Expr]
 exprPtrSubexpr (EField e _)     = exprPtrSubexpr e
 exprPtrSubexpr (EIndex a i)     = exprPtrSubexpr a ++ exprPtrSubexpr i
+exprPtrSubexpr (ERange a l r)   = exprPtrSubexpr a ++ exprPtrSubexpr l ++ exprPtrSubexpr r
 exprPtrSubexpr (EUnOp Deref e)  = e:(exprPtrSubexpr e)
 exprPtrSubexpr (EUnOp _ e)      = exprPtrSubexpr e
 exprPtrSubexpr (EBinOp _ e1 e2) = exprPtrSubexpr e1 ++ exprPtrSubexpr e2
@@ -280,6 +290,7 @@ isConstExpr (EVar _)         = False
 isConstExpr (EConst _)       = True
 isConstExpr (EField e _)     = isConstExpr e
 isConstExpr (EIndex a i)     = isConstExpr a && isConstExpr i
+isConstExpr (ERange a l r)   = isConstExpr a && isConstExpr l && isConstExpr r 
 isConstExpr (EUnOp AddrOf e) = isConstLExpr e
 isConstExpr (EUnOp _ e)      = isConstExpr e
 isConstExpr (EBinOp _ e1 e2) = isConstExpr e1 && isConstExpr e2
@@ -342,11 +353,12 @@ evalLExpr (EField s f) = LField (evalLExpr s) f
 evalLExpr (EIndex a i) = LIndex (evalLExpr a) (ivalVal $ evalConstExpr i)
 
 isMemExpr :: (?spec::Spec) => Expr -> Bool
-isMemExpr (EVar n)     = varMem $ getVar n
-isMemExpr (EField s _) = isMemExpr s
-isMemExpr (EIndex a _) = isMemExpr a
-isMemExpr (ESlice e _) = isMemExpr e
-isMemExpr _            = False
+isMemExpr (EVar n)       = varMem $ getVar n
+isMemExpr (EField s _)   = isMemExpr s
+isMemExpr (EIndex a _)   = isMemExpr a
+isMemExpr (ERange a _ _) = isMemExpr a
+isMemExpr (ESlice e _)   = isMemExpr e
+isMemExpr _              = False
 
 mapExpr :: (Expr -> Expr) -> Expr -> Expr
 mapExpr f e0 = case f e0 of
@@ -354,6 +366,7 @@ mapExpr f e0 = case f e0 of
                     e@(EConst _)    -> e
                     EField e n      -> EField (mapExpr f e) n
                     EIndex a i      -> EIndex (mapExpr f a) (mapExpr f i)
+                    ERange a l r    -> ERange (mapExpr f a) (mapExpr f l) (mapExpr f r)
                     EUnOp op e      -> EUnOp op (mapExpr f e)
                     EBinOp op e1 e2 -> EBinOp op (mapExpr f e1) (mapExpr f e2)
                     ESlice e s      -> ESlice (mapExpr f e) s

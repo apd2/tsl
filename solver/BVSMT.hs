@@ -272,9 +272,6 @@ termToBVTerm t@(TAddr _)                = do varMapInsert t
                                              return $ BV.TVar (BV.Var (show t) (termWidth t))
 termToBVTerm t                          = error $ "termToBVTerm: term not supported: " ++ show t
 
-isPow2 :: Integer -> Bool
-isPow2 x = (popCount x == 1) && (log2 x > 0)
-
 --------------------------------------------------------------------
 -- Conversion back to our data structures
 --------------------------------------------------------------------
