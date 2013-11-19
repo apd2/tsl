@@ -30,13 +30,24 @@ ecasAbsVars :: (?spec::Spec) => ECascade -> [AbsVar]
 ecasAbsVars = nub . ecasAbsVars'
 
 ecasAbsVars' :: (?spec::Spec) => ECascade -> [AbsVar]
-ecasAbsVars' (CasTree bs)             = concatMap (\(f,cas') -> fAbsVars f ++ ecasAbsVars' cas') bs
-ecasAbsVars' (CasLeaf e)  | isBool e  = fAbsVars $ ptrFreeBExprToFormula e
-                          | otherwise = case scalarExprToTerm e of 
-                                             TEnum _   -> []
-                                             TUInt _ _ -> []
-                                             TSInt _ _ -> []
-                                             t         -> if' (isInt t) [AVarInt t] [AVarEnum t]
+ecasAbsVars' (CasTree bs) = concatMap (\(f,cas') -> fAbsVars f ++ ecasAbsVars' cas') bs
+ecasAbsVars' (CasLeaf e)  = scalarExprAbsVars e 
+
+mecasAbsVars :: (?spec::Spec) => MECascade -> [AbsVar]
+mecasAbsVars = nub . mecasAbsVars'
+
+mecasAbsVars' :: (?spec::Spec) => MECascade -> [AbsVar]
+mecasAbsVars' (CasTree bs) = concatMap (\(f,cas') -> fAbsVars f ++ mecasAbsVars' cas') bs
+mecasAbsVars' (CasLeaf me) = maybe [] scalarExprAbsVars me 
+
+scalarExprAbsVars :: (?spec::Spec) => Expr -> [AbsVar]
+scalarExprAbsVars e | isBool e  = fAbsVars $ ptrFreeBExprToFormula e
+                    | otherwise = case scalarExprToTerm e of 
+                                       TEnum _   -> []
+                                       TUInt _ _ -> []
+                                       TSInt _ _ -> []
+                                       t         -> if' (isInt t) [AVarInt t] [AVarEnum t]
+
 
 -- Compute ACFA for a list of abstract variables for a location inside
 -- transition CFA. 
@@ -60,7 +71,7 @@ mkACFA acfa added =
         -- compute variable updates along all outgoing transitions
         updates = map (\(loc', tran) -> (loc', tranPrecondition tran, map (varUpdateTran tran) $ fst $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
         -- extract the list of abstract variables from transitions
-        vs = nub $ concatMap (\(_,mpre,upd) -> maybe [] fAbsVars mpre ++ concatMap ecasAbsVars upd) updates
+        vs = nub $ concatMap (\(_,mpre,upd) -> maybe [] fAbsVars mpre ++ concatMap mecasAbsVars upd) updates
         acfa'  = addUseDefVar acfa loc $ map (\v -> (v, varRecomputedLoc loc v)) vs
         acfa'' = foldIdx (\gr (l, pre, upds) i -> G.insEdge (loc, l, (i,pre,upds)) gr) acfa' updates
     in if loc == ?initloc
@@ -91,7 +102,7 @@ varRecomputedLoc l v | null (G.pre ?cfa l)                                 = l
 
 isVarRecomputedByTran :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> TranLabel -> Bool
 isVarRecomputedByTran v tr = case varUpdateTran tr v of
-                                  CasLeaf e -> e /= avarToExpr v
+                                  CasLeaf e -> e /= Just (avarToExpr v)
                                   _         -> True
 
 
@@ -162,7 +173,7 @@ simplifyACFA4 acfa = foldl' (\(acfa',f') (l, (r,defs)) -> let u = used l
     where 
     used :: Loc -> [AbsVar]
     used loc | null (G.lsuc acfa loc) = M.keys $ snd $ fromJust $ G.lab acfa loc -- don't trim final location
-             | otherwise              = nub $ concatMap (\(_,(_,mpre,upds)) -> (maybe [] fAbsVars mpre) ++ concatMap ecasAbsVars upds) $ G.lsuc acfa loc
+             | otherwise              = nub $ concatMap (\(_,(_,mpre,upds)) -> (maybe [] fAbsVars mpre) ++ concatMap mecasAbsVars upds) $ G.lsuc acfa loc
 
 -- Detemine variables recomputed at different locations that are still used somewhere else
 -- and don't recompute variables that are not needed.
@@ -201,32 +212,66 @@ tranPrecondition (TranStat (SAssume e))   = Just $ ptrFreeBExprToFormula e
 tranPrecondition _                        = Nothing
 
 -- Compute variable updates for an individual CFA edge
-varUpdateTran :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> AbsVar -> ECascade
-varUpdateTran (TranStat (SAssign e1 e2)) v = fmap (\e -> if' (isConstExpr e) (EConst $ evalConstExpr e) e) $ updateExprAsn e1 e2 (avarToExpr v)
-varUpdateTran _                          v = CasLeaf $ avarToExpr v
+varUpdateTran :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> AbsVar -> MECascade
+varUpdateTran (TranStat (SAssign e1 e2)) v = fmap (fmap (\e -> if' (isConstExpr e) (EConst $ evalConstExpr e) e)) 
+                                             $ updateExprAsn e1 e2 (avarToExpr v)
+varUpdateTran _                          v = CasLeaf $ Just $ avarToExpr v
 
-updateExprAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> ECascade
+updateExprAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> MECascade
 updateExprAsn lhs rhs e = casMap (updateExprAsn' lhs rhs) $ updateExprIndices lhs rhs e
 
-updateExprAsn' :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> ECascade
-updateExprAsn' lhs rhs e@(EVar _)          = updateScalAsn lhs rhs e
-updateExprAsn' _   _   e@(EConst _)        = CasLeaf e
-updateExprAsn' lhs rhs e@(EField _ _)      = updateScalAsn lhs rhs e
-updateExprAsn' lhs rhs e@(EIndex _ _)      = updateScalAsn lhs rhs e
-updateExprAsn' _   _   e@(EUnOp AddrOf _)  = CasLeaf e
-updateExprAsn' lhs rhs   (EUnOp op e)      = fmap (EUnOp op) $ updateExprAsn' lhs rhs e
-updateExprAsn' lhs rhs   (EBinOp op e1 e2) = (EBinOp op) <$> updateExprAsn' lhs rhs e1 <*> updateExprAsn' lhs rhs e2
-updateExprAsn' lhs rhs   (ESlice e s)      = fmap (\e' -> exprSlice e' s) $ updateExprAsn' lhs rhs e
+updateExprAsn' :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> MECascade
+updateExprAsn' lhs rhs e@(EVar _)          = fmap Just $ updateScalAsn lhs rhs e
+updateExprAsn' _   _   e@(EConst _)        = CasLeaf $ Just e
+updateExprAsn' lhs rhs e@(EField _ _)      = fmap Just $ updateScalAsn lhs rhs e
+updateExprAsn' lhs rhs e@(EIndex _ _)      = fmap Just $ updateScalAsn lhs rhs e
+updateExprAsn' _   _   e@(EUnOp AddrOf _)  = CasLeaf $ Just e
+updateExprAsn' lhs rhs   (EUnOp op e)      = fmap (EUnOp op) <$> updateExprAsn' lhs rhs e
+updateExprAsn' lhs rhs   (EBinOp op e1 e2) = (\me1 me2 -> EBinOp op <$> me1 <*> me2) 
+                                              <$> updateExprAsn' lhs rhs e1
+                                              <*> updateExprAsn' lhs rhs e2
+updateExprAsn' lhs rhs   (ESlice e s)      = fmap (\e' -> exprSlice e' s) <$> updateExprAsn' lhs rhs e
+updateExprAsn' lhs rhs   (ERel n as)       = (\mas -> sequence mas >>= (return . ERel n))
+                                             <$> foldl' (\cas a -> (:) <$> (updateExprAsn' lhs rhs a) <*> cas) (CasLeaf []) as
+updateExprAsn' lhs rhs   (ERange a f t)    = updateRange lhs rhs a f t
+
+-- Update range expression:
+-- if lhs is within range, then the value is undefined; otherwise
+-- the value does not change
+updateRange :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> Expr -> Expr -> MECascade
+updateRange lhs _ a f t = let ident = CasLeaf $ Just $ ERange a f t in
+                          casMap (maybe ident 
+                                        (\i -> let inrange = ptrFreeBExprToFormula $ (plusmod a [i, uminus f]) .<= (plusmod a [t, uminus f])
+                                               in (casTree [(inrange     , CasLeaf Nothing), 
+                                                            (fnot inrange, ident)])))
+                                 $ lexprInArray lhs a
+
+-- Computes conditions when lhs is contained within a
+-- Returns cascade where leaves represent array index where lhs is stored
+lexprInArray :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> MECascade
+lexprInArray (ESlice e  _) a                   = lexprInArray e a
+lexprInArray (EField e  _) a                   = lexprInArray e a
+lexprInArray (EIndex a' i) a | isomorphic a' a = fmap (\b -> if' b (Just i) Nothing) $ lhsExprEq a' a
+                             | otherwise       = lexprInArray a' a
+                             where isomorphic (EVar v1)      (EVar v2)      = v1 == v2
+                                   isomorphic (EIndex a1 _)  (EIndex a2 _)  = isomorphic a1 a2
+                                   isomorphic (EField e1 f1) (EField e2 f2) = isomorphic e1 e2 && f1 == f2
+                                   isomorphic _             _               = False
+lexprInArray (EVar _)      _                   = CasLeaf Nothing
 
 -- apply updateExprAsn to all array indices in the expression
 updateExprIndices :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> ECascade
 updateExprIndices _   _   e@(EVar _)          = CasLeaf e
 updateExprIndices _   _   e@(EConst _)        = CasLeaf e
 updateExprIndices lhs rhs   (EField s f)      = fmap (\s' -> EField s' f) $ updateExprIndices lhs rhs s
-updateExprIndices lhs rhs   (EIndex a i)      = (\a' i' -> EIndex a' i') <$> updateExprIndices lhs rhs a <*> updateExprAsn lhs rhs i
+updateExprIndices lhs rhs   (EIndex a i)      = (\a' i' -> EIndex a' i') <$> updateExprIndices lhs rhs a <*> fmap fromJust (updateExprAsn lhs rhs i)
 updateExprIndices lhs rhs   (EUnOp op e)      = fmap (EUnOp op) $ updateExprIndices lhs rhs e
 updateExprIndices lhs rhs   (EBinOp op e1 e2) = (EBinOp op) <$> updateExprIndices lhs rhs e1 <*> updateExprIndices lhs rhs e2
 updateExprIndices lhs rhs   (ESlice e s)      = fmap (\e' -> ESlice e' s) $ updateExprIndices lhs rhs e
+updateExprIndices lhs rhs   (ERel n as)       = fmap (\as' -> ERel n as') $ foldl' (\cas a -> (:) <$> (updateExprIndices lhs rhs a) <*> cas) (CasLeaf []) as
+updateExprIndices lhs rhs   (ERange a f t)    = (\a' f' t' -> ERange a' f' t') <$> updateExprIndices lhs rhs a 
+                                                                               <*> updateExprIndices lhs rhs f 
+                                                                               <*> updateExprIndices lhs rhs t
 
 -- Takes lhs and rhs of assignment statement and a term
 -- Computes possible overlaps of the lhs with the term and
@@ -256,12 +301,12 @@ lhsExprEq :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> BCascade
 lhsExprEq (EVar n1)      (EVar n2)        | n1 == n2 = CasLeaf True
 lhsExprEq (EField e1 f1) (EField e2 f2)   | f1 == f2 = lhsExprEq e1 e2
 lhsExprEq (EIndex a1 i1) (EIndex a2 i2)              = 
-    casMap (\b -> if b 
-                     then case bexprToFormula $ i1 === i2 of
-                               FTrue  -> CasLeaf True
-                               FFalse -> CasLeaf False
-                               f      -> casTree [(f, CasLeaf True), (fnot f, CasLeaf False)]
-                     else CasLeaf False)
+    casMap (\b -> if' b 
+                     (case bexprToFormula $ i1 === i2 of
+                           FTrue  -> CasLeaf True
+                           FFalse -> CasLeaf False
+                           f      -> casTree [(f, CasLeaf True), (fnot f, CasLeaf False)])
+                     (CasLeaf False))
            $ lhsExprEq a1 a2
 lhsExprEq (EUnOp Deref e1) e2             | t1 == t2 && isMemExpr e2 = 
     case bexprToFormula $ e1 === EUnOp AddrOf e2 of

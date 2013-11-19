@@ -2,9 +2,12 @@ module Cascade(Cascade(..),
                casTree,
                casMap,
                FCascade,
+               MFCascade,
                ECascade,
+               MECascade,
                BCascade,
                TCascade,
+               MTCascade,
                fcasToFormula,
                fcasPrune) where
 
@@ -51,10 +54,13 @@ instance (PP a) => PP (Cascade a) where
 instance (PP a) => Show (Cascade a) where
     show = render . pp
 
-type FCascade = Cascade Formula
-type BCascade = Cascade Bool
-type ECascade = Cascade Expr
-type TCascade = Cascade Term
+type FCascade  = Cascade Formula
+type MFCascade = Cascade (Maybe Formula)
+type BCascade  = Cascade Bool
+type ECascade  = Cascade Expr
+type MECascade = Cascade (Maybe Expr)
+type TCascade  = Cascade Term
+type MTCascade = Cascade (Maybe Term)
 
 fcasToFormula :: FCascade -> Formula
 fcasToFormula (CasLeaf f)      = f

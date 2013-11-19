@@ -41,9 +41,3 @@ instantiateRelation Relation{..} args = (p, acfas)
     exprSubst   (EBinOp op e1 e2) = EBinOp op (exprSubst e1) (exprSubst e2)
     exprSubst   (ESlice e s)      = exprSlice (exprSubst e) s
     exprSubst   (ERel n as)       = ERel n $ map exprSubst as
-
-    plusmod :: (Typed a, Show a) => a -> [Expr] -> Expr
-    plusmod ar es = exprSlice (plus es) (0, w-1)
-        where Array _ l = typ ar
-              w = if' (isPow2 $ fromIntegral l) (log2 $ fromIntegral l) 
-                      (error $ "instantiateRelation: cannot handle subrange of non-power-of-2 array " ++ show ar)

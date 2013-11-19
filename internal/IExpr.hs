@@ -13,12 +13,15 @@ module IExpr(LVal(..),
              (===),
              (/==),
              (==>),
+             (.<=),
+             uminus,
              disj,
              conj,
              neg,
              land,
              lor,
              plus,
+             plusmod,
              econcat,
              true,
              false,
@@ -217,7 +220,7 @@ exprSlice e                      s                                      = ESlice
 exprScalars :: Expr -> Type -> [Expr]
 exprScalars e (Struct fs)  = concatMap (\(Field n t) -> exprScalars (EField e n) t) fs
 exprScalars e (Array  t s) = concatMap (\i -> exprScalars (EIndex e (EConst $ UIntVal (bitWidth $ s-1) $ fromIntegral i)) t) [0..s-1]
-exprScalars e (VarArray t) = error $ "exprScalars VarArray " ++ show e
+exprScalars e (VarArray _) = error $ "exprScalars VarArray " ++ show e
 exprScalars e _            = [e]
 
 -- Variables involved in the expression
@@ -244,6 +247,12 @@ e1 /== e2 = EBinOp Neq e1 e2
 (==>) :: Expr -> Expr -> Expr
 e1 ==> e2 = EBinOp Imp e1 e2
 
+uminus :: Expr -> Expr
+uminus = EUnOp UMinus
+
+(.<=) :: Expr -> Expr -> Expr
+e1 .<= e2 = EBinOp Lt e1 e2
+
 disj :: [Expr] -> Expr
 disj [] = false
 disj es = foldl' (\e1 e2 -> if' (e1 == false) e2 $ if' (e2 == false) e1 $ if' ((e1 == true) || (e2 == true)) true $ EBinOp Or e1 e2) (head es) (tail es)
@@ -264,6 +273,14 @@ lor = EBinOp Or
 plus :: [Expr] -> Expr
 plus [e] = e
 plus (e:es) = EBinOp Plus e $ plus es
+
+-- sum modulo array length
+plusmod :: (?spec::Spec, Typed a, Show a) => a -> [Expr] -> Expr
+plusmod ar es = exprSlice (plus es) (0, w-1)
+    where Array _ l = typ ar
+          w = if' (isPow2 $ fromIntegral l) (log2 $ fromIntegral l) 
+                  (error $ "instantiateRelation: cannot handle subrange of non-power-of-2 array " ++ show ar)
+
 
 -- TODO: merge adjacent expressions
 econcat :: [Expr] -> Expr

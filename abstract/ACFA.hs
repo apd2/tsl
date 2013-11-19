@@ -16,7 +16,7 @@ import TSLUtil
 -- with variable update functions and states--with sets of abstract
 -- vars to be recomputed in this state and a map from abstract vars to
 -- locations where these vars are recomputed
-type ACFA = G.Gr ([AbsVar], M.Map AbsVar Loc) (Int,Maybe Formula,[ECascade])
+type ACFA = G.Gr ([AbsVar], M.Map AbsVar Loc) (Int,Maybe Formula,[MECascade])
 
 acfaTraceFile :: ACFA -> String -> a -> a
 acfaTraceFile acfa title = graphTraceFile (G.emap (\(num, mpre, upd) -> show num ++ ": " ++ (maybe "" show mpre)  ++ ": " ++ (show $ length upd)) acfa) title

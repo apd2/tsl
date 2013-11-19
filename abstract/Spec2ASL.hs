@@ -172,7 +172,7 @@ acfa2ECas me acfa = let ?acfa = acfa
     where initloc = fromJust $ find (null . G.pre acfa) $ G.nodes acfa
 
 
-acfa2ECas' :: (?spec::Spec,?acfa::ACFA,?me::Maybe Expr) => Loc -> ECascade
+acfa2ECas' :: (?spec::Spec,?acfa::ACFA,?me::Maybe Expr) => Loc -> MECascade
 acfa2ECas' l | (null $ G.suc ?acfa l)        = CasLeaf $ maybe true id ?me
              | (length (G.lsuc ?acfa l) > 1) = casTree $ map (\(l', (_, Just pre,_)) -> (pre, acfa2ECas' l'))
                                                        $ G.lsuc ?acfa l
@@ -184,24 +184,25 @@ acfa2ECas' l | (null $ G.suc ?acfa l)        = CasLeaf $ maybe true id ?me
                                                in maybe ecas' (\pre -> maybe (casTree [(pre, ecas')]) (\_ -> ecas') ?me) mpre
 
 
-ecasSubst :: (?spec::Spec) => ECascade -> [(AbsVar, ECascade)] -> ECascade
+ecasSubst :: (?spec::Spec) => ECascade -> [(AbsVar, MECascade)] -> MECascade
 ecasSubst ecas substs = foldl' ecasSubst1 ecas substs
 
-ecasSubst1 :: (?spec::Spec) => ECascade -> (AbsVar, ECascade) -> ECascade
+ecasSubst1 :: (?spec::Spec) => MECascade -> (AbsVar, MECascade) -> MECascade
 ecasSubst1 ecas (av, ecas') = casMap (ecasSubstAVar ecas av) ecas'
 
-ecasSubstAVar :: (?spec::Spec) => ECascade -> AbsVar -> Expr -> ECascade
-ecasSubstAVar (CasTree bs) av e'            = casTree $ map (\(f,cas) -> (formSubstAVar av e' f, ecasSubstAVar cas av e')) bs
-ecasSubstAVar (CasLeaf e) av e' | isBool e  = CasLeaf $ formToExpr $ formSubstAVar av e' $ ptrFreeBExprToFormula e
-                                | otherwise = CasLeaf $
-                                              case scalarExprToTerm e of 
-                                                   (TEnum _)   -> e
-                                                   (TUInt _ _) -> e
-                                                   (TSInt _ _) -> e
-                                                   t           -> if' (isInt t && AVarInt t == av) e' $
-                                                                  if' (av == AVarEnum t) e' e
+ecasSubstAVar :: (?spec::Spec) => MECascade -> AbsVar -> Maybe Expr -> MECascade
+ecasSubstAVar (CasTree bs)       av me' = casTree $ map (\(f,cas) -> (formSubstAVar av e' f, ecasSubstAVar cas av e')) bs
+ecasSubstAVar (CasLeaf Nothing)  _  _  = CasLeaf Nothing
+ecasSubstAVar (CasLeaf (Just e)) av me' | isBool e  = CasLeaf $ formToExpr $ formSubstAVar av e' $ ptrFreeBExprToFormula e
+                                        | otherwise = CasLeaf $
+                                                      case scalarExprToTerm e of 
+                                                           (TEnum _)   -> Just e
+                                                           (TUInt _ _) -> Just e
+                                                           (TSInt _ _) -> Just e
+                                                           t           -> if' (isInt t && AVarInt t == av) me' $
+                                                                          if' (av == AVarEnum t) me' (Just e)
 
-formSubstAVar :: (?spec::Spec) => AbsVar -> Expr -> Formula -> Formula
+formSubstAVar :: (?spec::Spec) => AbsVar -> Maybe Expr -> Formula -> Formula
 formSubstAVar _  _   FTrue                       = FTrue
 formSubstAVar _  _   FFalse                      = FFalse
 formSubstAVar av e f@(FBoolAVar av') | av == av' = ptrFreeBExprToFormula e
