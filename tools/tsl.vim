@@ -29,7 +29,8 @@ syn match  tslDelimiter         "<="
 syn match  tslDelimiter         "|=="
 syn match  tslDelimiter         "\.\.\."
 syn match  tslDelimiter         "\*"
-syn match  tslDelimiter	        "[\[\]!?\~&|\^=<>%+-,;\:\.]"
+syn match  tslDelimiter         "##"
+syn match  tslDelimiter	        "[\[\]!?@#\~&|\^=<>%+-,;\:\.]"
 
 "Regular keywords
 syn keyword tslStatement	after assert wire assume before choice default derive instance
