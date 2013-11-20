@@ -445,7 +445,6 @@ relterm = parens relexpr <|> relterm'
 term' = withPos $
        ( elabel
      <|> erel
-     <|> elen
      <|> estruct True
      <|> etern   True
      <|> eapply  True
@@ -458,7 +457,6 @@ term' = withPos $
 detterm' = withPos $
           ( elabel
         <|> erel
-        <|> elen
         <|> estruct False
         <|> etern   False
         <|> eapply  False
@@ -470,7 +468,6 @@ detterm' = withPos $
 
 relterm' = withPos $
           ( erel
-        <|> elen
         <|> estruct False
         <|> etern   False
         <|> eapply  False
@@ -483,7 +480,6 @@ relterm' = withPos $
 
 elabel      = EAtLab nopos <$> (reservedOp "@" *> ident)
 erel        = ERel nopos <$ (reservedOp "?") <*> ident <*> (parens $ commaSep detexpr)
-elen        = ELength nopos <$ (reservedOp "#") <*> detexpr
 estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
           anonfields = commaSep1 (expr' det)
@@ -563,7 +559,7 @@ pref  p = Prefix  . chainl1 p $ return       (.)
 postf p = Postfix . chainl1 p $ return (flip (.))
 
 table = [[postf $ choice [postSlice, postRange, postIndex, postField, postPField]]
-        ,[pref  $ choice [prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus, prefix "*" Deref, prefix "&" AddrOf]]
+        ,[pref  $ choice [elen, prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus, prefix "*" Deref, prefix "&" AddrOf]]
         ,[binary "==" Eq AssocLeft, 
           binary "!=" Neq AssocLeft,
           binary "<"  Lt AssocNone, 
@@ -589,5 +585,6 @@ postIndex  = (\i end e -> EIndex (fst $ pos e, end) e i) <$> index <*> getPositi
 postField  = (\f end e -> EField (fst $ pos e, end) e f) <$> field <*> getPosition
 postPField = (\f end e -> EPField (fst $ pos e, end) e f) <$> ptrfield <*> getPosition
 
+elen = (\start e -> ELength (start, snd $ pos e) e) <$> getPosition <* reservedOp "#"
 prefix n fun = (\start e -> EUnOp (start, snd $ pos e) fun e) <$> getPosition <* reservedOp n
 binary n fun = Infix $ (\le re -> EBinOp (fst $ pos le, snd $ pos re) fun le re) <$ reservedOp n
