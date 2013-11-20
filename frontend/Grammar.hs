@@ -444,6 +444,7 @@ relterm = parens relexpr <|> relterm'
 
 term' = withPos $
        ( elabel
+     <|> erel
      <|> elen
      <|> estruct True
      <|> etern   True
@@ -456,6 +457,7 @@ term' = withPos $
 
 detterm' = withPos $
           ( elabel
+        <|> erel
         <|> elen
         <|> estruct False
         <|> etern   False
