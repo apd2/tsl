@@ -413,7 +413,7 @@ lookupTerm _ ns =
 
 checkTerm :: (?spec::Spec, MonadError String me) => Scope -> StaticSym -> me Obj
 checkTerm s n = case lookupTerm s n of 
-                     Nothing -> err (pos n) $ "Unknown term " ++ show n
+                     Nothing -> err (pos n) $ "Unknown term " ++ show n ++ " in scope " ++ show s
                      Just t  -> return t
 
 getTerm :: (?spec::Spec) => Scope -> StaticSym -> Obj

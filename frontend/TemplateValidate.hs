@@ -298,7 +298,7 @@ validateTmRels2 :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmRels2 tm = do {mapM (validateRelation tm) (tmRelation tm); return ()}
 
 validateTmApply2 :: (?spec::Spec, MonadError String me) => Template -> me ()
-validateTmApply2 tm = do {mapM (\Apply{..} -> validateApply tm applyRel applyArg) (tmApply tm); return ()}
+validateTmApply2 tm = do {mapM (\Apply{..} -> validateApply (ScopeTemplate tm) applyRel applyArg) (tmApply tm); return ()}
 
 ------------------------------------------------------------------------------
 -- Validate template namespace

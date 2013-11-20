@@ -29,11 +29,12 @@ relToIRel rel = do
         ruleToCFA :: Expr -> NameGen I.CFA
         ruleToCFA e = do 
             let stat0 = SAssume nopos Nothing $ EBinOp nopos Eq (ERel nopos (name rel) $ map (ETerm nopos . return . name) $ relArg rel) e
-            stat <- let ?scope = ScopeTemplate tmMain 
+            let sc = ScopeRelation tmMain rel
+            stat <- let ?scope = sc
                     in statSimplify stat0
             let ctx = CFACtx { ctxEPID    = Nothing
-                             , ctxStack   = [(ScopeTemplate tmMain, error $ "return from relation", Nothing, lmap)]
-                             , ctxCFA     = I.newCFA (ScopeTemplate tmMain) stat I.true
+                             , ctxStack   = [(sc, error $ "return from relation", Nothing, lmap)]
+                             , ctxCFA     = I.newCFA sc stat I.true
                              , ctxBrkLocs = error "break outside a loop"
                              , ctxGNMap   = globalNMap
                              , ctxLastVar = 0

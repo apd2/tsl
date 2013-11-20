@@ -234,7 +234,7 @@ validateExpr' (EStruct p tn mes) = do
 validateExpr' (ERel p n as) = 
     case ?scope of
          ScopeTop -> err p "relation instantiation in top-level scope"
-         _        -> validateApply (scopeTm ?scope) n as
+         _        -> validateApply ?scope n as
 
 validateExpr' (ENonDet p) = 
     case ?scope of
@@ -269,19 +269,19 @@ validateCall p mref as = do
               (zip (methArg m) as)
     return ()
 
-validateApply :: (?spec::Spec, MonadError String me) => Template -> Ident -> [Expr] -> me ()
-validateApply tm rel args = do
+validateApply :: (?spec::Spec, MonadError String me) => Scope -> Ident -> [Expr] -> me ()
+validateApply sc rel args = do
     let ?privoverride = False
     -- Relation name refers to a valid relation
-    (_, r@Relation{..}) <- checkRelation (ScopeTemplate tm) rel
+    (_, r@Relation{..}) <- checkRelation sc rel
     -- Argument list has correct length
     assert (length args == length relArg) (pos rel) $ "Relation " ++ sname r ++ " is defined with " ++ show (length relArg) ++ 
                                                       " arguments, but is instantiated with " ++ show (length args) ++ " arguments" 
     -- Relation arguments are 
     -- * valid expressions
     -- * of matching types
-    _ <- mapM (\(aa, ra) -> do validateExpr (ScopeTemplate tm) aa
-                               let ?scope = ScopeTemplate tm
+    _ <- mapM (\(aa, ra) -> do validateExpr sc aa
+                               let ?scope = sc
                                checkTypeMatch aa ra)
          $ zip args relArg
     return ()
