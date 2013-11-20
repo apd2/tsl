@@ -14,6 +14,7 @@ module IExpr(LVal(..),
              (/==),
              (==>),
              (.<=),
+             (.%),
              uminus,
              disj,
              conj,
@@ -192,7 +193,7 @@ instance (?spec::Spec) => Typed Expr where
     typ (ERange a _)                           = case typ a of
                                                       Array t _  -> VarArray t
                                                       VarArray t -> VarArray t
-    typ (ELength a)                            = UInt arrLengthBits
+    typ (ELength _)                            = UInt arrLengthBits
     typ (EUnOp op e) | isArithUOp op           = if s 
                                                     then SInt w
                                                     else UInt w
@@ -280,13 +281,16 @@ plus :: [Expr] -> Expr
 plus [e] = e
 plus (e:es) = EBinOp Plus e $ plus es
 
--- sum modulo array length
-plusmod :: (?spec::Spec, Typed a, Show a) => a -> [Expr] -> Expr
-plusmod ar es = exprSlice (plus es) (0, w-1)
-    where Array _ l = typ ar
-          w = if' (isPow2 $ fromIntegral l) (log2 $ fromIntegral l) 
-                  (error $ "instantiateRelation: cannot handle subrange of non-power-of-2 array " ++ show ar)
+(.%) :: Expr -> Expr -> Expr
+(.%) e1 e2 = EBinOp Mod e1 e2
 
+-- extend arguments to fit array index and sum them modulo array length
+plusmod :: (?spec::Spec, Typed a, Show a) => a -> [Expr] -> Expr
+plusmod ar es = (plus $ map ext es) .% EConst (UIntVal (bitWidth l) $ fromIntegral l)
+    where Array _ l = typ ar
+          w = bitWidth (l-1)
+          ext e | typeWidth e >= w = e
+                | otherwise        = econcat [e, EConst $ UIntVal (w - typeWidth e) 0]
 
 -- TODO: merge adjacent expressions
 econcat :: [Expr] -> Expr
@@ -315,7 +319,7 @@ isConstExpr (EConst _)       = True
 isConstExpr (EField e _)     = isConstExpr e
 isConstExpr (EIndex a i)     = isConstExpr a && isConstExpr i
 isConstExpr (ERange a (f,l)) = all isConstExpr [a,f,l]
-isConstExpr (ELength a)      = False
+isConstExpr (ELength _)      = False
 isConstExpr (EUnOp AddrOf e) = isConstLExpr e
 isConstExpr (EUnOp _ e)      = isConstExpr e
 isConstExpr (EBinOp _ e1 e2) = isConstExpr e1 && isConstExpr e2
