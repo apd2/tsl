@@ -4,7 +4,8 @@ module Type(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,Arra
             WithTypeSpec(..),
             TypeDecl(TypeDecl), 
             Enumerator(Enumerator),
-            Field(Field)) where
+            Field(Field),
+            arrLengthBits) where
 
 import Text.PrettyPrint
 import Control.Monad.Error
@@ -13,6 +14,9 @@ import PP
 import Pos
 import Name
 import Expr
+
+
+arrLengthBits = 64::Int
 
 -- Type spec
 data Enumerator = Enumerator { epos    :: Pos

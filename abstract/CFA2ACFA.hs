@@ -221,10 +221,10 @@ updateExprAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> ME
 updateExprAsn lhs rhs e = casMap (updateExprAsn' lhs rhs) $ updateExprIndices lhs rhs e
 
 updateExprAsn' :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> MECascade
-updateExprAsn' lhs rhs e@(EVar _)          = fmap Just $ updateScalAsn lhs rhs e
+updateExprAsn' lhs rhs e@(EVar _)          = Just <$> updateScalAsn lhs rhs e
 updateExprAsn' _   _   e@(EConst _)        = CasLeaf $ Just e
-updateExprAsn' lhs rhs e@(EField _ _)      = fmap Just $ updateScalAsn lhs rhs e
-updateExprAsn' lhs rhs e@(EIndex _ _)      = fmap Just $ updateScalAsn lhs rhs e
+updateExprAsn' lhs rhs e@(EField _ _)      = Just <$> updateScalAsn lhs rhs e
+updateExprAsn' lhs rhs e@(EIndex _ _)      = Just <$> updateScalAsn lhs rhs e
 updateExprAsn' _   _   e@(EUnOp AddrOf _)  = CasLeaf $ Just e
 updateExprAsn' lhs rhs   (EUnOp op e)      = fmap (EUnOp op) <$> updateExprAsn' lhs rhs e
 updateExprAsn' lhs rhs   (EBinOp op e1 e2) = (\me1 me2 -> EBinOp op <$> me1 <*> me2) 
@@ -233,15 +233,16 @@ updateExprAsn' lhs rhs   (EBinOp op e1 e2) = (\me1 me2 -> EBinOp op <$> me1 <*> 
 updateExprAsn' lhs rhs   (ESlice e s)      = fmap (\e' -> exprSlice e' s) <$> updateExprAsn' lhs rhs e
 updateExprAsn' lhs rhs   (ERel n as)       = (\mas -> sequence mas >>= (return . ERel n))
                                              <$> foldl' (\cas a -> (:) <$> (updateExprAsn' lhs rhs a) <*> cas) (CasLeaf []) as
-updateExprAsn' lhs rhs   (ERange a f t)    = updateRange lhs rhs a f t
+updateExprAsn' lhs rhs   (ELength a)       = (fmap ELength) <$> updateExprAsn' lhs rhs a
+updateExprAsn' lhs rhs   (ERange a (f,l))  = updateRange lhs rhs a f l
 
 -- Update range expression:
 -- if lhs is within range, then the value is undefined; otherwise
 -- the value does not change
 updateRange :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> Expr -> Expr -> MECascade
-updateRange lhs _ a f t = let ident = CasLeaf $ Just $ ERange a f t in
+updateRange lhs _ a f l = let ident = CasLeaf $ Just $ ERange a (f,l) in
                           casMap (maybe ident 
-                                        (\i -> let inrange = ptrFreeBExprToFormula $ (plusmod a [i, uminus f]) .<= (plusmod a [t, uminus f])
+                                        (\i -> let inrange = ptrFreeBExprToFormula $ (plusmod a [i, uminus f]) .<= l
                                                in (casTree [(inrange     , CasLeaf Nothing), 
                                                             (fnot inrange, ident)])))
                                  $ lexprInArray lhs a
@@ -263,15 +264,16 @@ lexprInArray (EVar _)      _                   = CasLeaf Nothing
 updateExprIndices :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> ECascade
 updateExprIndices _   _   e@(EVar _)          = CasLeaf e
 updateExprIndices _   _   e@(EConst _)        = CasLeaf e
-updateExprIndices lhs rhs   (EField s f)      = fmap (\s' -> EField s' f) $ updateExprIndices lhs rhs s
-updateExprIndices lhs rhs   (EIndex a i)      = (\a' i' -> EIndex a' i') <$> updateExprIndices lhs rhs a <*> fmap fromJust (updateExprAsn lhs rhs i)
-updateExprIndices lhs rhs   (EUnOp op e)      = fmap (EUnOp op) $ updateExprIndices lhs rhs e
-updateExprIndices lhs rhs   (EBinOp op e1 e2) = (EBinOp op) <$> updateExprIndices lhs rhs e1 <*> updateExprIndices lhs rhs e2
-updateExprIndices lhs rhs   (ESlice e s)      = fmap (\e' -> ESlice e' s) $ updateExprIndices lhs rhs e
-updateExprIndices lhs rhs   (ERel n as)       = fmap (\as' -> ERel n as') $ foldl' (\cas a -> (:) <$> (updateExprIndices lhs rhs a) <*> cas) (CasLeaf []) as
-updateExprIndices lhs rhs   (ERange a f t)    = (\a' f' t' -> ERange a' f' t') <$> updateExprIndices lhs rhs a 
-                                                                               <*> updateExprIndices lhs rhs f 
-                                                                               <*> updateExprIndices lhs rhs t
+updateExprIndices lhs rhs   (EField s f)      = (\s' -> EField s' f) <$> updateExprIndices lhs rhs s
+updateExprIndices lhs rhs   (EIndex a i)      = EIndex               <$> updateExprIndices lhs rhs a <*> fmap fromJust (updateExprAsn lhs rhs i)
+updateExprIndices lhs rhs   (EUnOp op e)      = EUnOp op             <$> updateExprIndices lhs rhs e
+updateExprIndices lhs rhs   (EBinOp op e1 e2) = (EBinOp op)          <$> updateExprIndices lhs rhs e1 <*> updateExprIndices lhs rhs e2
+updateExprIndices lhs rhs   (ESlice e s)      = (\e' -> ESlice e' s) <$> updateExprIndices lhs rhs e
+updateExprIndices lhs rhs   (ERel n as)       = (ERel n)             <$> foldl' (\cas a -> (:) <$> (updateExprIndices lhs rhs a) <*> cas) (CasLeaf []) as
+updateExprIndices lhs rhs   (ELength a)       = ELength              <$> updateExprIndices lhs rhs a 
+updateExprIndices lhs rhs   (ERange a (f,l))  = ERange               <$> updateExprIndices lhs rhs a <*>
+                                                                     ((,) <$> updateExprIndices lhs rhs f 
+                                                                          <*> updateExprIndices lhs rhs l)
 
 -- Takes lhs and rhs of assignment statement and a term
 -- Computes possible overlaps of the lhs with the term and

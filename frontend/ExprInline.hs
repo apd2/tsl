@@ -63,6 +63,12 @@ exprSimplify' (EPField p s f)           = do (ss,s') <- exprSimplify s
 exprSimplify' (EIndex p a i)            = do (ssa,a') <- exprSimplify a
                                              (ssi,i') <- exprSimplify i
                                              return (ssa++ssi, EIndex p a' i')
+exprSimplify' (ERange p a (f,l))        = do (ssa,a') <- exprSimplify a
+                                             (ssf,f') <- exprSimplify f
+                                             (ssl,l') <- exprSimplify l
+                                             return (ssa++ssf++ssl, ERange p a' (f',l'))
+exprSimplify' (ELength p a)             = do (ss,a') <- exprSimplify a
+                                             return (ss, ELength p a')                                             
 exprSimplify' (EUnOp p op a)            = do (ss,a') <- exprSimplify a
                                              return (ss, EUnOp p op a')
 exprSimplify' (EBinOp p op a1 a2)       = do (ss1,a1') <- exprSimplify a1
@@ -225,10 +231,15 @@ exprToIExpr' (EAtLab _ lab) _               = -- hack: encode label name as vari
                                               return $ I.EVar $ "@" ++ sname lab 
 exprToIExpr' (ERel _ n as) _                = do as' <- mapM exprToIExprDet as
                                                  return $ I.ERel (sname n) as'
-exprToIExpr' (ERange _ a l r) _             = do a' <- exprToIExprDet a
+exprToIExpr' (ERange _ a (f,l)) _           = do a' <- exprToIExprDet a
+                                                 f' <- exprToIExprDet f
                                                  l' <- exprToIExprDet l
-                                                 r' <- exprToIExprDet r
-                                                 return $ I.ERange a' l' r'
+                                                 return $ I.ERange a' (f',l')
+exprToIExpr' e@(ELength _ a) _              = do -- static array lengths known at compile time are converted into constants
+                                                 sc <- gets ctxScope
+                                                 let ?scope = sc
+                                                 if' (isConstExpr e) (return $ I.EConst $ I.UIntVal arrLengthBits $ evalInt e)
+                                                                     (liftM I.ELength $ exprToIExprDet a)
 exprToIExpr' (ENonDet _) t                  = do v <- ctxInsTmpVar $ mkType t
                                                  return $ I.EVar $ I.varName v
 exprToIExpr' e _                            = error $ "exprToIExpr' " ++ show e

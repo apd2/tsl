@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 
-module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,ERange,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,EAtLab,ERel,ENonDet),
+module Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,ERange,ELength,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,EAtLab,ERel,ENonDet),
             ConstExpr, 
             LExpr,
             Slice,
@@ -50,7 +50,8 @@ data Expr = ETerm   {epos::Pos, ssym::StaticSym}
           | EField  {epos::Pos, struct::Expr, field::Ident}
           | EPField {epos::Pos, struct::Expr, field::Ident}
           | EIndex  {epos::Pos, arr::Expr, idx::Expr}
-          | ERange  {epos::Pos, arr::Expr, ifrom::Expr, ito::Expr}
+          | ERange  {epos::Pos, arr::Expr, range::(Expr, Expr)}
+          | ELength {epos::Pos, arr::Expr}
           | EUnOp   {epos::Pos, uop::UOp, arg1::Expr}
           | EBinOp  {epos::Pos, bop::BOp, arg1::Expr, arg2::Expr}
           | ETernOp {epos::Pos, arg1::Expr, arg2::Expr, arg3::Expr}
@@ -63,24 +64,25 @@ data Expr = ETerm   {epos::Pos, ssym::StaticSym}
           | ENonDet {epos::Pos}
 
 instance Eq Expr where 
-   (==) (ETerm _ s1)         (ETerm _ s2)         = s1 == s2
-   (==) (ELit _ w1 s1 r1 v1) (ELit _ w2 s2 r2 v2) = w1 == w2 && s1 == s2 && v1 == v2
-   (==) (EBool _ b1)         (EBool _ b2)         = b1 == b2
-   (==) (EApply _ m1 as1)    (EApply _ m2 as2)    = m1 == m2 && as1 == as2
-   (==) (EField _ e1 f1)     (EField _ e2 f2)     = e1 == e2 && f1 == f2
-   (==) (EIndex _ a1 i1)     (EIndex _ a2 i2)     = a1 == a2 && i1 == i2
-   (==) (ERange _ a1 f1 t1)  (ERange _ a2 f2 t2)  = a1 == a2 && f1 == f2 && t1 == t2
-   (==) (EUnOp _ o1 e1)      (EUnOp _ o2 e2)      = o1 == o2 && e1 == e2
-   (==) (EBinOp _ o1 x1 y1)  (EBinOp _ o2 x2 y2)  = o1 == o2 && x1 == x2 && y1 == y2
-   (==) (ETernOp _ x1 y1 z1) (ETernOp _ x2 y2 z2) = x1 == x2 && y1 == y2 && z1 == z2
-   (==) (ECase _ e1 cs1 d1)  (ECase _ e2 cs2 d2)  = e1 == e2 && cs1 == cs2 && d1 == d2
-   (==) (ECond _ cs1 d1)     (ECond _ cs2 d2)     = cs1 == cs2 && d1 == d2
-   (==) (ESlice _ e1 s1)     (ESlice _ e2 s2)     = e1 == e2 && s1 == s2
-   (==) (EStruct _ t1 fs1)   (EStruct _ t2 fs2)   = t1 == t2 && fs1 == fs2
-   (==) (EAtLab _ l1)        (EAtLab _ l2)        = l1 == l2
-   (==) (ERel _ n1 as1)      (ERel _ n2 as2)      = n1 == n2 && as1 == as2
-   (==) (ENonDet _)          (ENonDet _)          = True
-   (==) _                    _                    = False
+   (==) (ETerm _ s1)          (ETerm _ s2)          = s1 == s2
+   (==) (ELit _ w1 s1 r1 v1)  (ELit _ w2 s2 r2 v2)  = w1 == w2 && s1 == s2 && v1 == v2
+   (==) (EBool _ b1)          (EBool _ b2)          = b1 == b2
+   (==) (EApply _ m1 as1)     (EApply _ m2 as2)     = m1 == m2 && as1 == as2
+   (==) (EField _ e1 f1)      (EField _ e2 f2)      = e1 == e2 && f1 == f2
+   (==) (EIndex _ a1 i1)      (EIndex _ a2 i2)      = a1 == a2 && i1 == i2
+   (==) (ERange _ a1 (f1,l1)) (ERange _ a2 (f2,l2)) = a1 == a2 && f1 == f2 && l1 == l2
+   (==) (ELength _ a1)        (ELength _ a2)        = a1 == a2
+   (==) (EUnOp _ o1 e1)       (EUnOp _ o2 e2)       = o1 == o2 && e1 == e2
+   (==) (EBinOp _ o1 x1 y1)   (EBinOp _ o2 x2 y2)   = o1 == o2 && x1 == x2 && y1 == y2
+   (==) (ETernOp _ x1 y1 z1)  (ETernOp _ x2 y2 z2)  = x1 == x2 && y1 == y2 && z1 == z2
+   (==) (ECase _ e1 cs1 d1)   (ECase _ e2 cs2 d2)   = e1 == e2 && cs1 == cs2 && d1 == d2
+   (==) (ECond _ cs1 d1)      (ECond _ cs2 d2)      = cs1 == cs2 && d1 == d2
+   (==) (ESlice _ e1 s1)      (ESlice _ e2 s2)      = e1 == e2 && s1 == s2
+   (==) (EStruct _ t1 fs1)    (EStruct _ t2 fs2)    = t1 == t2 && fs1 == fs2
+   (==) (EAtLab _ l1)         (EAtLab _ l2)         = l1 == l2
+   (==) (ERel _ n1 as1)       (ERel _ n2 as2)       = n1 == n2 && as1 == as2
+   (==) (ENonDet _)           (ENonDet _)           = True
+   (==) _                     _                     = False
 
 
 
@@ -104,7 +106,8 @@ instance PP Expr where
     pp (EBool _ False)           = text "false"
     pp (EApply _ m args)         = pp m <+> (parens $ hsep $ punctuate comma $ map pp args)
     pp (EIndex _ e i)            = pp e <> char '[' <> pp i <> char ']'
-    pp (ERange _ e f t)          = pp e <> char '[' <> pp f <> text ".." <> pp t <> char ']'
+    pp (ERange _ e (f, l))       = pp e <> char '[' <> pp f <> text "##" <> pp l <> char ']'
+    pp (ELength _ e)             = char '#' <> pp e
     pp (EField _ e f)            = pp e <> char '.' <> pp f
     pp (EPField _ e f)           = pp e <> text "->" <> pp f
     pp (EUnOp _ op e)            = parens $ pp op <> pp e

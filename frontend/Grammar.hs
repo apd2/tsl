@@ -46,7 +46,7 @@ statementParser   = removeTabs *> statement
 statementsParser  = removeTabs *> statements
 statements1Parser = removeTabs *> ((optional whiteSpace) *> statements1)
 
-reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@", "?"]
+reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@", "?", "#", "##"]
 reservedNames = ["after",
                  "apply",
                  "prefix",
@@ -161,6 +161,8 @@ varDecl = withPos $ Var nopos <$> option False (True <$ reserved "mem")
 typeDef = withPos $ TypeDecl nopos <$ reserved "typedef" <*> typeSpec False <*> ident
 
 slice = brackets $ (,) <$> detexpr <*> (colon *> detexpr)
+range = brackets $ (,) <$> detexpr <*> (reservedOp "##" *> detexpr)
+
 index = brackets detexpr
 field = dot *> ident
 ptrfield = reservedOp "->" *> ident
@@ -442,6 +444,7 @@ relterm = parens relexpr <|> relterm'
 
 term' = withPos $
        ( elabel
+     <|> elen
      <|> estruct True
      <|> etern   True
      <|> eapply  True
@@ -453,6 +456,7 @@ term' = withPos $
 
 detterm' = withPos $
           ( elabel
+        <|> elen
         <|> estruct False
         <|> etern   False
         <|> eapply  False
@@ -464,6 +468,7 @@ detterm' = withPos $
 
 relterm' = withPos $
           ( erel
+        <|> elen
         <|> estruct False
         <|> etern   False
         <|> eapply  False
@@ -476,6 +481,7 @@ relterm' = withPos $
 
 elabel      = EAtLab nopos <$> (reservedOp "@" *> ident)
 erel        = ERel nopos <$ (reservedOp "?") <*> ident <*> (parens $ commaSep detexpr)
+elen        = ELength nopos <$ (reservedOp "#") <*> detexpr
 estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
           anonfields = commaSep1 (expr' det)
@@ -554,7 +560,7 @@ relexpr = (reservedOp "*" *> unexpected "unexpected * in relation interpretation
 pref  p = Prefix  . chainl1 p $ return       (.)
 postf p = Postfix . chainl1 p $ return (flip (.))
 
-table = [[postf $ choice [postSlice, postIndex, postField, postPField]]
+table = [[postf $ choice [postSlice, postRange, postIndex, postField, postPField]]
         ,[pref  $ choice [prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus, prefix "*" Deref, prefix "&" AddrOf]]
         ,[binary "==" Eq AssocLeft, 
           binary "!=" Neq AssocLeft,
@@ -576,6 +582,7 @@ table = [[postf $ choice [postSlice, postIndex, postField, postPField]]
         ]
 
 postSlice  = try $ (\s end e -> ESlice (fst $ pos e, end) e s) <$> slice <*> getPosition
+postRange  = try $ (\r end a -> ERange (fst $ pos a, end) a r) <$> range <*> getPosition
 postIndex  = (\i end e -> EIndex (fst $ pos e, end) e i) <$> index <*> getPosition
 postField  = (\f end e -> EField (fst $ pos e, end) e f) <$> field <*> getPosition
 postPField = (\f end e -> EPField (fst $ pos e, end) e f) <$> ptrfield <*> getPosition

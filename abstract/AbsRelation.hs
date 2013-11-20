@@ -32,11 +32,13 @@ instantiateRelation Relation{..} args = (p, acfas)
     exprSubst e@(EConst _)        = e
     exprSubst   (EField e f)      = EField (exprSubst e) f
     exprSubst   (EIndex a i)      = case exprSubst a of
-                                         ERange a' f _ -> EIndex a' (plusmod a' [f, exprSubst i])
-                                         a'            -> EIndex a' (exprSubst i)
-    exprSubst   (ERange a f t)    = case exprSubst a of
-                                         ERange a' f' t' -> ERange a' (plusmod a' [exprSubst f,f']) (plusmod a' [exprSubst f,t'])
-                                         a'              -> ERange a' (exprSubst f) (exprSubst t)
+                                         ERange a' (f, _) -> EIndex a' (plusmod a' [f, exprSubst i])
+                                         a'               -> EIndex a' (exprSubst i)
+    exprSubst   (ERange a (f, l)) = case exprSubst a of
+                                         ERange a' (f', _) -> ERange a' (plusmod a' [exprSubst f,f'], exprSubst l)
+                                         a'                -> ERange a' (exprSubst f, exprSubst l)
+    exprSubst   (ELength a)       = let ERange _ (_, l') = exprSubst a
+                                    in l'
     exprSubst   (EUnOp op e)      = EUnOp op (exprSubst e)
     exprSubst   (EBinOp op e1 e2) = EBinOp op (exprSubst e1) (exprSubst e2)
     exprSubst   (ESlice e s)      = exprSlice (exprSubst e) s
