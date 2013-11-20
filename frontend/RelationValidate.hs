@@ -39,22 +39,3 @@ validateRelation tm r@Relation{..} = do
                          assert (isPureExpr rl)        (pos rl) "Relation interpretation must be a pure expression"
                          return ()) relRule
     return ()
-
-validateApply :: (?spec::Spec, MonadError String me) => Template -> Apply -> me ()
-validateApply tm a@Apply{..} = do
-    let ?privoverride = False
-    -- Relation name refers to a valid relation
-    (_, r@Relation{..}) <- checkRelation (ScopeTemplate tm) applyRel
-    -- Argument list has correct length
-    assert (length applyArg == length relArg) (pos a) $ "Relation " ++ sname r ++ " is defined with " ++ show (length relArg) ++ 
-                                                        " arguments, but is instantiated with " ++ show (length applyArg) ++ " arguments" 
-    -- Relation arguments are 
-    -- * valid expressions
-    -- * of matching types
-    -- * L-expressions or constant expressions
-    _ <- mapM (\(aa, ra) -> do validateExpr (ScopeTemplate tm) aa
-                               let ?scope = ScopeTemplate tm
-                               checkTypeMatch aa ra
-                               assert (isLExpr aa || isConstExpr aa) (pos aa) "apply arguments must be L-expressions or constant expressions")
-         $ zip applyArg relArg
-    return ()

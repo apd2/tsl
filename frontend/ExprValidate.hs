@@ -1,7 +1,8 @@
-{-# LANGUAGE ImplicitParams, TupleSections, FlexibleContexts #-}
+{-# LANGUAGE ImplicitParams, TupleSections, FlexibleContexts, RecordWildCards #-}
 
 module ExprValidate(validateExpr, validateExpr',
-                    validateCall) where
+                    validateCall,
+                    validateApply) where
 
 import Control.Monad.Error
 import Data.Maybe
@@ -19,6 +20,8 @@ import Method
 import Spec
 import Template
 import TemplateOps
+import Relation
+import RelationOps
 
 validateExpr :: (?spec::Spec, ?privoverride::Bool, MonadError String me) => Scope -> Expr -> me ()
 validateExpr s e = let ?scope = s 
@@ -228,7 +231,12 @@ validateExpr' (EStruct p tn mes) = do
                                   $ zip es fs
     return ()
 
-validateExpr' (ENonDet p) = do
+validateExpr' (ERel p n as) = 
+    case ?scope of
+         ScopeTop -> err p "relation instantiation in top-level scope"
+         _        -> validateApply (scopeTm ?scope) n as
+
+validateExpr' (ENonDet p) = 
     case ?scope of
          ScopeMethod  _ m -> case methCat m of
                                   Function            -> err p "non-deterministic value inside function"
@@ -260,3 +268,23 @@ validateCall p mref as = do
                                                        assert ((not isfunc) || (isLocalLHS a)) (pos a) $ "out argument " ++ sname marg ++ " of method " ++ sname m ++ " refers to non-local state")
               (zip (methArg m) as)
     return ()
+
+validateApply :: (?spec::Spec, MonadError String me) => Template -> Ident -> [Expr] -> me ()
+validateApply tm rel args = do
+    let ?privoverride = False
+    -- Relation name refers to a valid relation
+    (_, r@Relation{..}) <- checkRelation (ScopeTemplate tm) rel
+    -- Argument list has correct length
+    assert (length args == length relArg) (pos rel) $ "Relation " ++ sname r ++ " is defined with " ++ show (length relArg) ++ 
+                                                      " arguments, but is instantiated with " ++ show (length args) ++ " arguments" 
+    -- Relation arguments are 
+    -- * valid expressions
+    -- * of matching types
+    -- * L-expressions or constant expressions
+    _ <- mapM (\(aa, ra) -> do validateExpr (ScopeTemplate tm) aa
+                               let ?scope = ScopeTemplate tm
+                               checkTypeMatch aa ra
+                               assert (isLExpr aa || isConstExpr aa) (pos aa) "apply arguments must be L-expressions or constant expressions")
+         $ zip args relArg
+    return ()
+

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, ImplicitParams, TupleSections #-}
+{-# LANGUAGE FlexibleContexts, ImplicitParams, TupleSections, RecordWildCards #-}
 
 module TemplateValidate(checkConcreteTemplate,
                         validateTmInstances,
@@ -56,6 +56,7 @@ import Process
 import ProcessOps
 import StatementOps
 import StatementValidate
+import Relation
 import RelationValidate
 import NS
 
@@ -297,7 +298,7 @@ validateTmRels2 :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmRels2 tm = do {mapM (validateRelation tm) (tmRelation tm); return ()}
 
 validateTmApply2 :: (?spec::Spec, MonadError String me) => Template -> me ()
-validateTmApply2 tm = do {mapM (validateApply tm) (tmApply tm); return ()}
+validateTmApply2 tm = do {mapM (\Apply{..} -> validateApply tm applyRel applyArg) (tmApply tm); return ()}
 
 ------------------------------------------------------------------------------
 -- Validate template namespace
