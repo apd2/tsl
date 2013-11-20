@@ -176,7 +176,7 @@ instance PP Expr where
     pp (EUnOp op e)      = parens $ pp op <> pp e
     pp (EBinOp op e1 e2) = parens $ pp e1 <+> pp op <+> pp e2
     pp (ESlice e s)      = pp e <> pp s
-    pp (ERel n as)       = pp n <> (parens $ hcat $ punctuate (text ", ") $ map pp as)
+    pp (ERel n as)       = char '?' <> pp n <> (parens $ hcat $ punctuate (text ", ") $ map pp as)
 
 instance Show Expr where
     show = render . pp
