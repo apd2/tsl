@@ -117,7 +117,7 @@ validateExpr' (EBinOp p op e1 e2) = do
     validateExpr' e2
     if elem op [Eq,Neq]
       then assert (typeComparable e1 e2) p $ "Operator " ++ show op ++ " applied to expressions " ++ show e1 ++ 
-                                             " and " ++ show e2 ++ " that have uncomparable types " ++ show (typ e1) ++ " and " ++ show (typ e1)
+                                             " and " ++ show e2 ++ " that have uncomparable types " ++ show (typ e1) ++ " and " ++ show (typ e2)
       else return () 
     if elem op [Lt,Gt,Lte,Gte,BinMinus,BAnd,BOr,BXor,BConcat,Mod,Mul]
        then do assert (isInt e1) p $ "First operand " ++ show e1 ++ " of " ++ show op ++ " is of non-integral type"

@@ -291,11 +291,12 @@ promoteRelations :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> PDB pdb s u (
 promoteRelations av = do
     rels <- get
     (rels', asts) <- liftM unzip
-                     $ mapM (\i@((p,acfas), r) -> if' r (return (i, H.T)) $
-                                                  if' (elem av $ concatMap acfaAVars acfas) 
-                                                      (do ast <- reifyRelation acfas
-                                                          return (((p,acfas),True), ast))
-                                                      (return (i, H.T)))
+                     $ mapM (\i@((p,cfas), r) -> do let acfas = map (tranCFAToACFA [] cfaInitLoc) cfas
+                                                    if' r (return (i, H.T)) $   -- already reified
+                                                     if' ((elem av $ concatMap acfaAVars acfas) || (AVarPred p == av))
+                                                         (do ast <- reifyRelation acfas
+                                                             return (((p,cfas),True), ast))
+                                                         (return (i, H.T)))
                        rels
     put rels'
     return $ H.Conj asts

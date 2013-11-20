@@ -84,6 +84,8 @@ storeTryEval s            (EBinOp op e1 e2)  = do s1 <- storeTryEval s e1
                                                                         Eq  -> s1 == s2
                                                                         Neq -> s1 /= s2
 storeTryEval s            (ESlice e sl)      = fmap (\v -> SVal $ evalConstExpr (ESlice (EConst v) sl)) $ storeTryEvalScalar s e
+--storeTryEval s            (ERel n as)        = do as' <- mapM storeTryEval as
+--                                                  instantiateRelation :: (?spec::Spec, ?pred::[Predicate]) => Relation -> [Expr] -> RelInst
 
 storeTryEvalScalar :: Store -> Expr -> Maybe Val
 storeTryEvalScalar s e = fmap storeVal $ storeTryEval s e
