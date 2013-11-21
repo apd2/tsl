@@ -47,7 +47,7 @@ type AbsPriv = [(RelInst, Bool)]
 type PDB pdb s u = StateT AbsPriv (StateT pdb (ST s))
 
 showRelDB :: AbsPriv -> String
-showRelDB = intercalate ", " . map show
+showRelDB = intercalate "\n" . map show
 
 -----------------------------------------------------------------------
 -- Interface

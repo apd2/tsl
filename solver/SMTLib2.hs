@@ -18,12 +18,14 @@ import qualified Data.Set             as S
 import qualified Data.Map             as M
 import Debug.Trace
 
+import TSLUtil
 import Util hiding (trace)
 import Predicate
 import BFormula
 import ISpec
 import IVar
 import IType
+import IExpr
 import SMTLib2Parse
 import Store
 import SMTSolver
@@ -123,7 +125,7 @@ mkTypeMap1 m (Struct fs) = ( mkIdent tname
 mkTypeMap1 m (Ptr t)     = ( tname
                            , parens $ text "declare-sort" <+> text tname)
                            where tname = ptrTypeName m t
-mkTypeMap1 m (Array t _) = ( "(Array Int " ++ m M.! t ++ ")"
+mkTypeMap1 m (Array t l) = ( "(Array (_ BitVec " ++ (show $ bitWidth $ l - 1) ++ ") " ++ m M.! t ++ ")"
                            , empty)
 
 ptrTypeName :: (Typed a) => M.Map Type String -> a -> String
@@ -161,6 +163,14 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TField t f)           = parens $ text ((?typemap M.! typ t) ++ f) <+> smtpp t
     smtpp (TIndex a i)           = parens $ text "select" <+> smtpp a <+> smtpp i
     smtpp (TUnOp op t)           = parens $ smtpp op <+> smtpp t
+    -- z3's handling of module division is dodgy, so try to get away with bit slicing instead
+    smtpp (TBinOp AMod t1 t2)    | isConstTerm t2 && (isPow2 $ ivalVal $ evalConstExpr $ termToExpr t2) 
+                                 = smtpp (TSlice t1 (0, (log2 $ ivalVal $ evalConstExpr $ termToExpr t2) - 1))
+    smtpp (TBinOp op t1 t2)      | isInt t1 -- bit vector ops only work on arguments of the same width
+                                 = parens $ smtpp op <+> smtpp t1' <+> smtpp t2'
+                                   where w = max (termWidth t1) (termWidth t2)
+                                         t1' = scalarExprToTerm $ exprPad (termToExpr t1) w
+                                         t2' = scalarExprToTerm $ exprPad (termToExpr t2) w
     smtpp (TBinOp op t1 t2)      = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
     smtpp (TSlice t (l,h))       = parens $ (parens $ char '_' <+> text "extract" <+> int h <+> int l) <+> smtpp t
 
@@ -197,7 +207,7 @@ instance SMTPP ArithBOp where
     smtpp ABConcat  = text "concat"
     smtpp APlus     = text "bvadd"
     smtpp ABinMinus = text "bvsub"
-    smtpp AMod      = text "bvsmod"
+    smtpp AMod      = text "bvurem"
     smtpp AMul      = text "bvmul"
 
 instance SMTPP BoolBOp where
@@ -274,14 +284,14 @@ ptrEqCond _              _                         = FFalse
 
 runSolver :: SMT2Config -> Doc -> P.Parsec String () a -> a
 runSolver cfg spec parser = 
-    let (_, out, err) = unsafePerformIO $ readProcessWithExitCode (s2Solver cfg) (s2Opts cfg) (show spec)
+    let (_, out, er) = unsafePerformIO $ readProcessWithExitCode (s2Solver cfg) (s2Opts cfg) (show spec)
     in -- Don't check error code, as solvers can return error even if some of the commands
        -- completed successfully.
        case P.parse parser "" out of
             Left e  -> error $ "Error parsing SMT solver output: " ++ 
                                "\nsolver input: " ++ render spec ++
                                "\nsolver stdout: " ++ out ++
-                               "\nsolver stderr: " ++ err ++
+                               "\nsolver stderr: " ++ er ++
                                "\nparser error: "++ show e
             Right x -> x
 --                       trace "solver input: " 

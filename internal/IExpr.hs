@@ -10,6 +10,7 @@ module IExpr(LVal(..),
              exprSlice,
              exprScalars,
              exprVars,
+             exprPad,
              (===),
              (/==),
              (==>),
@@ -286,11 +287,13 @@ plus (e:es) = EBinOp Plus e $ plus es
 
 -- extend arguments to fit array index and sum them modulo array length
 plusmod :: (?spec::Spec, Typed a, Show a) => a -> [Expr] -> Expr
-plusmod ar es = (plus $ map ext es) .% EConst (UIntVal (bitWidth l) $ fromIntegral l)
+plusmod ar es = (plus $ map (\e -> exprPad e w) es) .% EConst (UIntVal (bitWidth l) $ fromIntegral l)
     where Array _ l = typ ar
           w = bitWidth (l-1)
-          ext e | typeWidth e >= w = e
-                | otherwise        = econcat [e, EConst $ UIntVal (w - typeWidth e) 0]
+
+exprPad :: (?spec::Spec) => Expr -> Int -> Expr
+exprPad e w | typeWidth e >= w = e
+            | otherwise        = econcat [e, EConst $ UIntVal (w - typeWidth e) 0]
 
 -- TODO: merge adjacent expressions
 econcat :: [Expr] -> Expr
