@@ -15,6 +15,7 @@ import Type
 import NS
 import TypeValidate
 import ExprValidate
+import ExprInline
 import ExprOps
 import TypeOps
 import RelationOps
@@ -37,5 +38,6 @@ validateRelation tm r@Relation{..} = do
                          assert (isBool rl)            (pos rl) "Relation interpretation must be a boolean expression"
                          assert (exprNoSideEffects rl) (pos rl) "Relation interpretation must be a side-effect-free expression"
                          assert (isPureExpr rl)        (pos rl) "Relation interpretation must be a pure expression"
+                         assert (exprIsSimple rl)      (pos rl) "Rule expression too complex" -- makes sure we do not need to constuct a CFA when inlining rule expression
                          return ()) relRule
     return ()

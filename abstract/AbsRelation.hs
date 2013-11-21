@@ -10,15 +10,15 @@ import ISpec
 import MkPredicate
 import CFA
 
-type RelInst = (Predicate, [CFA])
+type RelInst = (Predicate, [Expr])
 
 -- Assumes that all dereference operations have already been expanded
 instantiateRelation :: (?spec::Spec) => Relation -> [Expr] -> RelInst
-instantiateRelation Relation{..} args = (p, acfas)
+instantiateRelation Relation{..} args = (p, es)
     where
     p@PRel{..} = mkPRel relName args
     substs = zip (map fst relArgs) pArgs
-    acfas = map (\r -> cfaMapExpr r exprSubst) relRules
+    es = map (mapExpr exprSubst) relRules
 
     exprSubst :: Expr -> Expr
     exprSubst e@(EVar v)          = case lookup v substs of

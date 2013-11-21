@@ -3,11 +3,10 @@ module IRelation(Relation(..),
 
 import IType
 import IExpr
-import CFA
 
 data Relation = Relation { relName  :: String
                          , relArgs  :: [(String, Type)]
-                         , relRules :: [CFA]
+                         , relRules :: [Expr]
                          }
 
 data Apply = Apply { applyRel  :: String

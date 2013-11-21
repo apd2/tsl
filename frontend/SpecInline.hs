@@ -62,17 +62,17 @@ spec2Internal s =
         vars                = mkVars
         (tvar, tenum)       = mkTagVarDecl
         fairreg = mkFair spec'
-        ((specWire, specPrefix, inittran, goals, specRels), (_, extratmvars)) =  
+        ((specWire, specPrefix, inittran, goals), (_, extratmvars)) =  
             runState (do wire      <- mkWires
                          prefix    <- mkPrefix
                          inittr    <- mkInit
                          usergoals <- mapM mkGoal $ tmGoal tmMain
                          maggoal   <- mkMagicGoal
-                         rel       <- mapM relToIRel $ tmRelation tmMain
-                         return (wire, prefix, inittr, maggoal:usergoals, rel))
+                         return (wire, prefix, inittr, maggoal:usergoals))
                      (0,[])
         extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) (NSID Nothing Nothing) v) extratmvars
         (specProc, tmppvs) = unzip $ (map procToCProc $ tmProcess tmMain) 
+        specRels           = map relToIRel $ tmRelation tmMain
         specEnum           = choiceenum ++ (tenum : pidenum : (senum ++ pcenums))
         specVar            = cvars ++ [tvar, pidlvar] ++ pcvars ++ vars ++ concat tmppvs ++ extraivars
         specCAct           = ctran

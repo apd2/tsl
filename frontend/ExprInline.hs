@@ -2,6 +2,7 @@
 
 module ExprInline(NameGen,
                   exprSimplify,
+                  exprIsSimple,
                   exprSimplifyAsn,
                   exprToIExprDet,
                   exprToIExpr,
@@ -140,6 +141,10 @@ exprFlattenStruct' s (EField _ e@(EStruct _ _ (Right fs)) f) = fs !! idx
     where StructSpec _ fs' = let ?scope = s in tspec $ typ' e
           idx = fromJust $ findIndex ((==f) . name) fs' 
 exprFlattenStruct' _ e                                       = e
+
+-- A simple expression does not generate extra statements during simplification
+exprIsSimple :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+exprIsSimple e = null $ fst $ evalState (exprSimplify e) (0,[])
 
 ----------------------------------------------------------------------
 -- Convert (simplified) expressions to internal format

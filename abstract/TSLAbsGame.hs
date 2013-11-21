@@ -291,11 +291,11 @@ promoteRelations :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> PDB pdb s u (
 promoteRelations av = do
     rels <- get
     (rels', asts) <- liftM unzip
-                     $ mapM (\i@((p,cfas), r) -> do let acfas = map (tranCFAToACFA [] cfaInitLoc) cfas
+                     $ mapM (\i@((p,rels), r) -> do let fs = map bexprToFormula rels
                                                     if' r (return (i, H.T)) $   -- already reified
-                                                     if' ((elem av $ concatMap acfaAVars acfas) || (AVarPred p == av))
-                                                         (do ast <- reifyRelation acfas
-                                                             return (((p,cfas),True), ast))
+                                                     if' ((elem av $ concatMap fAbsVars fs) || (AVarPred p == av))
+                                                         (do ast <- reifyRelation fs
+                                                             return (((p,rels),True), ast))
                                                          (return (i, H.T)))
                        rels
     put rels'
@@ -304,15 +304,15 @@ promoteRelations av = do
 -- * Compile relation
 -- * Instantiate RHS relations
 -- * Update AbsPriv
-reifyRelation :: (?spec::Spec, ?pred::[Predicate]) => [ACFA] -> PDB pdb s u (TAST f e c)
-reifyRelation acfas = do
+reifyRelation :: (?spec::Spec, ?pred::[Predicate]) => [Formula] -> PDB pdb s u (TAST f e c)
+reifyRelation fs = do
     rels <- get
-    let asts = map (compileACFA []) acfas
-        -- relations occurring in ACFAs
+    let asts = map compileFormula fs
+        -- relations occurring in fs
         ps = mapMaybe (\av -> case av of
                                    AVarPred p@(PRel _ _) -> Just p
                                    _                     -> Nothing) 
-             $ concatMap acfaAVars acfas
+             $ concatMap fAbsVars fs
         -- filter out ones that have already been instantiated
         newps = ps \\ (map (fst . fst) rels)
         newrels = map (\PRel{..} -> (instantiateRelation (getRelation pRel) pArgs, False)) newps

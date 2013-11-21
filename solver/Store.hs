@@ -27,6 +27,7 @@ import IExpr
 import ISpec
 import IVar
 import IType
+import ISpec
 
 -- Variable assignments
 data Store = SStruct {storeFields :: M.Map String Store} -- name/value pairs (used for structs and for top-level store)
