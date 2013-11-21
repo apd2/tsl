@@ -27,9 +27,8 @@ relToIRel rel =
         lmap = M.fromList $ map (\a -> (name a, I.EVar $ sname a)) $ relArg rel
         ruleToIExpr :: Expr -> I.Expr
         ruleToIExpr e =  
-            let e0 = EBinOp nopos Eq (ERel nopos (name rel) $ map (ETerm nopos . return . name) $ relArg rel) e
-                sc = ScopeRelation tmMain rel
-                (_,e1) = let ?scope = sc in evalState (exprSimplify e0) (0,[])
+            let sc = ScopeRelation tmMain rel
+                (_,e1) = let ?scope = sc in evalState (exprSimplify e) (0,[])
                 ctx = CFACtx { ctxEPID    = Nothing
                              , ctxStack   = [(sc, error $ "return from relation", Nothing, lmap)]
                              , ctxCFA     = I.newCFA sc (SAssume nopos Nothing e1) I.true

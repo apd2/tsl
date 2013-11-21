@@ -3,18 +3,19 @@
 module AbsRelation (RelInst,
                     instantiateRelation) where
 
+import Debug.Trace
+
 import IRelation
 import Predicate
 import IExpr
 import ISpec
 import MkPredicate
-import CFA
 
 type RelInst = (Predicate, [Expr])
 
 -- Assumes that all dereference operations have already been expanded
 instantiateRelation :: (?spec::Spec) => Relation -> [Expr] -> RelInst
-instantiateRelation Relation{..} args = (p, es)
+instantiateRelation Relation{..} args = trace ("instantiateRelation " ++ relName ++ show args ++ " = " ++ show es) (p, es)
     where
     p@PRel{..} = mkPRel relName args
     substs = zip (map fst relArgs) pArgs

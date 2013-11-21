@@ -41,9 +41,13 @@ import BFormula
 import Cascade
 import RefineCommon 
 import GroupTag
+import Ops
 
 type AbsPriv = [(RelInst, Bool)]
 type PDB pdb s u = StateT AbsPriv (StateT pdb (ST s))
+
+showRelDB :: AbsPriv -> String
+showRelDB = intercalate ", " . map show
 
 -----------------------------------------------------------------------
 -- Interface
@@ -284,28 +288,25 @@ varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++
 ---------------------------------------------------------------------------
 
 -- Trigger relation processing when variable av is being promoted to a state variable:
--- Check if av occurs in the RHS of one of instantiated relations that has not been
+-- Check if av occurs in (either RHS or LHS) of one of instantiated relations that has not been
 -- reified (i.e., added to the transition relation) yet, and reify all such relations.
--- 
 promoteRelations :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> PDB pdb s u (TAST f e c)
 promoteRelations av = do
     rels <- get
-    (rels', asts) <- liftM unzip
-                     $ mapM (\i@((p,rels), r) -> do let fs = map bexprToFormula rels
-                                                    if' r (return (i, H.T)) $   -- already reified
-                                                     if' ((elem av $ concatMap fAbsVars fs) || (AVarPred p == av))
-                                                         (do ast <- reifyRelation fs
-                                                             return (((p,rels),True), ast))
-                                                         (return (i, H.T)))
-                       rels
-    put rels'
-    return $ H.Conj asts
+    asts <- mapM (\i@((p,rels), r) -> do let fs = map (\rel -> bexprToFormula $ EBinOp Eq (predToExpr p) rel) rels
+                                         if' r (return H.T) $   -- already reified
+                                          if' (elem av $ concatMap fAbsVars fs)
+                                              (reifyRelation p fs)
+                                              (return H.T))
+                 rels
+    rels' <- get
+    trace ("promoteRelations " ++ show av ++ "\nDB = " ++ showRelDB rels') $ return $ H.Conj asts
 
 -- * Compile relation
 -- * Instantiate RHS relations
 -- * Update AbsPriv
-reifyRelation :: (?spec::Spec, ?pred::[Predicate]) => [Formula] -> PDB pdb s u (TAST f e c)
-reifyRelation fs = do
+reifyRelation :: (?spec::Spec, ?pred::[Predicate]) => Predicate -> [Formula] -> PDB pdb s u (TAST f e c)
+reifyRelation p fs = do
     rels <- get
     let asts = map compileFormula fs
         -- relations occurring in fs
@@ -317,4 +318,5 @@ reifyRelation fs = do
         newps = ps \\ (map (fst . fst) rels)
         newrels = map (\PRel{..} -> (instantiateRelation (getRelation pRel) pArgs, False)) newps
     put $ rels ++ newrels
+    modify (map (\((p',rels),r) -> if' (p == p') ((p',rels),True) ((p',rels),r)))
     return $ H.Conj asts

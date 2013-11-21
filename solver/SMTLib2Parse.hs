@@ -147,10 +147,10 @@ storeFromModel ptrmap decls =
                      $ map ((\(DeclVarAsn n v) -> (v,n)) . head)
                      $ sortAndGroup dvarVal
                      $ filter (\d -> declIsAsn d && isPrefixOf "addrof-" (dvarName d)) decls in
-    storeUnions $ map storeFromAsn asndecls
+    storeUnions ?spec (map storeFromAsn asndecls)
 
 storeFromAsn :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => (String, SMTExpr) -> Store
-storeFromAsn (n, e) = SStruct $ M.singleton (varName var) val
+storeFromAsn (n, e) = SStruct (M.singleton (varName var) val) ?spec
     where var = getVar n
           val = storeFromExpr (varType var) e
 
@@ -169,9 +169,9 @@ storeFromExpr' (UInt w) (ExpInt v) = SVal $ UIntVal w v
 storeFromExpr' (SInt w) (ExpInt v) | msb v == w - 1 = 
     SVal $ SIntVal w $ - ((foldl' complementBit v [0..w-1]) + 1)
                                    | otherwise      = SVal $ SIntVal w v
-storeFromExpr' (Struct fs) (ExpApply f as) | length fs /= length as = error "storeFromExpr: incorrect number of fields in a struct"
+storeFromExpr' (Struct fs) (ExpApply _ as) | length fs /= length as = error "storeFromExpr: incorrect number of fields in a struct"
                                            | otherwise = 
-    SStruct $ M.fromList $ map (\((Field n t), e) -> (n, storeFromExpr t e)) $ zip fs as
+    SStruct (M.fromList $ map (\((Field n t), e) -> (n, storeFromExpr t e)) $ zip fs as) ?spec
 storeFromExpr' t e = error $ "storeFromExp " ++ show t ++ " " ++ show e
 
 valFromIdent :: (?spec::Spec) => String -> Val

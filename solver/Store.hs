@@ -24,69 +24,88 @@ import Debug.Trace
 
 import Ops
 import IExpr
-import ISpec
 import IVar
 import IType
 import ISpec
+import {-# SOURCE #-} AbsRelation
 
 -- Variable assignments
-data Store = SStruct {storeFields :: M.Map String Store} -- name/value pairs (used for structs and for top-level store)
-           | SArr    {storeArr    :: M.Map Int Store}    -- array assignment
-           | SVal    {storeVal    :: Val}                -- scalar
-           deriving Eq
+data Store = SStruct {storeFields :: M.Map String Store, storeSpec :: Spec} -- name/value pairs (used for structs and for top-level store)
+           | SArr    {storeArr    :: M.Map Int Store}                       -- array assignment
+           | SVal    {storeVal    :: Val}                                   -- scalar
+
+instance Eq Store where
+    (SStruct fs1 _ ) == (SStruct fs2 _) = fs1 == fs2
+    (SArr a1)        == (SArr a2)       = a1  == a2
+    (SVal v1)        == (SVal v2)       = v1  == v2
 
 isScalarStore :: Store -> Bool
 isScalarStore (SVal _) = True
 isScalarStore _        = False
 
 instance Show Store where
-    show (SStruct fs) = "{" ++
-                        (intercalate ", "
-                         $ map (\(n, val) -> show n ++ "=" ++ show val)
-                         $ M.toList fs) ++
-                        "}"
-    show (SArr ar)    = "[" ++
-                        (intercalate ", "
-                         $ map (\(idx, val) -> show idx ++ ": " ++ show val)
-                         $ sortBy (\x y -> compare (fst x) (fst y)) 
-                         $ M.toList ar) ++
-                        "]"
-    show (SVal v)     = show v
+    show (SStruct fs _) = "{" ++
+                          (intercalate ", "
+                           $ map (\(n, val) -> show n ++ "=" ++ show val)
+                           $ M.toList fs) ++
+                          "}"
+    show (SArr ar)      = "[" ++
+                          (intercalate ", "
+                           $ map (\(idx, val) -> show idx ++ ": " ++ show val)
+                           $ sortBy (\x y -> compare (fst x) (fst y)) 
+                           $ M.toList ar) ++
+                          "]"
+    show (SVal v)       = show v
 
 -- shallow union of stores
 storeUnion :: Store -> Store -> Store
-storeUnion (SStruct entries1) (SStruct entries2) = SStruct $ M.union entries1 entries2
+storeUnion (SStruct entries1 spec) (SStruct entries2 _) = SStruct (M.union entries1 entries2) spec
 
-storeUnions :: [Store] -> Store
-storeUnions stores = foldl' storeUnion (SStruct M.empty) stores
+storeUnions :: Spec -> [Store] -> Store
+storeUnions spec stores = foldl' storeUnion (SStruct M.empty spec) stores
 
 -- project store on a subset of variables
 storeProject :: Store -> [String] -> Store
-storeProject (SStruct entries) names = SStruct $ M.filterWithKey (\n _ -> elem n names) entries
+storeProject (SStruct entries spec) names = SStruct (M.filterWithKey (\n _ -> elem n names) entries) spec
 
 -- Expression evaluation over stores
 storeTryEval :: Store -> Expr -> Maybe Store
-storeTryEval (SStruct fs) (EVar name)        = M.lookup name fs
-storeTryEval _            (EVar _)           = Nothing
-storeTryEval _            (EConst v)         = Just $ SVal v
-storeTryEval s            (EField e name)    = join $ fmap (M.lookup name) $ storeTryEvalStruct s e
-storeTryEval s            (EIndex e i)       = do idx <- liftM fromInteger $ storeTryEvalInt s i
-                                                  es  <- storeTryEvalArr s e
-                                                  M.lookup idx es
-storeTryEval s            (EUnOp op e)       = fmap (SVal . evalConstExpr . EUnOp op . EConst) $ storeTryEvalScalar s e
-storeTryEval s            (EBinOp op e1 e2)  = do s1 <- storeTryEval s e1
-                                                  s2 <- storeTryEval s e2
-                                                  if isScalarStore s1
-                                                     then do let SVal v1 = s1
-                                                                 SVal v2 = s2
-                                                             return $ SVal $ evalConstExpr (EBinOp op (EConst v1) (EConst v2))
-                                                     else return $ SVal $ BoolVal 
-                                                                 $ case op of
-                                                                        Eq  -> s1 == s2
-                                                                        Neq -> s1 /= s2
-storeTryEval s            (ESlice e sl)      = fmap (\v -> SVal $ evalConstExpr (ESlice (EConst v) sl)) $ storeTryEvalScalar s e
---storeTryEval s            (ERel n as)        = do as' <- mapM storeTryEval as
---                                                  instantiateRelation :: (?spec::Spec, ?pred::[Predicate]) => Relation -> [Expr] -> RelInst
+storeTryEval (SStruct fs _) (EVar name)        = M.lookup name fs
+storeTryEval _              (EVar _)           = Nothing
+storeTryEval _              (EConst v)         = Just $ SVal v
+storeTryEval s              (EField e name)    = join $ fmap (M.lookup name) $ storeTryEvalStruct s e
+storeTryEval s              (EIndex e i)       = do idx <- liftM fromInteger $ storeTryEvalInt s i
+                                                    es  <- storeTryEvalArr s e
+                                                    M.lookup idx es
+storeTryEval s              (EUnOp op e)       = fmap (SVal . evalConstExpr . EUnOp op . EConst) $ storeTryEvalScalar s e
+-- evluate =>, ||, && lazily
+storeTryEval s              (EBinOp Imp e1 e2) = storeTryEval s (EBinOp Or (EUnOp Not e1) e2)
+storeTryEval s              (EBinOp Or e1 e2)  = do b1 <- storeTryEvalBool s e1
+                                                    if b1 
+                                                       then return $ SVal $ BoolVal True
+                                                       else do b2 <- storeTryEvalBool s e2
+                                                               return $ SVal $ BoolVal b2
+storeTryEval s              (EBinOp And e1 e2) = do b1 <- storeTryEvalBool s e1
+                                                    if not b1 
+                                                       then return $ SVal $ BoolVal False
+                                                       else do b2 <- storeTryEvalBool s e2
+                                                               return $ SVal $ BoolVal b2
+storeTryEval s              (EBinOp op e1 e2)  = do s1 <- storeTryEval s e1
+                                                    s2 <- storeTryEval s e2
+                                                    if isScalarStore s1
+                                                       then do let SVal v1 = s1
+                                                                   SVal v2 = s2
+                                                               return $ SVal $ evalConstExpr (EBinOp op (EConst v1) (EConst v2))
+                                                       else return $ SVal $ BoolVal 
+                                                                   $ case op of
+                                                                          Eq  -> s1 == s2
+                                                                          Neq -> s1 /= s2
+storeTryEval s              (ESlice e sl)        = fmap (\v -> SVal $ evalConstExpr (ESlice (EConst v) sl)) $ storeTryEvalScalar s e
+storeTryEval s@(SStruct _ sp) (ERel n as)        = trace ("storeTryEval " ++ show (ERel n as)) $
+                                                   let ?spec = sp in 
+                                                   let rel = getRelation n
+                                                       (_, rule:_) = instantiateRelation rel as
+                                                   in storeTryEval s rule
 
 storeTryEvalScalar :: Store -> Expr -> Maybe Val
 storeTryEvalScalar s e = fmap storeVal $ storeTryEval s e
@@ -150,20 +169,20 @@ storeSet s (ESlice e (l,h)) (Just (SVal val)) =
 storeSet s e val = let ?store = s in storeSet' s e val
 
 storeSet' :: (?store::Store) => Store -> Expr -> Maybe Store -> Store
-storeSet' (SStruct fs) (EVar vname) Nothing  = SStruct $ M.delete vname fs
-storeSet' (SStruct fs) (EVar vname) (Just v) = SStruct $ M.insert vname v fs
-storeSet' s            (EField e n) val      = storeSet' s e $ case storeTryEval s e of
-                                                                    Nothing -> Just $ storeSet' (SStruct M.empty) (EVar n) val
-                                                                    Just s' -> Just $ storeSet' s'                (EVar n) val
-storeSet' s            (EIndex a i) val      = storeSet' s a $ case (storeTryEval s a, val) of
-                                                                    (Nothing, Nothing)        -> Nothing
-                                                                    (Nothing, Just v)         -> Just $ SArr $ M.singleton idx v
-                                                                    (Just (SArr es), Nothing) -> Just $ SArr $ M.delete idx es
-                                                                    (Just (SArr es), Just v)  -> Just $ SArr $ M.insert idx v es
-                                               where idx = fromInteger $ storeEvalInt ?store i
-storeSet' s            (EUnOp Deref e) val   = storeSet' s (lvalToExpr l) val
-                                               where PtrVal l = storeEvalScalar ?store e
-storeSet' _            e               _     = error $ "storeSet': " ++ show e
+storeSet' (SStruct fs sp)  (EVar vname) Nothing  = SStruct (M.delete vname fs)   sp
+storeSet' (SStruct fs sp)  (EVar vname) (Just v) = SStruct (M.insert vname v fs) sp
+storeSet' s@(SStruct _ sp) (EField e n) val      = storeSet' s e $ case storeTryEval s e of
+                                                                        Nothing -> Just $ storeSet' (SStruct M.empty sp) (EVar n) val
+                                                                        Just s' -> Just $ storeSet' s'                   (EVar n) val
+storeSet' s                (EIndex a i) val      = storeSet' s a $ case (storeTryEval s a, val) of
+                                                                        (Nothing, Nothing)        -> Nothing
+                                                                        (Nothing, Just v)         -> Just $ SArr $ M.singleton idx v
+                                                                        (Just (SArr es), Nothing) -> Just $ SArr $ M.delete idx es
+                                                                        (Just (SArr es), Just v)  -> Just $ SArr $ M.insert idx v es
+                                                   where idx = fromInteger $ storeEvalInt ?store i
+storeSet' s               (EUnOp Deref e) val    = storeSet' s (lvalToExpr l) val
+                                                   where PtrVal l = storeEvalScalar ?store e
+storeSet' _               e               _      = error $ "storeSet': " ++ show e
 
 -- Assign all unassigned state variables to their default values
 
