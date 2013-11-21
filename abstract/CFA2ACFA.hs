@@ -232,7 +232,7 @@ updateExprAsn' lhs rhs   (EBinOp op e1 e2) = (\me1 me2 -> EBinOp op <$> me1 <*> 
                                               <*> updateExprAsn' lhs rhs e2
 updateExprAsn' lhs rhs   (ESlice e s)      = fmap (\e' -> exprSlice e' s) <$> updateExprAsn' lhs rhs e
 updateExprAsn' lhs rhs   (ERel n as)       = (\mas -> sequence mas >>= (return . ERel n))
-                                             <$> foldl' (\cas a -> (:) <$> (updateExprAsn' lhs rhs a) <*> cas) (CasLeaf []) as
+                                             <$> foldl' (\cas a -> (\es e -> es ++ [e]) <$> cas <*> (updateExprAsn' lhs rhs a)) (CasLeaf []) as
 updateExprAsn' lhs rhs   (ELength a)       = (fmap ELength) <$> updateExprAsn' lhs rhs a
 updateExprAsn' lhs rhs   (ERange a (f,l))  = updateRange lhs rhs a f l
 
@@ -269,7 +269,7 @@ updateExprIndices lhs rhs   (EIndex a i)      = EIndex               <$> updateE
 updateExprIndices lhs rhs   (EUnOp op e)      = EUnOp op             <$> updateExprIndices lhs rhs e
 updateExprIndices lhs rhs   (EBinOp op e1 e2) = (EBinOp op)          <$> updateExprIndices lhs rhs e1 <*> updateExprIndices lhs rhs e2
 updateExprIndices lhs rhs   (ESlice e s)      = (\e' -> ESlice e' s) <$> updateExprIndices lhs rhs e
-updateExprIndices lhs rhs   (ERel n as)       = (ERel n)             <$> foldl' (\cas a -> (:) <$> (updateExprIndices lhs rhs a) <*> cas) (CasLeaf []) as
+updateExprIndices lhs rhs   (ERel n as)       = (ERel n)             <$> foldl' (\cas a -> (\es e -> es ++ [e]) <$> cas <*> (updateExprIndices lhs rhs a)) (CasLeaf []) as
 updateExprIndices lhs rhs   (ELength a)       = ELength              <$> updateExprIndices lhs rhs a 
 updateExprIndices lhs rhs   (ERange a (f,l))  = ERange               <$> updateExprIndices lhs rhs a <*>
                                                                      ((,) <$> updateExprIndices lhs rhs f 
@@ -357,13 +357,16 @@ addrPred op x y =
 exprExpandPtr :: (?pred::[Predicate]) => Expr -> ECascade
 exprExpandPtr e@(EVar _)          = CasLeaf e
 exprExpandPtr e@(EConst _)        = CasLeaf e
-exprExpandPtr   (EField e f)      = fmap (\e' -> EField e' f) $ exprExpandPtr e
-exprExpandPtr   (EIndex a i)      = EIndex <$> exprExpandPtr a <*> exprExpandPtr i
+exprExpandPtr   (EField e f)      = (\e' -> EField e' f) <$> exprExpandPtr e
+exprExpandPtr   (EIndex a i)      = EIndex               <$> exprExpandPtr a <*> exprExpandPtr i
 exprExpandPtr   (EUnOp Deref e)   = casMap (casTree . (map (\(p, t) -> (FBoolAVar $ AVarPred p, CasLeaf $ termToExpr t))) . ptrPreds)
                                            $ exprExpandPtr e
-exprExpandPtr   (EUnOp op e)      = fmap (EUnOp op) $ exprExpandPtr e
-exprExpandPtr   (EBinOp op e1 e2) = (EBinOp op) <$> exprExpandPtr e1 <*> exprExpandPtr e2
-exprExpandPtr   (ESlice e s)      = fmap (\e' -> ESlice e' s) $ exprExpandPtr e
+exprExpandPtr   (EUnOp op e)      = EUnOp op             <$> exprExpandPtr e
+exprExpandPtr   (EBinOp op e1 e2) = EBinOp op            <$> exprExpandPtr e1 <*> exprExpandPtr e2
+exprExpandPtr   (ESlice e s)      = (\e' -> ESlice e' s) <$> exprExpandPtr e
+exprExpandPtr   (ERel r as)       = (ERel r)             <$> foldl' (\cas a -> (\es e -> es ++[e]) <$> cas <*> (exprExpandPtr a)) (CasLeaf []) as
+exprExpandPtr   (ERange a (f,l))  = ERange               <$> exprExpandPtr a <*> ((,) <$> exprExpandPtr f <*> exprExpandPtr l)
+exprExpandPtr   e                 = error $ "exprExpandPtr " ++ show e
 
 -- Find predicates of the form (e == AddrOf e')
 ptrPreds :: (?pred::[Predicate]) => Expr -> [(Predicate, Term)]
