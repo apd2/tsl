@@ -351,7 +351,7 @@ tgoalDecl    = withPos $ Goal nopos <$  reserved "goal"
                                     <*> detexpr
 trel         = withPos $ Relation nopos <$  reserved "relation"
                                         <*> ident
-                                        <*> (parens $ commaSep rarg)
+                                        <*> (parens $ commaSep1 rarg)
                                         <*> (many1 $ reservedOp "|==" *> relexpr)
 tapp         = withPos $ Apply nopos <$  reserved "apply"
                                      <*> ident
