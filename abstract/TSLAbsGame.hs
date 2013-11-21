@@ -67,11 +67,12 @@ tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = tslInitial
 tslInitialState :: Spec -> AbsPriv
 tslInitialState spec = 
     let ?spec = spec
-        ?pred = []
-    in map (, False)
-       $ map (\Apply{..} -> let rel = fromJust $ find ((==applyRel) . relName) $ specRels spec
-                            in instantiateRelation rel applyArgs)
-       $ specApply spec
+        ?pred = [] in
+    let res = map (, False)
+              $ map (\Apply{..} -> let rel = fromJust $ find ((==applyRel) . relName) $ specRels spec
+                                   in instantiateRelation rel applyArgs)
+              $ specApply spec
+    in trace ("tslInitialState -> " ++ showRelDB res) res
 
 tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslGoalAbs spec m ops = do
@@ -292,12 +293,20 @@ varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++
 -- reified (i.e., added to the transition relation) yet, and reify all such relations.
 promoteRelations :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> PDB pdb s u (TAST f e c)
 promoteRelations av = do
+    -- Make sure relation is instantiated before being reified
+    case av of
+         (AVarPred p@(PRel _ _)) -> addRelation p
+         _                       -> return ()
+    promoteRelations' av
+
+promoteRelations' :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> PDB pdb s u (TAST f e c)
+promoteRelations' av = do
     rels <- get
-    asts <- mapM (\i@((p,rels), r) -> do let fs = map (\rel -> bexprToFormula $ EBinOp Eq (predToExpr p) rel) rels
-                                         if' r (return H.T) $   -- already reified
-                                          if' (elem av $ concatMap fAbsVars fs)
-                                              (reifyRelation p fs)
-                                              (return H.T))
+    asts <- mapM (\((p,rls), r) -> do let fs = map (\rel -> bexprToFormula $ EBinOp Eq (predToExpr p) rel) rls
+                                      if' r (return H.T) $   -- already reified
+                                       if' (elem av $ concatMap fAbsVars fs)
+                                           (reifyRelation p fs)
+                                           (return H.T))
                  rels
     rels' <- get
     trace ("promoteRelations " ++ show av ++ "\nDB = " ++ showRelDB rels') $ return $ H.Conj asts
@@ -307,16 +316,18 @@ promoteRelations av = do
 -- * Update AbsPriv
 reifyRelation :: (?spec::Spec, ?pred::[Predicate]) => Predicate -> [Formula] -> PDB pdb s u (TAST f e c)
 reifyRelation p fs = do
-    rels <- get
     let asts = map compileFormula fs
         -- relations occurring in fs
         ps = mapMaybe (\av -> case av of
-                                   AVarPred p@(PRel _ _) -> Just p
-                                   _                     -> Nothing) 
+                                   AVarPred p'@(PRel _ _) -> Just p'
+                                   _                      -> Nothing) 
              $ concatMap fAbsVars fs
-        -- filter out ones that have already been instantiated
-        newps = ps \\ (map (fst . fst) rels)
-        newrels = map (\PRel{..} -> (instantiateRelation (getRelation pRel) pArgs, False)) newps
-    put $ rels ++ newrels
-    modify (map (\((p',rels),r) -> if' (p == p') ((p',rels),True) ((p',rels),r)))
+    _ <- mapM addRelation ps
+    modify (map (\((p',rules),r) -> if' (p == p') ((p',rules),True) ((p',rules),r)))
     return $ H.Conj asts
+
+addRelation :: (?spec::Spec) => Predicate -> PDB pdb s u ()
+addRelation p@PRel{..} = do
+    rels <- get
+    when (isNothing $ find ((==p) . fst . fst) rels)
+         (put $ (instantiateRelation (getRelation pRel) pArgs, False) : rels)
