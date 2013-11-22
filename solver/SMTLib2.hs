@@ -150,7 +150,11 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Formula where
     smtpp (FNot f)                    = parens $ text "not" <+> smtpp f
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Predicate where
-    smtpp (PAtom op t1 t2) = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
+    smtpp (PAtom op pt1 pt2) | isInt t1 = parens $ smtpp op <+> (smtpp $ termPad w t1) <+> (smtpp $ termPad w t2)
+                                          where t1 = ptermTerm pt1
+                                                t2 = ptermTerm pt2
+                                                w = max (termWidth t1) (termWidth t2)
+    smtpp (PAtom op pt1 pt2)            = parens $ smtpp op <+> smtpp pt1 <+> smtpp pt2
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TVar n)               = text $ mkIdent n
@@ -164,13 +168,13 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TIndex a i)           = parens $ text "select" <+> smtpp a <+> smtpp i
     smtpp (TUnOp op t)           = parens $ smtpp op <+> smtpp t
     -- z3's handling of module division is dodgy, so try to get away with bit slicing instead
-    smtpp (TBinOp AMod t1 t2)    | isConstTerm t2 && (isPow2 $ ivalVal $ evalConstExpr $ termToExpr t2) 
-                                 = smtpp (TSlice t1 (0, (log2 $ ivalVal $ evalConstExpr $ termToExpr t2) - 1))
-    smtpp (TBinOp op t1 t2)      | isInt t1 -- bit vector ops only work on arguments of the same width
+    smtpp (TBinOp AMod t1 t2)    | isConstTerm t2 && (isPow2 $ ivalVal $ evalConstTerm t2) 
+                                 = smtpp (TSlice t1 (0, (log2 $ ivalVal $ evalConstTerm t2) - 1))
+    smtpp (TBinOp op t1 t2)      | isInt t1 && (elem op [ABAnd, ABOr, ABXor, APlus, ABinMinus, AMod, AMul]) -- bit vector ops only work on arguments of the same width
                                  = parens $ smtpp op <+> smtpp t1' <+> smtpp t2'
                                    where w = max (termWidth t1) (termWidth t2)
-                                         t1' = scalarExprToTerm $ exprPad (termToExpr t1) w
-                                         t2' = scalarExprToTerm $ exprPad (termToExpr t2) w
+                                         t1' = termPad w t1
+                                         t2' = termPad w t2
     smtpp (TBinOp op t1 t2)      = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
     smtpp (TSlice t (l,h))       = parens $ (parens $ char '_' <+> text "extract" <+> int h <+> int l) <+> smtpp t
 
@@ -186,10 +190,10 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP AbsVar where
 instance SMTPP RelOp where
     smtpp REq  = text "="
     smtpp RNeq = text "distinct"
-    smtpp RLt  = text "bvslt"
-    smtpp RGt  = text "bvsgt"
-    smtpp RLte = text "bvsle"
-    smtpp RGte = text "bvsge"
+    smtpp RLt  = text "bvult"
+    smtpp RGt  = text "bvugt"
+    smtpp RLte = text "bvule"
+    smtpp RGte = text "bvuge"
 
 instance SMTPP PredOp where
     smtpp PEq  = smtpp REq
@@ -318,7 +322,7 @@ getUnsatCore cfg fs =
               $$ text "(get-unsat-core)"
 
 getModel :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe (Either [Int] Store)
-getModel cfg fs =
+getModel cfg fs = 
     runSolver cfg spec
     $ do res <- satresParser
          case res of 

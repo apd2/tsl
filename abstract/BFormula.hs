@@ -170,7 +170,7 @@ fRelAddrOf _              _                         = FFalse
 
 -- Slice int expressions into the smallest common ranges.
 fRelIntEq :: (?spec::Spec) => (Expr, Expr) -> Formula
-fRelIntEq (e1,e2) = fRelIntEq' (exprPad e1 w, exprPad e2 w)
+fRelIntEq (e1,e2) = fRelIntEq' (exprPad w e1, exprPad w e2)
     where w = max (typeWidth e1) (typeWidth e2)
 
 fRelIntEq' :: (?spec::Spec) => (Expr, Expr) -> Formula

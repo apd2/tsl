@@ -246,15 +246,15 @@ termToBVTerm   (TBinOp ABinMinus t1 t2) = do t1' <- termToBVTerm t1
                                              t2' <- termToBVTerm t2
                                              let w = max (BV.width t1') (BV.width t2')
                                              return $ BV.TPlus [BV.termExt t1' w, BV.TMul ((-1) `BV.mod2` w) t2' w]
-termToBVTerm   (TBinOp AMod t1 t2)      | isConstTerm t2 && (isPow2 $ ivalVal $ evalConstExpr $ termToExpr t2) 
+termToBVTerm   (TBinOp AMod t1 t2)      | isConstTerm t2 && (isPow2 $ ivalVal $ evalConstTerm t2) 
                                         = do t1' <- termToBVTerm t1
-                                             return $ BV.termExt (BV.TSlice t1' (0, (log2 $ ivalVal $ evalConstExpr $ termToExpr t2) - 1)) (termWidth t1)
+                                             return $ BV.termExt (BV.TSlice t1' (0, (log2 $ ivalVal $ evalConstTerm t2) - 1)) (termWidth t1)
 termToBVTerm   (TBinOp AMul t1 t2)      | isConstTerm t1 
                                         = do t2' <- termToBVTerm t2
-                                             return $ BV.TMul ((ivalVal $ evalConstExpr $ termToExpr t1) `BV.mod2` w) t2' w
+                                             return $ BV.TMul ((ivalVal $ evalConstTerm t1) `BV.mod2` w) t2' w
                                         | isConstTerm t2
                                         = do t1' <- termToBVTerm t1
-                                             return $ BV.TMul ((ivalVal $ evalConstExpr $ termToExpr t2) `BV.mod2` w) t1' w
+                                             return $ BV.TMul ((ivalVal $ evalConstTerm t2) `BV.mod2` w) t1' w
                                         where w = max (termWidth t1) (termWidth t2)
 termToBVTerm   (TUnOp AUMinus t)        = do t' <- termToBVTerm t
                                              let w = termWidth t

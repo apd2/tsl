@@ -25,6 +25,8 @@ module Predicate(PVarOps,
                  termWidth,
                  termCategory,
                  termVar,
+                 termPad,
+                 evalConstTerm,
                  isConstTerm,
                  RelOp(..),
                  bopToRelOp,
@@ -205,11 +207,16 @@ instance Show Term where
 termVar :: (?spec::Spec) => Term -> [Var]
 termVar = exprVars . termToExpr
 
---evalConstTerm :: Term -> Term
---evalConstTerm = scalarExprToTerm . EConst . evalConstExpr . termToExpr
+evalConstTerm :: Term -> Val
+evalConstTerm = evalConstExpr . termToExpr
+
+termPad :: (?spec::Spec) => Int -> Term -> Term
+termPad i = scalarExprToTerm . exprPad i . termToExpr
 
 --termSimplify :: Term -> Term
 --termSimplify = scalarExprToTerm . exprSimplify . termToExpr
+
+
 
 termCategory :: (?spec::Spec) => Term -> VarCategory
 termCategory t = if any ((==VarTmp) . varCat) $ termVar t
