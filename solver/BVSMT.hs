@@ -47,7 +47,7 @@ bvRelNormalise RLte t1 t2 = bvRelNormalise' BV.Lte t1 t2
 bvRelNormalise RGte t1 t2 = bvRelNormalise' BV.Lte t2 t1
 
 bvRelNormalise' :: (?spec::Spec) => BV.Rel -> Term -> Term -> Either Bool (PredOp, Term, Term)
-bvRelNormalise' r t1 t2 = trace ("bvRelNormalise " ++ show t1 ++ " " ++ show r ++ " " ++ show t2) $
+bvRelNormalise' r t1 t2 = {-trace ("bvRelNormalise " ++ show t1 ++ " " ++ show r ++ " " ++ show t2) $-}
     case BV.atomToCAtom a of
          Left b                       -> Left b
          Right (BV.CAtom op' ct1 ct2) -> let ?vmap = vmap in
@@ -113,7 +113,7 @@ bvEquant spec solver m ops avs vs = do
               $ map avarToRel 
               $ filter (not . avarIsRelPred . fst) avs
         f = fdisj $ map (equant' vs solver) dnf
-    H.compileBDD m ops (avarGroupTag . bavarAVar) $ compileFormula $ trace ("bvEquant " ++ show avs ++ " = " ++ show f) $ f
+    H.compileBDD m ops (avarGroupTag . bavarAVar) $ compileFormula $ trace ("bvEquant " ++ show vs ++ ". "++ show avs ++ " = " ++ show f) $ f
 
 equant' :: (?spec::Spec) => [String] -> SMTSolver -> [(BV.Rel, Term, Term)] -> Formula
 equant' vs solver rels = 
@@ -242,47 +242,63 @@ relToAtom (rel, t1, t2) = do
     return $ BV.Atom rel t1' t2'
 
 termToBVTerm :: (?spec::Spec) => Term -> State VarMap BV.Term
-termToBVTerm   (TSlice t s)             = do t' <- termToBVTerm t
-                                             return $ BV.TSlice t' s
-termToBVTerm   (TBinOp ABConcat t1 t2)  = do t1' <- termToBVTerm t1
-                                             t2' <- termToBVTerm t2
-                                             return $ BV.TConcat [t1',t2'] 
-termToBVTerm   (TBinOp APlus t1 t2)     = do t1' <- termToBVTerm t1
-                                             t2' <- termToBVTerm t2
-                                             let w = max (BV.width t1') (BV.width t2')
-                                             return $ BV.TPlus [BV.termExt t1' w, BV.termExt t2' w]
-termToBVTerm   (TBinOp ABinMinus t1 t2) = do t1' <- termToBVTerm t1
-                                             t2' <- termToBVTerm t2
-                                             let w = max (BV.width t1') (BV.width t2')
-                                             return $ BV.TPlus [BV.termExt t1' w, BV.TMul ((-1) `BV.mod2` w) t2' w]
-termToBVTerm   (TBinOp AMod t1 t2)      | isConstTerm t2 && (isPow2 $ ivalVal $ evalConstTerm t2) 
-                                        = do t1' <- termToBVTerm t1
-                                             return $ BV.termExt (BV.TSlice t1' (0, (log2 $ ivalVal $ evalConstTerm t2) - 1)) (termWidth t1)
-termToBVTerm   (TBinOp AMul t1 t2)      | isConstTerm t1 
-                                        = do t2' <- termToBVTerm t2
-                                             return $ BV.TMul ((ivalVal $ evalConstTerm t1) `BV.mod2` w) t2' w
-                                        | isConstTerm t2
-                                        = do t1' <- termToBVTerm t1
-                                             return $ BV.TMul ((ivalVal $ evalConstTerm t2) `BV.mod2` w) t1' w
-                                        where w = max (termWidth t1) (termWidth t2)
-termToBVTerm   (TUnOp AUMinus t)        = do t' <- termToBVTerm t
-                                             let w = termWidth t
-                                             return $ BV.TMul ((-1) `BV.mod2` w) t' w
-termToBVTerm   (TUnOp ABNeg t)          = do t' <- termToBVTerm t
-                                             return $ BV.TNeg t'
-termToBVTerm   (TSInt w i)              = return $ BV.tConst i w
-termToBVTerm   (TUInt w i)              = return $ BV.tConst i w
-termToBVTerm   TTrue                    = return $ BV.tConst 1 1
-termToBVTerm t@(TEnum n)                = return $ BV.tConst (toInteger $ enumToInt n) (termWidth t)
-termToBVTerm t@(TVar _)                 = do varMapInsert t
-                                             return $ BV.TVar (BV.Var (show t) (termWidth t))
-termToBVTerm t@(TField _ _)             = do varMapInsert t
-                                             return $ BV.TVar (BV.Var (show t) (termWidth t))
-termToBVTerm t@(TIndex _ _)             = do varMapInsert t
-                                             return $ BV.TVar (BV.Var (show t) (termWidth t))
-termToBVTerm t@(TAddr _)                = do varMapInsert t
-                                             return $ BV.TVar (BV.Var (show t) (termWidth t))
-termToBVTerm t                          = error $ "termToBVTerm: term not supported: " ++ show t
+termToBVTerm = termToBVTerm' . termNormaliseIndices
+
+termNormaliseIndices :: (?spec::Spec) => Term -> Term
+termNormaliseIndices t@(TVar _)         = t
+termNormaliseIndices t@(TSInt _ _)      = t
+termNormaliseIndices t@(TUInt _ _)      = t
+termNormaliseIndices t@(TEnum _)        = t
+termNormaliseIndices t@TTrue            = t
+termNormaliseIndices  (TAddr t)         = TAddr $ termNormaliseIndices t
+termNormaliseIndices  (TField t f)      = TField (termNormaliseIndices t) f
+termNormaliseIndices  (TIndex t i)      = TIndex (termNormaliseIndices t) (bvTermNormalise i)
+termNormaliseIndices  (TUnOp op t)      = TUnOp op $ termNormaliseIndices t
+termNormaliseIndices  (TBinOp op t1 t2) = TBinOp op (termNormaliseIndices t1) (termNormaliseIndices t2)
+termNormaliseIndices  (TSlice t s)      = TSlice (termNormaliseIndices t) s
+
+termToBVTerm' :: (?spec::Spec) => Term -> State VarMap BV.Term
+termToBVTerm'   (TSlice t s)             = do t' <- termToBVTerm' t
+                                              return $ BV.TSlice t' s
+termToBVTerm'   (TBinOp ABConcat t1 t2)  = do t1' <- termToBVTerm' t1
+                                              t2' <- termToBVTerm' t2
+                                              return $ BV.TConcat [t1',t2'] 
+termToBVTerm'   (TBinOp APlus t1 t2)     = do t1' <- termToBVTerm' t1
+                                              t2' <- termToBVTerm' t2
+                                              let w = max (BV.width t1') (BV.width t2')
+                                              return $ BV.TPlus [BV.termExt t1' w, BV.termExt t2' w]
+termToBVTerm'   (TBinOp ABinMinus t1 t2) = do t1' <- termToBVTerm' t1
+                                              t2' <- termToBVTerm' t2
+                                              let w = max (BV.width t1') (BV.width t2')
+                                              return $ BV.TPlus [BV.termExt t1' w, BV.TMul ((-1) `BV.mod2` w) t2' w]
+termToBVTerm'   (TBinOp AMod t1 t2)      | isConstTerm t2 && (isPow2 $ ivalVal $ evalConstTerm t2) 
+                                         = do t1' <- termToBVTerm' t1
+                                              return $ BV.termExt (BV.TSlice t1' (0, (log2 $ ivalVal $ evalConstTerm t2) - 1)) (termWidth t1)
+termToBVTerm'   (TBinOp AMul t1 t2)      | isConstTerm t1 
+                                         = do t2' <- termToBVTerm' t2
+                                              return $ BV.TMul ((ivalVal $ evalConstTerm t1) `BV.mod2` w) t2' w
+                                         | isConstTerm t2
+                                         = do t1' <- termToBVTerm' t1
+                                              return $ BV.TMul ((ivalVal $ evalConstTerm t2) `BV.mod2` w) t1' w
+                                         where w = max (termWidth t1) (termWidth t2)
+termToBVTerm'   (TUnOp AUMinus t)        = do t' <- termToBVTerm' t
+                                              let w = termWidth t
+                                              return $ BV.TMul ((-1) `BV.mod2` w) t' w
+termToBVTerm'   (TUnOp ABNeg t)          = do t' <- termToBVTerm' t
+                                              return $ BV.TNeg t'
+termToBVTerm'   (TSInt w i)              = return $ BV.tConst i w
+termToBVTerm'   (TUInt w i)              = return $ BV.tConst i w
+termToBVTerm'   TTrue                    = return $ BV.tConst 1 1
+termToBVTerm' t@(TEnum n)                = return $ BV.tConst (toInteger $ enumToInt n) (termWidth t)
+termToBVTerm' t@(TVar _)                 = do varMapInsert t
+                                              return $ BV.TVar (BV.Var (show t) (termWidth t))
+termToBVTerm' t@(TField _ _)             = do varMapInsert t
+                                              return $ BV.TVar (BV.Var (show t) (termWidth t))
+termToBVTerm' t@(TIndex _ _)             = do varMapInsert t
+                                              return $ BV.TVar (BV.Var (show t) (termWidth t))
+termToBVTerm' t@(TAddr _)                = do varMapInsert t
+                                              return $ BV.TVar (BV.Var (show t) (termWidth t))
+termToBVTerm' t                          = error $ "termToBVTerm': term not supported: " ++ show t
 
 --------------------------------------------------------------------
 -- Conversion back to our data structures
