@@ -47,7 +47,7 @@ bvRelNormalise RLte t1 t2 = bvRelNormalise' BV.Lte t1 t2
 bvRelNormalise RGte t1 t2 = bvRelNormalise' BV.Lte t2 t1
 
 bvRelNormalise' :: (?spec::Spec) => BV.Rel -> Term -> Term -> Either Bool (PredOp, Term, Term)
-bvRelNormalise' r t1 t2 = 
+bvRelNormalise' r t1 t2 = trace ("bvRelNormalise " ++ show t1 ++ " " ++ show r ++ " " ++ show t2) $
     case BV.atomToCAtom a of
          Left b                       -> Left b
          Right (BV.CAtom op' ct1 ct2) -> let ?vmap = vmap in
@@ -79,11 +79,11 @@ bvSolver spec solver m = TheorySolver { unsatCoreState      = bvUnsatCore       
 
 bvUnsatCore :: Spec -> SMTSolver -> [(AbsVar,[Bool])] -> Maybe [(AbsVar,[Bool])]
 bvUnsatCore _ solver ps = 
-    case smtGetModel solver 
+    case smtGetCore solver 
          $ map (uncurry avarAsnToFormula . mapSnd boolArrToBitsBe) 
          $ filter (not . avarIsRelPred . fst) ps of
-         Just (Left core) -> Just $ map (ps !!) core
-         Just (Right _)   -> Nothing
+         Just (Just core) -> Just $ map (ps !!) core
+         Just Nothing     -> Nothing
          Nothing          -> error $ "bvUnsatCore: could not solve instance: " ++ show ps
 
 bvUnsatCoreStateLabel :: Spec -> SMTSolver -> [(AbsVar, [Bool])] -> [(AbsVar, [Bool])] -> Maybe ([(AbsVar, [Bool])], [(AbsVar, [Bool])])

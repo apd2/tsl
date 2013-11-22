@@ -38,7 +38,11 @@ data SMT2Config = SMT2Config {
 z3Config = SMT2Config {s2Solver = "z3", s2Opts = ["-smt2", "-in"]}
 
 newSMTLib2Solver :: Spec -> SMT2Config -> SMTSolver
-newSMTLib2Solver spec config = SMTSolver {smtGetModel = let ?spec = spec in getModel config}
+newSMTLib2Solver spec config = SMTSolver { smtGetModel       = let ?spec = spec in getModel config
+                                         , smtCheckSAT       = let ?spec = spec in checkSat config
+                                         , smtGetCore        = let ?spec = spec in getUnsatCore config
+                                         , smtGetModelOrCore = let ?spec = spec in getModelOrCore config
+                                         }
 
 ------------------------------------------------------
 -- Printing formulas in SMTLib2 format
@@ -309,20 +313,35 @@ checkSat cfg fs = runSolver cfg spec satresParser
               $$ text "(check-sat)"
 
 
-getUnsatCore :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe [Int]
+getUnsatCore :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe (Maybe [Int])
 getUnsatCore cfg fs =
     runSolver cfg spec
     $ do res <- satresParser
          case res of
-              Just False -> liftM Just unsatcoreParser
+              Just False -> liftM (Just . Just) unsatcoreParser
+              Just True  -> return (Just Nothing)
               _          -> return Nothing
     where spec = text "(set-option :produce-unsat-cores true)"
               $$ (fst $ mkFormulas fs)
               $$ text "(check-sat)"
               $$ text "(get-unsat-core)"
 
-getModel :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe (Either [Int] Store)
+getModel :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe (Maybe Store)
 getModel cfg fs = 
+    runSolver cfg spec
+    $ do res <- satresParser
+         case res of 
+              Just True  -> liftM (Just . Just) $ modelParser ptrmap
+              Just False -> return $ Just Nothing
+              _          -> return Nothing
+    where (spec0, ptrmap) = mkFormulas fs
+          spec = text "(set-option :produce-models true)"
+              $$ spec0
+              $$ text "(check-sat)"
+              $$ text "(get-model)"
+
+getModelOrCore :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe (Either [Int] Store)
+getModelOrCore cfg fs = 
     runSolver cfg spec
     $ do res <- satresParser
          case res of 
