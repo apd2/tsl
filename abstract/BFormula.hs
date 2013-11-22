@@ -174,8 +174,7 @@ fRelIntEq (e1,e2) = fRelIntEq' (exprPad w e1, exprPad w e2)
     where w = max (typeWidth e1) (typeWidth e2)
 
 fRelIntEq' :: (?spec::Spec) => (Expr, Expr) -> Formula
-fRelIntEq' (e1,e2) = trace ("fRelIntEq' " ++ show e1 ++ " " ++ show e2) $
-                     fconj $ (fRelIntEq1 (e1',e2')):(maybe [] (return . fRelIntEq') mrest)
+fRelIntEq' (e1,e2) = fconj $ (fRelIntEq1 (e1',e2')):(maybe [] (return . fRelIntEq') mrest)
     where ((e1', e2'), mrest) = shortestPrefix e1 e2
 
 shortestPrefix :: (?spec::Spec) => Expr -> Expr -> ((Expr, Expr), Maybe (Expr, Expr))

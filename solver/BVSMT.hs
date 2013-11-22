@@ -57,8 +57,10 @@ bvRelNormalise' r t1 t2 = trace ("bvRelNormalise " ++ show t1 ++ " " ++ show r +
                                                         BV.Lte -> PLte in
                                          Right (pop, scalarExprToTerm $ ctermToExp ct1, scalarExprToTerm $ ctermToExp ct2)
     where a = BV.Atom r t1' t2'
-          ((t1', t2'), vmap) = runState (do _t1 <- termToBVTerm t1
-                                            _t2 <- termToBVTerm t2
+          st1 = simplifyTopMod t1
+          st2 = simplifyTopMod t2
+          ((t1', t2'), vmap) = runState (do _t1 <- termToBVTerm st1
+                                            _t2 <- termToBVTerm st2
                                             return (_t1, _t2)) M.empty
 
 bvTermNormalise :: (?spec::Spec) => Term -> Term
@@ -138,6 +140,13 @@ mkVar n = do
 --------------------------------------------------------------------
 -- Conversion to data structures of the BV library
 --------------------------------------------------------------------
+
+-- convert modulo division term to slice without concatenating it with 0
+simplifyTopMod :: Term -> Term
+simplifyTopMod (TBinOp AMod t1 t2) | isConstTerm t2 && (isPow2 $ ivalVal $ evalConstTerm t2) 
+                                   = TSlice t1 (0, (log2 $ ivalVal $ evalConstTerm t2) - 1)
+simplifyTopMod t                   = t
+
 
 varMapInsert :: Term -> State VarMap ()
 varMapInsert t = modify (M.insert (show t) t)

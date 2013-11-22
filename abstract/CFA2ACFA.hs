@@ -242,7 +242,7 @@ updateExprAsn' lhs rhs   (ERange a (f,l))  = updateRange lhs rhs a f l
 updateRange :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> Expr -> Expr -> MECascade
 updateRange lhs _ a f l = let ident = CasLeaf $ Just $ ERange a (f,l) in
                           casMap (maybe ident 
-                                        (\i -> let inrange = ptrFreeBExprToFormula $ (plusmod a [i, uminus f]) .<= l
+                                        (\i -> let inrange = ptrFreeBExprToFormula $ (plusmod a [i, uminus f]) .<= plusmod a [l]
                                                in (casTree [(inrange     , CasLeaf Nothing), 
                                                             (fnot inrange, ident)])))
                                  $ lexprInArray lhs a
