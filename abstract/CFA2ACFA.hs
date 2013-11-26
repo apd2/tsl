@@ -272,8 +272,8 @@ updateExprIndices lhs rhs   (ESlice e s)      = (\e' -> ESlice e' s) <$> updateE
 updateExprIndices lhs rhs   (ERel n as)       = (ERel n)             <$> foldl' (\cas a -> (\es e -> es ++ [e]) <$> cas <*> (updateExprIndices lhs rhs a)) (CasLeaf []) as
 updateExprIndices lhs rhs   (ELength a)       = ELength              <$> updateExprIndices lhs rhs a 
 updateExprIndices lhs rhs   (ERange a (f,l))  = ERange               <$> updateExprIndices lhs rhs a <*>
-                                                                     ((,) <$> updateExprIndices lhs rhs f 
-                                                                          <*> updateExprIndices lhs rhs l)
+                                                                     ((,) <$> (fmap fromJust (updateExprAsn lhs rhs f))
+                                                                          <*> (fmap fromJust (updateExprAsn lhs rhs l)))
 
 -- Takes lhs and rhs of assignment statement and a term
 -- Computes possible overlaps of the lhs with the term and
