@@ -340,7 +340,7 @@ predVar :: (?spec::Spec) => Predicate -> [Var]
 predVar = nub . concatMap termVar . predTerm
 
 predCategory :: (?spec::Spec) => Predicate -> VarCategory
-predCategory p = if any ((==VarTmp) . termCategory) $ predTerm p
+predCategory p = if any ((==VarTmp) . varCat) $ exprVars $ predToExpr p
                     then VarTmp
                     else VarState
 
