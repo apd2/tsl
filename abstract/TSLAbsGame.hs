@@ -4,7 +4,8 @@ module TSLAbsGame(AbsPriv,
                   tslAbsGame, 
                   tslUpdateAbsVarAST,
                   tslStateLabelConstraintAbs,
-                  tslInconsistent) where
+                  tslInconsistent,
+                  tslUpdateAbs) where
 
 import Data.List
 import qualified Data.Map             as M
@@ -135,7 +136,7 @@ tslContAbs spec m ops = do
         ?pred = p
     lift $ H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContLVar === true
 
-tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
+tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u, C.DDNode s u)
 tslUpdateAbs spec m _ avars ops = do
     trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops    = ops
@@ -144,9 +145,15 @@ tslUpdateAbs spec m _ avars ops = do
         ?m      = m
         ?pred   = p
 --    avarbef <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
-    upd <- mapM tslUpdateAbsVar avars
+    (upd, rels) <- liftM unzip $ mapM tslUpdateAbsVar avars
 --    avaraft <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
 --    let avarnew = S.toList $ S.fromList avaraft S.\\ S.fromList avarbef
+    rel <- lift $ lift $ 
+           foldM (\acc r -> do acc' <- C.band m acc r
+                               C.deref m acc
+                               C.deref m r
+                               return acc') 
+           (head rels) (tail rels)
     inconsistent <- lift $ tslInconsistent spec m ops
 --    inconsistent <- case avarnew of
 --                         [] -> return $ C.bzero m
@@ -158,7 +165,7 @@ tslUpdateAbs spec m _ avars ops = do
 --    lift $ C.deref m inconsistent
 --    lift $ C.deref m (last upd)
 --    let upd' = init upd ++ [updwithinc]
-    return (upd, inconsistent)
+    return (upd, inconsistent, rel)
 
 tslInconsistent :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> StateT pdb (ST s) (C.DDNode s u)
 tslInconsistent spec m ops = do
@@ -173,10 +180,12 @@ tslInconsistent spec m ops = do
         contcond = compileFormula $ ptrFreeBExprToFormula $ conj [mkContLVar, neg mkMagicVar]
     H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond, contcond]
 
-tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
+tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u, C.DDNode s u)
 tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av) $ do
     rast <- promoteRelations av
-    lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ H.And (tslUpdateAbsVarAST (av,n)) rast
+    rels <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) rast
+    upd  <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
+    return (upd, rels)
 
 
 tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
