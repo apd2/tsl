@@ -44,11 +44,11 @@ import RefineCommon
 import GroupTag
 import Ops
 
-type AbsPriv = [(RelInst, Bool)]
+type AbsPriv = ([(RelInst, Bool)], [[AbsVar]])
 type PDB pdb s u = StateT AbsPriv (StateT pdb (ST s))
 
 showRelDB :: AbsPriv -> String
-showRelDB = intercalate "\n" . map show
+showRelDB = intercalate "\n" . map (\((r,_),b) -> show (r,b)) . fst
 
 -----------------------------------------------------------------------
 -- Interface
@@ -63,6 +63,7 @@ tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = tslInitial
                                       --, gameConsistent  = tslGameConsistent  spec
                                       , Abs.stateLabelConstraintAbs = lift . tslStateLabelConstraintAbs spec m
                                       , Abs.updateAbs               = tslUpdateAbs               spec m ts
+                                      , Abs.filterPromoCandidates   = tslFilterCandidates        spec m
                                       }
 
 tslInitialState :: Spec -> AbsPriv
@@ -73,7 +74,7 @@ tslInitialState spec =
               $ map (\Apply{..} -> let rel = fromJust $ find ((==applyRel) . relName) $ specRels spec
                                    in instantiateRelation rel applyArgs)
               $ specApply spec
-    in trace ("tslInitialState -> " ++ showRelDB res) res
+    in trace ("tslInitialState: " ++ showRelDB (res,[])) (res, [])
 
 tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslGoalAbs spec m ops = do
@@ -209,6 +210,22 @@ tslUpdateAbsVarAST (av, n)                                       = H.Disj (uncha
     ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
     unchanged = H.And (H.Conj $ map H.Not pres) ident
 
+tslFilterCandidates :: Spec -> C.STDdManager s u -> [AbsVar] -> PDB pdb s u ([AbsVar], [AbsVar])
+tslFilterCandidates spec m avs = do
+   (_, cands) <- get
+   let (relavs, neutral) = partition avarIsRelPred avs
+       cands' = cands ++ [relavs]
+       good = map fst
+              $ head                                                     -- take the oldest group
+              $ sortAndGroup snd                                         -- group based on age
+              $ map (\av -> (av, fromJust $ findIndex (elem av) cands')) -- determine the age of each var
+              relavs
+   -- record the new set of candidates in history
+   modify (\(rels,_) -> (rels, cands'))
+   return (neutral, if' (null relavs) [] good)
+
+
+
 ----------------------------------------------------------------------------
 -- Shared with Spec2ASL
 ----------------------------------------------------------------------------
@@ -310,15 +327,15 @@ promoteRelations av = do
 
 promoteRelations' :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> PDB pdb s u (TAST f e c)
 promoteRelations' av = do
-    rels <- get
+    (rels, _) <- get
     asts <- mapM (\((p,rls), r) -> do let fs = map (\rel -> bexprToFormula $ EBinOp Eq (predToExpr p) rel) rls
                                       if' r (return H.T) $   -- already reified
                                        if' (elem av $ concatMap fAbsVars fs)
                                            (reifyRelation p fs)
                                            (return H.T))
                  rels
-    rels' <- get
-    trace ("promoteRelations " ++ show av ++ "\nDB = " ++ showRelDB rels') $ return $ H.Conj asts
+    rdb' <- get
+    trace ("promoteRelations " ++ show av ++ "\nDB = " ++ showRelDB rdb') $ return $ H.Conj asts
 
 -- * Compile relation
 -- * Instantiate RHS relations
@@ -332,11 +349,10 @@ reifyRelation p fs = do
                                    _                      -> Nothing) 
              $ concatMap fAbsVars fs
     _ <- mapM addRelation ps
-    modify (map (\((p',rules),r) -> if' (p == p') ((p',rules),True) ((p',rules),r)))
+    modify (mapFst $ map (\((p',rules),r) -> if' (p == p') ((p',rules),True) ((p',rules),r)))
     return $ H.Conj asts
 
 addRelation :: (?spec::Spec) => Predicate -> PDB pdb s u ()
-addRelation p@PRel{..} = do
-    rels <- get
-    when (isNothing $ find ((==p) . fst . fst) rels)
-         (put $ (instantiateRelation (getRelation pRel) pArgs, False) : rels)
+addRelation p@PRel{..} = modify $ mapFst (\rels -> if' (isNothing $ find ((==p) . fst . fst) rels)
+                                                       ((instantiateRelation (getRelation pRel) pArgs, False) : rels)
+                                                       rels)

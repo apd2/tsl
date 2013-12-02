@@ -15,7 +15,7 @@ type RelInst = (Predicate, [Expr])
 
 -- Assumes that all dereference operations have already been expanded
 instantiateRelation :: (?spec::Spec) => Relation -> [Expr] -> RelInst
-instantiateRelation Relation{..} args = trace ("instantiateRelation " ++ relName ++ show args ++ " = " ++ show es) (p, es)
+instantiateRelation Relation{..} args = {- trace ("instantiateRelation " ++ relName ++ show args ++ " = " ++ show es)-} (p, es)
     where
     p@PRel{..} = mkPRel relName args
     substs = zip (map fst relArgs) pArgs
