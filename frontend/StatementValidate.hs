@@ -40,6 +40,7 @@ validateStat' _ (SReturn p _ me) = do
          ScopeMethod  _ m  -> case methRettyp m of
                                    Nothing -> assert (isNothing me) p "cannot return value from method with void return type"
                                    Just t  -> do assert (isJust me) p "return value not specified"
+                                                 validateExpr' (fromJust me)
                                                  checkTypeMatch (Type ?scope t) (fromJust me)
          ScopeProcess _ pr -> assert (isNothing me) p "cannot return value from a process"
          ScopeTemplate _   -> err p "return statement inside always-block"
