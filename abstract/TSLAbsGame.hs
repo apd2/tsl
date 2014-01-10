@@ -63,7 +63,7 @@ tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = tslInitial
                                       --, gameConsistent  = tslGameConsistent  spec
                                       , Abs.stateLabelConstraintAbs = lift . tslStateLabelConstraintAbs spec m
                                       , Abs.updateAbs               = tslUpdateAbs               spec m ts
-                                      , Abs.filterPromoCandidates   = tslFilterCandidates        spec m
+                                      --, Abs.filterPromoCandidates   = tslFilterCandidates        spec m
                                       }
 
 tslInitialState :: Spec -> AbsPriv
