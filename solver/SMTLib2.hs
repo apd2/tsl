@@ -10,6 +10,7 @@ import qualified Text.Parsec as P
 import Text.PrettyPrint
 import System.IO.Unsafe
 import System.Process
+import System.Exit
 import Control.Monad.Error
 import Control.Applicative hiding (empty)
 import Data.List
@@ -292,20 +293,23 @@ ptrEqCond _              _                         = FFalse
 
 runSolver :: SMT2Config -> Doc -> P.Parsec String () a -> a
 runSolver cfg spec parser = 
-    let (_, out, er) = unsafePerformIO $ readProcessWithExitCode (s2Solver cfg) (s2Opts cfg) (show spec)
-    in -- Don't check error code, as solvers can return error even if some of the commands
-       -- completed successfully.
-       case P.parse parser "" out of
-            Left e  -> error $ "Error parsing SMT solver output: " ++ 
-                               "\nsolver input: " ++ render spec ++
-                               "\nsolver stdout: " ++ out ++
-                               "\nsolver stderr: " ++ er ++
-                               "\nparser error: "++ show e
-            Right x -> -- x
-                       trace "solver input: " 
-                       $ trace (render spec)
-                       $ trace " solver output: " 
-                       $ trace out x
+    let (ecode, out, er) = unsafePerformIO $ readProcessWithExitCode (s2Solver cfg) (s2Opts cfg) (show spec)
+    in if' (ecode == ExitSuccess || ecode == ExitFailure 1)
+           (case P.parse parser "" out of
+                 Left e  -> error $ "Error parsing SMT solver output: " ++ 
+                                    "\nsolver input: " ++ render spec ++
+                                    "\nsolver stdout: " ++ out ++
+                                    "\nsolver stderr: " ++ er ++
+                                    "\nparser error: "++ show e
+                 Right x -> -- x
+                            trace "solver input: " 
+                            $ trace (render spec)
+                            $ trace " solver output: " 
+                            $ trace out x) 
+           (error $ "Error code returned by SMT solver: " ++ show ecode ++
+                    "\nsolver input: " ++ render spec ++
+                    "\nsolver stdout: " ++ out ++
+                    "\nsolver stderr: " ++ er)
 
 checkSat :: (?spec::Spec) => SMT2Config -> [Formula] -> Maybe Bool
 checkSat cfg fs = runSolver cfg spec satresParser
