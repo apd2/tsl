@@ -60,6 +60,7 @@ tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = tslInitial
                                       , Abs.fairAbs                 = tslFairAbs                 spec m
                                       , Abs.initAbs                 = tslInitAbs                 spec m
                                       , Abs.contAbs                 = tslContAbs                 spec m
+                                      , Abs.initialVars             = []
                                       --, gameConsistent  = tslGameConsistent  spec
                                       , Abs.stateLabelConstraintAbs = lift . tslStateLabelConstraintAbs spec m
                                       , Abs.updateAbs               = tslUpdateAbs               spec m ts
