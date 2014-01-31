@@ -102,8 +102,8 @@ spec2Internal s =
          spec' {I.specTran = I.TranSpec { I.tsCTran  = cfaToITransitions EPIDCont $ I.specCAct spec'
                                         , I.tsUTran  = utran
                                         , I.tsInit   = (inittran, I.conj $ (pcinit ++ peninit ++ [errinit, maginit]))
-                                        , I.tsGoal   = goals
-                                        , I.tsFair   = fairreg
+                                        , I.tsGoal   = map (\g -> g{I.goalCond = (I.goalCond g){I.tranCFA = I.cfaMapExpr (I.tranCFA $ I.goalCond g) $ exprExpandLabels spec'}}) goals
+                                        , I.tsFair   = map (\f -> f{I.fairCond = exprExpandLabels spec' (I.fairCond f)}) fairreg
                                         }} in
        {-I.cfaTraceFiles (zip (map (("tr" ++) . show) [0..]) $ map I.tranCFA $ (I.tsUTran $ I.specTran res) ++ (I.tsCTran $ I.specTran res)) $-} res
       
