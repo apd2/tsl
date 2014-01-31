@@ -343,4 +343,4 @@ ctvarToExpr w (c, (v,(l,h))) = vmul
           vext = if' (h - l + 1 == w) vslice                                                          $
                  if' (h - l + 1 < w)  (EBinOp BConcat vslice (EConst $ UIntVal (w - (h - l + 1)) 0)) $
                  exprSlice vslice (0, w - 1)
-          vmul = if' (c == 1) vext (EBinOp Mul (EConst $ UIntVal w 0) vext)
+          vmul = if' (c == 1) vext (EBinOp Mul (EConst $ UIntVal w c) vext)
