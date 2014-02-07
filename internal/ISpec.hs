@@ -62,11 +62,17 @@ specTmpVar :: Spec -> [Var]
 specTmpVar = filter ((==VarTmp) . varCat) . specVar
 
 instance PP Spec where
-    pp Spec{..} = (vcat $ map (($+$ text "") . pp) specEnum)
+    pp Spec{..} = (text $ "/* state variables: " ++ (show $ length sv) ++ "(" ++ show sbits ++ "bits), " ++ 
+                          "label variables: "++ (show $ length lv) ++ "(" ++ show lbits ++ "bits)*/" )
+                  $+$
+                  (vcat $ map (($+$ text "") . pp) specEnum)
                   $+$
                   (vcat $ map (($+$ text "") . pp) specVar)
                   $+$
                   pp specTran 
+                  where (sv,lv) = partition ((==VarState) . varCat) specVar 
+                        sbits = sum $ map typeWidth sv
+                        lbits = sum $ map typeWidth lv
 
 lookupVar :: (?spec::Spec) => String -> Maybe Var
 lookupVar n = find ((==n) . varName) $ specVar ?spec 

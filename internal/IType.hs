@@ -13,6 +13,7 @@ module IType(Field(..),
 import Text.PrettyPrint
 
 import PP
+import TSLUtil
 
 data Field = Field String Type deriving (Eq,Ord)
 
@@ -46,9 +47,13 @@ instance Show Type where
     show = render . pp
 
 twidth :: Type -> Int
-twidth (SInt w) = w
-twidth (UInt w) = w
-twidth t        = error $ "twidth " ++ show t ++ " undefined"
+twidth Bool        = 1
+twidth (SInt w)    = w
+twidth (UInt w)    = w
+twidth (Enum e)    = bitWidth $ length e - 1
+twidth (Array t l) = l * twidth t
+twidth (Struct fs) = sum $ map typeWidth fs
+twidth t           = error $ "twidth " ++ show t ++ " undefined"
 
 class Typed a where
     typ :: a -> Type
