@@ -51,7 +51,7 @@ scalarExprAbsVars e | isBool e  = fAbsVars $ ptrFreeBExprToFormula e
 
 -- Compute ACFA for a list of abstract variables for a location inside
 -- transition CFA. 
-tranCFAToACFA :: (?spec::Spec, ?pred::[Predicate]) => [AbsVar] -> Loc -> CFA -> ACFA
+tranCFAToACFA :: (?spec::Spec, ?pred::[Predicate]) => [(AbsVar, Expr)] -> Loc -> CFA -> ACFA
 tranCFAToACFA vs loc cfa = 
     let ?initloc = loc 
         ?cfa = cfaPruneUnreachable cfa [loc] in 
@@ -69,20 +69,20 @@ mkACFA acfa added =
               $ filter (\n -> notElem n added)
               $ G.nodes ?cfa
         -- compute variable updates along all outgoing transitions
-        updates = map (\(loc', tran) -> (loc', tranPrecondition tran, map (varUpdateTran tran) $ fst $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
+        updates = map (\(loc', tran) -> (loc', tranPrecondition tran, map (exprUpdateTran tran . snd) $ fst $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
         -- extract the list of abstract variables from transitions
         vs = nub $ concatMap (\(_,mpre,upd) -> maybe [] fAbsVars mpre ++ concatMap mecasAbsVars upd) updates
-        acfa'  = addUseDefVar acfa loc $ map (\v -> (v, varRecomputedLoc loc v)) vs
+        acfa'  = addUseDefVar acfa loc $ map (\v -> ((v, avarToExpr v), exprRecomputedLoc loc $ avarToExpr v)) vs
         acfa'' = foldIdx (\gr (l, pre, upds) i -> G.insEdge (loc, l, (i,pre,upds)) gr) acfa' updates
     in if loc == ?initloc
           then acfa''
           else mkACFA acfa'' (loc:added)
 
-pruneCFAVar :: (?spec::Spec, ?pred::[Predicate]) => [AbsVar] -> CFA -> CFA
-pruneCFAVar avs cfa = cfa2
+pruneCFAVar :: (?spec::Spec, ?pred::[Predicate]) => [Expr] -> CFA -> CFA
+pruneCFAVar es cfa = cfa2
     where
     -- Find all transitions that update variable values
-    trs = filter (\(_,_,tr) -> any (\av -> isVarRecomputedByTran av tr) avs) 
+    trs = filter (\(_,_,tr) -> any (\e -> isExprRecomputedByTran e tr) es) 
           $ G.labEdges cfa
     -- Find all predecessors of these transitions
     keepedges = nub $ concatMap (\e@(fr,to,_) -> e : (concatMap (G.inn cfa) (G.rdfs [fr] cfa)) ++
@@ -93,17 +93,17 @@ pruneCFAVar avs cfa = cfa2
     -- delete irrelevant edges connecting relevant nodes
     cfa2 = foldl' (\g e -> if' (elem e keepedges) g (G.delLEdge e g)) cfa1 (G.labEdges cfa)
 
-varRecomputedLoc :: (?spec::Spec, ?pred::[Predicate], ?cfa::CFA) => Loc -> AbsVar -> Loc
-varRecomputedLoc l v | null (G.pre ?cfa l)                                 = l
-                     | any (isVarRecomputedByTran v . snd) (G.lpre ?cfa l) = l
-                     | all (== pre0) pres                                  = pre0
-                     | otherwise                                           = l
-    where (pre0:pres) = map (\l' -> varRecomputedLoc l' v) $ G.pre ?cfa l
+exprRecomputedLoc :: (?spec::Spec, ?pred::[Predicate], ?cfa::CFA) => Loc -> Expr -> Loc
+exprRecomputedLoc l e | null (G.pre ?cfa l)                                  = l
+                      | any (isExprRecomputedByTran e . snd) (G.lpre ?cfa l) = l
+                      | all (== pre0) pres                                   = pre0
+                      | otherwise                                            = l
+    where (pre0:pres) = map (\l' -> exprRecomputedLoc l' e) $ G.pre ?cfa l
 
-isVarRecomputedByTran :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> TranLabel -> Bool
-isVarRecomputedByTran v tr = case varUpdateTran tr v of
-                                  CasLeaf e -> e /= Just (avarToExpr v)
-                                  _         -> True
+isExprRecomputedByTran :: (?spec::Spec, ?pred::[Predicate]) => Expr -> TranLabel -> Bool
+isExprRecomputedByTran e tr = case exprUpdateTran tr e of
+                                   CasLeaf e' -> e' /= Just e
+                                   _          -> True
 
 
 simplifyACFA :: (?spec::Spec) => ACFA -> ACFA
@@ -182,7 +182,7 @@ simplifyACFA5 acfa = (G.gmap rm acfa, f)
     where
     used = concatMap (M.toList . snd . snd) $ G.labNodes acfa
     cands = M.fromList $ map (\(loc, (recomp, _)) -> (loc, getCands loc recomp)) $ G.labNodes acfa
-    getCands loc avs = findIndices (\av -> notElem (av,loc) used) avs
+    getCands loc avs = findIndices (\(av,_) -> notElem (av,loc) used) avs
     f = any (\(loc, (recomp,_)) -> not $ null $ getCands loc recomp) $ G.labNodes acfa
     rm (pre, loc, (recomp, defs), suc) = (pre', loc, (recomp',defs), suc')
         where
@@ -194,9 +194,9 @@ simplifyACFA5 acfa = (G.gmap rm acfa, f)
 
 -- Takes a location and a list of variables used in this location and updates
 -- the corresponding use and defined lists.
-addUseDefVar :: ACFA -> Loc -> [(AbsVar, Loc)] -> ACFA
+addUseDefVar :: ACFA -> Loc -> [((AbsVar, Expr), Loc)] -> ACFA
 addUseDefVar acfa useloc defs = 
-    foldl' (\acfa' (v, defloc) -> let acfa1 = graphUpdNode useloc (\(def, use) -> (def, M.insert v defloc use)) acfa'
+    foldl' (\acfa' (v, defloc) -> let acfa1 = graphUpdNode useloc (\(def, use) -> (def, M.insert (fst v) defloc use)) acfa'
                                   in case G.lab acfa1 defloc of
                                           Nothing -> G.insNode (defloc, ([v], M.empty)) acfa1
                                           Just _  -> graphUpdNode defloc (\(def, use) -> (nub $ v:def, use)) acfa1)
@@ -212,10 +212,10 @@ tranPrecondition (TranStat (SAssume e))   = Just $ ptrFreeBExprToFormula e
 tranPrecondition _                        = Nothing
 
 -- Compute variable updates for an individual CFA edge
-varUpdateTran :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> AbsVar -> MECascade
-varUpdateTran (TranStat (SAssign e1 e2)) v = fmap (fmap (\e -> if' (isConstExpr e) (EConst $ evalConstExpr e) e)) 
-                                             $ updateExprAsn e1 e2 (avarToExpr v)
-varUpdateTran _                          v = CasLeaf $ Just $ avarToExpr v
+exprUpdateTran :: (?spec::Spec, ?pred::[Predicate]) => TranLabel -> Expr -> MECascade
+exprUpdateTran (TranStat (SAssign e1 e2)) e = fmap (fmap (\e_ -> if' (isConstExpr e_) (EConst $ evalConstExpr e_) e_)) 
+                                              $ updateExprAsn e1 e2 e
+exprUpdateTran _                          e = CasLeaf $ Just e
 
 updateExprAsn :: (?spec::Spec, ?pred::[Predicate]) => Expr -> Expr -> Expr -> MECascade
 updateExprAsn lhs rhs e = casMap (updateExprAsn' lhs rhs) $ updateExprIndices lhs rhs e

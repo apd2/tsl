@@ -205,7 +205,7 @@ tslUpdateAbsVarAST (av, n) | M.member (show av) (specUpds ?spec) =
 
 tslUpdateAbsVarAST (av, n)                                       = H.Disj (unchanged:upds)
     where
-    trans = mapIdx (\tr i -> varUpdateTrans (show i) [(av,n)] tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
+    trans = mapIdx (\tr i -> varUpdateTrans (show i) (av,n) tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
     (upds, pres) = unzip $ catMaybes trans
     -- generate condition when variable value does not change
     ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
@@ -287,27 +287,38 @@ bexprAbstract = compileFormula . bexprToFormula
 tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => String -> Transition -> TAST f e c
 tranPrecondition trname Transition{..} = varUpdateLoc trname [] tranFrom (cfaLocInlineWirePrefix ?spec tranCFA tranFrom)
 
--- Compute update functions for a list of variables wrt to a transition
+-- Compute update function for an abstract variable wrt to a transition
 -- Returns update function and precondition of the transition.  The precondition
 -- can be used to generate complementary condition when variable value remains 
 -- unchanged.  
-varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar,f)] -> Transition -> Maybe (TAST f e c, TAST f e c)
-varUpdateTrans trname vs Transition{..} = if G.isEmpty cfa'
-                                             then Nothing
-                                             else Just (varUpdateLoc trname vs tranFrom cfa, varUpdateLoc (trname ++ "_pre") [] tranFrom cfa)
-    where cfa' = pruneCFAVar (map fst vs) tranCFA
-          cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
+varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => String -> (AbsVar,f) -> Transition -> Maybe (TAST f e c, TAST f e c)
+varUpdateTrans trname (av,nxt) Transition{..} = if all G.isEmpty cfas'
+                                                   then Nothing
+                                                   else Just (H.Conj upds, H.Disj pres)
+    where -- list all rules for the relation
+          vexps = (avarToExpr av) : 
+                  (case av of
+                        AVarPred p@PRel{..} -> snd $ instantiateRelation (getRelation pRel) pArgs
+                        _                   -> [])
+          (upds, pres, cfas') = unzip3
+                                $ map (\e -> let cfa' = pruneCFAVar [e] tranCFA
+                                                 cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
+                                                 pre  = varUpdateLoc (trname ++ "_pre") [] tranFrom cfa
+                                                 upd  = varUpdateLoc trname [((av, e), nxt)] tranFrom cfa
+                                             in (upd, pre, cfa'))
+                                  vexps
 
 
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA. 
-varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [(AbsVar, f)] -> Loc -> CFA -> TAST f e c
+varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [((AbsVar, Expr), f)] -> Loc -> CFA -> TAST f e c
 varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
                                  $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
     where
     acfa = tranCFAToACFA (map fst vs) loc cfa
-    ast  = compileACFA vs acfa
-    vs'  = map (\(av,_) -> (av, text $ T.pack $ show av ++ "'")) vs
+    avs  = map (\((av,_),nxt) -> (av, nxt)) vs
+    ast  = compileACFA avs acfa
+    vs'  = map (\(av,_) -> (av, text $ T.pack $ show av ++ "'")) avs
     vlst = intercalate "_" $ map (show . snd) vs'
     ast'::(TAST Doc Doc Doc) = compileACFA vs' acfa
 

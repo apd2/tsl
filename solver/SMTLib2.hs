@@ -301,11 +301,11 @@ runSolver cfg spec parser =
                                     "\nsolver stdout: " ++ out ++
                                     "\nsolver stderr: " ++ er ++
                                     "\nparser error: "++ show e
-                 Right x -> -- x
-                            trace "solver input: " 
+                 Right x -> x
+                            {-trace "solver input: " 
                             $ trace (render spec)
                             $ trace " solver output: " 
-                            $ trace out x) 
+                            $ trace out x-}) 
            (error $ "Error code returned by SMT solver: " ++ show ecode ++
                     "\nsolver input: " ++ render spec ++
                     "\nsolver stdout: " ++ out ++

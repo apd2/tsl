@@ -69,7 +69,7 @@ mkAST nxtvs ord = mkAST' (vmap1, M.empty) ord
     vmap0 = foldl' (\m l -> foldl' (\m' (av,v) -> M.insert (l,av) (H.FVar v) m') m nxtvs) M.empty
             $ filter ((==0) . G.outdeg ?acfa)
             $ G.nodes ?acfa
-    vmap1 = foldl' (\m l -> foldl' (\m' av -> M.insert (l,av) (H.NVar $ avarBAVar av) m') m (fst $ fromJust $ G.lab ?acfa l)) vmap0
+    vmap1 = foldl' (\m l -> foldl' (\m' (av,_) -> M.insert (l,av) (H.NVar $ avarBAVar av) m') m (fst $ fromJust $ G.lab ?acfa l)) vmap0
             $ filter ((==0) . G.indeg ?acfa)
             $ G.nodes ?acfa
 
@@ -88,7 +88,7 @@ mkAST' (vmap, tmap) (l:ord) =
                                       ((fl `H.XNor` if' (null fll) H.T (disj fll)) `H.And`
                                        mkFanin (vmap', tmap') fl))))
     where 
-    vs  = filter (\v -> M.notMember (l,v) $ vmap) $ fst $ fromJust $ G.lab ?acfa l
+    vs  = filter (\v -> M.notMember (l,v) $ vmap) $ map fst $ fst $ fromJust $ G.lab ?acfa l
     out = G.lsuc ?acfa l
     mkFanin emap fl = case G.lpre ?acfa l of
                            []  -> fl
@@ -98,7 +98,7 @@ mkAST' (vmap, tmap) (l:ord) =
 compileTransition :: (?spec::Spec, ?acfa::ACFA) => EMap f e c -> Loc -> Loc -> (Int, Maybe Formula, [MECascade]) -> TAST f e c -> TAST f e c
 compileTransition emap from to (idx, mpre, upd) tovar = trvar `H.XNor` (preast `H.And` updast `H.And` tovar)
     where trvar  = (snd emap) M.! (from,idx)
-          tovs   = fst $ fromJust $ G.lab ?acfa to
+          tovs   = map fst $ fst $ fromJust $ G.lab ?acfa to
           updast = let ?emap = emap
                        ?from = from
                        ?to = to in
