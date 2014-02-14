@@ -26,7 +26,6 @@ import TranSpec
 import IExpr
 import IVar
 import IType
-import IRelation
 import CFA
 import Predicate
 import Inline
@@ -42,20 +41,19 @@ import BFormula
 import Cascade
 import RefineCommon 
 import GroupTag
-import Ops
 
-type AbsPriv = ([(RelInst, Bool)], [[AbsVar]])
+type AbsPriv = [[AbsVar]]
 type PDB pdb s u = StateT AbsPriv (StateT pdb (ST s))
 
-showRelDB :: AbsPriv -> String
-showRelDB = intercalate "\n" . map (\((r,_),b) -> show (r,b)) . fst
+--showRelDB :: AbsPriv -> String
+--showRelDB = intercalate "\n" . map (\((r,_),b) -> show (r,b)) . fst
 
 -----------------------------------------------------------------------
 -- Interface
 -----------------------------------------------------------------------
 
 tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar AbsPriv
-tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = tslInitialState            spec
+tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = []
                                       , Abs.goalAbs                 = tslGoalAbs                 spec m
                                       , Abs.fairAbs                 = tslFairAbs                 spec m
                                       , Abs.initAbs                 = tslInitAbs                 spec m
@@ -66,16 +64,6 @@ tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = tslInitial
                                       , Abs.updateAbs               = tslUpdateAbs               spec m ts
                                       --, Abs.filterPromoCandidates   = tslFilterCandidates        spec m
                                       }
-
-tslInitialState :: Spec -> AbsPriv
-tslInitialState spec = 
-    let ?spec = spec
-        ?pred = [] in
-    let res = map (, False)
-              $ map (\Apply{..} -> let rel = fromJust $ find ((==applyRel) . relName) $ specRels spec
-                                   in instantiateRelation rel applyArgs)
-              $ specApply spec
-    in trace ("tslInitialState: " ++ showRelDB (res,[])) (res, [])
 
 tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
 tslGoalAbs spec m ops = do
@@ -147,15 +135,9 @@ tslUpdateAbs spec m _ avars ops = do
         ?m      = m
         ?pred   = p
 --    avarbef <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
-    (upd, rels) <- liftM unzip $ mapM tslUpdateAbsVar avars
+    upd <- mapM tslUpdateAbsVar avars
 --    avaraft <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
 --    let avarnew = S.toList $ S.fromList avaraft S.\\ S.fromList avarbef
-    rel <- lift $ lift $ 
-           foldM (\acc r -> do acc' <- C.band m acc r
-                               C.deref m acc
-                               C.deref m r
-                               return acc') 
-           (head rels) (tail rels)
     inconsistent <- lift $ tslInconsistent spec m ops
 --    inconsistent <- case avarnew of
 --                         [] -> return $ C.bzero m
@@ -167,7 +149,7 @@ tslUpdateAbs spec m _ avars ops = do
 --    lift $ C.deref m inconsistent
 --    lift $ C.deref m (last upd)
 --    let upd' = init upd ++ [updwithinc]
-    return (upd, inconsistent, rel)
+    return (upd, inconsistent, {-rel-}C.bone m)
 
 tslInconsistent :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> StateT pdb (ST s) (C.DDNode s u)
 tslInconsistent spec m ops = do
@@ -182,12 +164,9 @@ tslInconsistent spec m ops = do
         contcond = compileFormula $ ptrFreeBExprToFormula $ conj [mkContLVar, neg mkMagicVar]
     H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond, contcond]
 
-tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u, C.DDNode s u)
-tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av) $ do
-    rast <- promoteRelations av
-    rels <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) rast
-    upd  <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
-    return (upd, rels)
+tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
+tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av) 
+                          $ lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
 
 
 tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
@@ -212,8 +191,8 @@ tslUpdateAbsVarAST (av, n)                                       = H.Disj (uncha
     unchanged = H.And (H.Conj $ map H.Not pres) ident
 
 tslFilterCandidates :: Spec -> C.STDdManager s u -> [AbsVar] -> PDB pdb s u ([AbsVar], [AbsVar])
-tslFilterCandidates spec m avs = do
-   (_, cands) <- get
+tslFilterCandidates _ _ avs = do
+   cands <- get
    let (relavs, neutral) = partition avarIsRelPred avs
        cands' = cands ++ [relavs]
        good = map fst
@@ -222,7 +201,7 @@ tslFilterCandidates spec m avs = do
               $ map (\av -> (av, fromJust $ findIndex (elem av) cands')) -- determine the age of each var
               relavs
    -- record the new set of candidates in history
-   modify (\(rels,_) -> (rels, cands'))
+   put cands'
    return (neutral, if' (null relavs) [] good)
 
 
@@ -321,50 +300,3 @@ varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++
     vs'  = map (\(av,_) -> (av, text $ T.pack $ show av ++ "'")) avs
     vlst = intercalate "_" $ map (show . snd) vs'
     ast'::(TAST Doc Doc Doc) = compileACFA vs' acfa
-
----------------------------------------------------------------------------
--- Relation reification
----------------------------------------------------------------------------
-
--- Trigger relation processing when variable av is being promoted to a state variable:
--- Check if av occurs in (either RHS or LHS) of one of instantiated relations that has not been
--- reified (i.e., added to the transition relation) yet, and reify all such relations.
-promoteRelations :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> PDB pdb s u (TAST f e c)
-promoteRelations av = do
-    -- Make sure relation is instantiated before being reified
-    case av of
-         (AVarPred p@(PRel _ _)) -> addRelation p
-         _                       -> return ()
-    promoteRelations' av
-
-promoteRelations' :: (?spec::Spec, ?pred::[Predicate]) => AbsVar -> PDB pdb s u (TAST f e c)
-promoteRelations' av = do
-    (rels, _) <- get
-    asts <- mapM (\((p,rls), r) -> do let fs = map (\rel -> bexprToFormula $ EBinOp Eq (predToExpr p) rel) rls
-                                      if' r (return H.T) $   -- already reified
-                                       if' (elem av $ concatMap fAbsVars fs)
-                                           (reifyRelation p fs)
-                                           (return H.T))
-                 rels
-    rdb' <- get
-    trace ("promoteRelations " ++ show av ++ "\nDB = " ++ showRelDB rdb') $ return $ H.Conj asts
-
--- * Compile relation
--- * Instantiate RHS relations
--- * Update AbsPriv
-reifyRelation :: (?spec::Spec, ?pred::[Predicate]) => Predicate -> [Formula] -> PDB pdb s u (TAST f e c)
-reifyRelation p fs = do
-    let asts = map compileFormula fs
-        -- relations occurring in fs
-        ps = mapMaybe (\av -> case av of
-                                   AVarPred p'@(PRel _ _) -> Just p'
-                                   _                      -> Nothing) 
-             $ concatMap fAbsVars fs
-    _ <- mapM addRelation ps
-    modify (mapFst $ map (\((p',rules),r) -> if' (p == p') ((p',rules),True) ((p',rules),r)))
-    return $ H.Conj asts
-
-addRelation :: (?spec::Spec) => Predicate -> PDB pdb s u ()
-addRelation p@PRel{..} = modify $ mapFst (\rels -> if' (isNothing $ find ((==p) . fst . fst) rels)
-                                                       ((instantiateRelation (getRelation pRel) pArgs, False) : rels)
-                                                       rels)
