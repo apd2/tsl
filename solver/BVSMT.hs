@@ -124,8 +124,10 @@ equant' vs solver rels =
     $ case BV.exTerm qvs atoms of
            Just (Left True)  -> FTrue
            Just (Left False) -> FFalse
-           Just (Right cas)  -> fconj $ map (catomToForm vmap) cas
-           Nothing           -> error $ "bvEquant failed on: " ++ show atoms
+           Just (Right cas)  -> fdisj $ map (fconj . map (catomToForm vmap)) cas
+           Nothing           -> error $ "bvEquant failed on: " ++ show atoms ++ "\nTest case:\n" ++ 
+                                        "([" ++ (intercalate "," $ map BV.varToHaskell qvs) ++ "], [" ++ 
+                                          (intercalate ", " $ map BV.atomToHaskell atoms) ++ "])"
     where forms         = map (\(r, t1, t2) -> ptrFreeBExprToFormula $ EBinOp (bvRelToOp r) (termToExpr t1) (termToExpr t2)) rels
           ((atoms, qvs), vmap) = runState (do _atoms <- mapM relToAtom rels
                                               _qvs   <- mapM mkVar vs
