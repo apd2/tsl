@@ -38,7 +38,7 @@ type VarMap = M.Map String Term
 -- Normalisation interface
 --------------------------------------------------------------------
 
-bvRelNormalise :: (?spec::Spec) => RelOp -> Term -> Term -> Either Bool (PredOp, Term, Term)
+bvRelNormalise :: (?spec::Spec) => RelOp -> Term -> Term -> Either Bool (Bool, PredOp, Term, Term)
 bvRelNormalise REq  t1 t2 = bvRelNormalise' BV.Eq  t1 t2
 bvRelNormalise RNeq _  _  = error "Unexpected '!=' in bvRelNormalise"
 bvRelNormalise RLt  t1 t2 = bvRelNormalise' BV.Lt  t1 t2
@@ -46,16 +46,17 @@ bvRelNormalise RGt  t1 t2 = bvRelNormalise' BV.Lt  t2 t1
 bvRelNormalise RLte t1 t2 = bvRelNormalise' BV.Lte t1 t2
 bvRelNormalise RGte t1 t2 = bvRelNormalise' BV.Lte t2 t1
 
-bvRelNormalise' :: (?spec::Spec) => BV.Rel -> Term -> Term -> Either Bool (PredOp, Term, Term)
+bvRelNormalise' :: (?spec::Spec) => BV.Rel -> Term -> Term -> Either Bool (Bool, PredOp, Term, Term)
 bvRelNormalise' r t1 t2 = {-trace ("bvRelNormalise " ++ show t1 ++ " " ++ show r ++ " " ++ show t2) $-}
     case BV.atomToCAtom a of
          Left b                       -> Left b
          Right (BV.CAtom op' ct1 ct2) -> let ?vmap = vmap in
-                                         let pop = case op' of
-                                                        BV.Eq  -> PEq
-                                                        BV.Lt  -> PLt
-                                                        BV.Lte -> PLte in
-                                         Right (pop, scalarExprToTerm $ ctermToExp ct1, scalarExprToTerm $ ctermToExp ct2)
+                                         let (pol, pop) = case op' of
+                                                               BV.Eq  -> (True,  PEq)
+                                                               BV.Neq -> (False, PEq)
+                                                               BV.Lt  -> (True,  PLt)
+                                                               BV.Lte -> (True,  PLte) in
+                                         Right (pol, pop, scalarExprToTerm $ ctermToExp ct1, scalarExprToTerm $ ctermToExp ct2)
     where a = BV.Atom r t1' t2'
           st1 = simplifyTopMod t1
           st2 = simplifyTopMod t2
@@ -81,9 +82,7 @@ bvSolver spec solver m = TheorySolver { unsatCoreState      = bvUnsatCore       
 
 bvUnsatCore :: Spec -> SMTSolver -> [(AbsVar,[Bool])] -> Maybe [(AbsVar,[Bool])]
 bvUnsatCore _ solver ps = 
-    case smtGetCore solver 
-         $ map (uncurry avarAsnToFormula . mapSnd boolArrToBitsBe) 
-         $ filter (not . avarIsRelPred . fst) ps of
+    case smtGetCore solver $ map (uncurry avarAsnToFormula . mapSnd boolArrToBitsBe) ps of
          Just (Just core) -> Just $ map (ps !!) core
          Just Nothing     -> Nothing
          Nothing          -> error $ "bvUnsatCore: could not solve instance: " ++ show ps
@@ -107,11 +106,12 @@ bvEquant :: Spec -> SMTSolver -> C.STDdManager s u -> PVarOps pdb s u -> [(AbsVa
 bvEquant spec solver m ops avs vs = do
     let ?spec = spec
     let -- Deal with arrays and pointers. 
-        dnf = resolveAddresses 
-              $ resolveIndices 
-              $ return 
-              $ map avarToRel 
-              $ filter (not . avarIsRelPred . fst) avs
+        dnf = if any (avarIsRelPred . fst) avs
+                 then error "bvEquant: cannot handle inductive predicates"
+                 else resolveAddresses 
+                      $ resolveIndices 
+                      $ return 
+                      $ map avarToRel avs
         f = fdisj $ map (equant' vs solver) dnf
     H.compileBDD m ops (avarGroupTag . bavarAVar) $ compileFormula $ trace ("bvEquant " ++ show vs ++ ". "++ show avs ++ " = " ++ show f) $ f
 

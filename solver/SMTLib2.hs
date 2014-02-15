@@ -14,6 +14,7 @@ import System.Exit
 import Control.Monad.Error
 import Control.Applicative hiding (empty)
 import Data.List
+import Data.Maybe
 import Data.String.Utils
 import qualified Data.Set             as S
 import qualified Data.Map             as M
@@ -23,6 +24,7 @@ import TSLUtil
 import Util hiding (trace)
 import Predicate
 import BFormula
+import AbsRelation
 import ISpec
 import IVar
 import IType
@@ -54,26 +56,49 @@ class SMTPP a where
 
 mkFormulas :: (?spec::Spec) => [Formula] -> (Doc, [(String, Term)])
 mkFormulas fs = 
-    let vars = S.toList $ S.fromList $ concatMap fVar fs
+    let fs' = map expandRels fs
+        vars = S.toList $ S.fromList $ concatMap fVar fs'
+        rpreds = nub $ concatMap fRelations fs'
         (typemap, typedecls) = mkTypeMap vars in
     let ?typemap = typemap in
-    let (ptrvars, ptrconstr, ptrmap) = mkPtrConstraints fs in
+    let (ptrvars, ptrconstr, ptrmap) = mkPtrConstraints fs' in
         (-- type declarations
          typedecls 
          $+$
          -- variable declarations
          (vcat $ map smtpp vars)
          $+$
+         (vcat $ map declRel rpreds)
+         $+$
          ptrvars
          $+$
          -- formulas
          (vcat $ mapIdx (\f i -> parens $ text "assert" 
-                                          <+> (parens $ char '!' <+> smtpp f <+> text ":named" <+> text assertName <> int i)) fs)
+                                          <+> (parens $ char '!' <+> smtpp f <+> text ":named" <+> text assertName <> int i)) fs')
          $+$
          -- pointer consistency constraints
          ptrconstr
          ,
          ptrmap)
+
+-- For each relation predicate in the formula, expand all rules for this relation
+-- and add them to the formula, so that the predicate can be replaced with a boolean
+-- variable without losing precision
+expandRels :: (?spec::Spec) => Formula -> Formula
+expandRels f = fbinop Conj f $
+               (fconj $ map (\(p, rules) -> fconj $ map (\r -> fbinop Equiv (FBoolAVar $ AVarPred p) (ptrFreeBExprToFormula r)) rules)
+                      $ map (\(n, args) -> instantiateRelation (getRelation n) args)
+                      $ fRelations f)
+
+fRelations :: (?spec::Spec) => Formula -> [(String, [Expr])]
+fRelations f = mapMaybe (\av -> case av of
+                                     AVarPred (PRel n args) -> Just (n, args)
+                                     _                      -> Nothing)
+               $ fAbsVars f 
+
+declRel :: (?spec::Spec, ?typemap::M.Map Type String) => (String, [Expr]) -> Doc
+declRel (n, args) = parens $ text "declare-const" <+> vname <+> text "Bool"
+    where vname = smtpp (PRel n args)
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Var where
     smtpp v = parens $  text "declare-const"
@@ -160,6 +185,7 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Predicate where
                                                 t2 = ptermTerm pt2
                                                 w = max (termWidth t1) (termWidth t2)
     smtpp (PAtom op pt1 pt2)            = parens $ smtpp op <+> smtpp pt1 <+> smtpp pt2
+    smtpp (PRel n args)                 = text $ mkIdent $ n ++ "(" ++ (intercalate "," $ map show args) ++ ")"
 
 instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TVar n)               = text $ mkIdent n

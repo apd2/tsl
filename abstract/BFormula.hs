@@ -152,9 +152,10 @@ fRel op   e1 e2 | isInt e1 && op == REq            = fRelIntEq (e1, e2)
 
 mkAtomForm :: (?spec::Spec) => RelOp -> PTerm -> PTerm -> Formula
 mkAtomForm op t1 t2 = case mkPAtom op t1 t2 of
-                           Left True  -> FTrue
-                           Left False -> FFalse
-                           Right p    -> FBoolAVar $ AVarPred p
+                           Left True        -> FTrue
+                           Left False       -> FFalse
+                           Right (True, p)  -> FBoolAVar $ AVarPred p
+                           Right (False, p) -> FNot $ FBoolAVar $ AVarPred p
 
 -- Two addrof expressions are equal if they are isomorphic and
 -- array indices in matching positions in these expressions are equal.

@@ -147,12 +147,12 @@ storeFromModel ptrmap decls =
                      $ map ((\(DeclVarAsn n v) -> (v,n)) . head)
                      $ sortAndGroup dvarVal
                      $ filter (\d -> declIsAsn d && isPrefixOf "addrof-" (dvarName d)) decls in
-    storeUnions ?spec (map storeFromAsn asndecls)
+    storeUnions ?spec (mapMaybe storeFromAsn asndecls)
 
-storeFromAsn :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => (String, SMTExpr) -> Store
-storeFromAsn (n, e) = SStruct (M.singleton (varName var) val) ?spec
-    where var = getVar n
-          val = storeFromExpr (varType var) e
+storeFromAsn :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => (String, SMTExpr) -> Maybe Store
+storeFromAsn (n, e) = fmap (\var -> let val = storeFromExpr (varType var) e in
+                                    SStruct (M.singleton (varName var) val) ?spec)
+                           $ lookupVar n
 
 storeFromExpr :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => Type -> SMTExpr -> Store
 storeFromExpr t e = case lookup e ?addrofmap of
