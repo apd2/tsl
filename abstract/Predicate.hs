@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
 module Predicate(PVarOps,
                  bavarAVar,
@@ -37,7 +37,6 @@ module Predicate(PVarOps,
                  relOpToPredOp,
                  Predicate(..),
                  predCategory,
-                 predTerm,
                  predVar,
                  predToExpr,
                  scalarExprToTerm,
@@ -337,7 +336,8 @@ predTerm (PAtom _ t1 t2) = map ptermTerm [t1,t2]
 predTerm (PRel  _ _)     = []
 
 predVar :: (?spec::Spec) => Predicate -> [Var]
-predVar = nub . concatMap termVar . predTerm
+predVar p@PAtom{..} = nub $ concatMap termVar $ predTerm p
+predVar   PRel{..}  = nub $ concatMap exprVars pArgs
 
 predCategory :: (?spec::Spec) => Predicate -> VarCategory
 predCategory p = if any ((==VarTmp) . varCat) $ exprVars $ predToExpr p
