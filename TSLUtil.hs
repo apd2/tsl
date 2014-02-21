@@ -1,8 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module TSLUtil(fromLeft,
-               fromRight,
-               err,
+module TSLUtil(err,
                assert,
                uniqNames,
                grCycle,
@@ -34,12 +32,6 @@ import Data.String.Utils
 import Util hiding (name)
 import Pos
 import Name
-
-fromLeft :: (Either a b) -> a
-fromLeft (Left x) = x
-
-fromRight :: (Either a b) -> b
-fromRight (Right x) = x
 
 err :: (MonadError String me) => Pos -> String -> me a
 err p e = throwError $ spos p ++ ": " ++ e
