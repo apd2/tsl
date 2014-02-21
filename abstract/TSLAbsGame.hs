@@ -271,7 +271,7 @@ tranPrecondition trname Transition{..} = varUpdateLoc trname [] tranFrom (cfaLoc
 -- can be used to generate complementary condition when variable value remains 
 -- unchanged.  
 varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => String -> (AbsVar,f) -> Transition -> Maybe (TAST f e c, TAST f e c)
-varUpdateTrans trname (av,nxt) Transition{..} = if all G.isEmpty cfas'
+varUpdateTrans trname (av,nxt) Transition{..} = if any G.isEmpty cfas'
                                                    then Nothing
                                                    else Just (H.Conj upds, H.Disj pres)
     where -- list all rules for the relation
