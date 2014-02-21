@@ -84,7 +84,7 @@ pruneCFAVar es cfa = cfa2
     -- Find all transitions that update variable values
     trs = filter (\(_,_,tr) -> any (\e -> isExprRecomputedByTran e tr) es) 
           $ G.labEdges cfa
-    -- Find all predecessors of these transitions
+    -- Find all predecessors and successors of these transitions
     keepedges = nub $ concatMap (\e@(fr,to,_) -> e : (concatMap (G.inn cfa) (G.rdfs [fr] cfa)) ++
                                                      (concatMap (G.out cfa) (G.dfs [to] cfa))) trs
     keepnodes = nub $ concatMap (\(fr, to, _) -> [fr,to]) keepedges
