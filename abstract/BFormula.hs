@@ -17,67 +17,19 @@ module BFormula(BoolBOp(..),
 
 import Data.List
 import Data.Maybe
-import Text.PrettyPrint
 import Debug.Trace
 
 import Util hiding (trace)
+import BFormulaTypes
 import Predicate
 import {-# SOURCE #-} MkPredicate
 import Ops
-import PP
 import IVar
 import ISpec
 import IExpr
 import IType
+import {-# SOURCE #-} BVSMT
 
--- Logical operations
-data BoolBOp = Conj 
-             | Disj 
-             | Impl
-             | Equiv
-             deriving (Eq)
-
-bopToBoolOp :: BOp -> BoolBOp
-bopToBoolOp And = Conj
-bopToBoolOp Or  = Disj
-bopToBoolOp Imp = Impl
-bopToBoolOp Eq  = Equiv
-
-instance PP BoolBOp where
-    pp Conj  = text "&&"
-    pp Disj  = text "||"
-    pp Impl  = text "->"
-    pp Equiv = text "<->"
-    --pp = pp . boolOpToBOp
-
-boolOpToBOp :: BoolBOp -> BOp
-boolOpToBOp Conj  = And
-boolOpToBOp Disj  = Or
-boolOpToBOp Impl  = Imp
-boolOpToBOp Equiv = Eq
-
--- Formula consists of predicates and boolean constants
--- connected with boolean connectors
-data Formula = FTrue
-             | FFalse
-             | FBoolAVar AbsVar                   -- AVarBool or AVarPred
-             | FEq       AbsVar AbsVar      -- AVarEnum or AVarInt
-             | FEqConst  AbsVar Int
-             | FBinOp    BoolBOp Formula Formula
-             | FNot      Formula
-             deriving (Eq)
-
-instance PP Formula where
-    pp FTrue             = text "true"
-    pp FFalse            = text "false"
-    pp (FBoolAVar v)     = pp v
-    pp (FEq v1 v2)       = parens $ pp v1 <+> text "==" <+> pp v2
-    pp (FEqConst v1 i)   = parens $ pp v1 <+> text "==" <+> pp i
-    pp (FBinOp op f1 f2) = parens $ pp f1 <+> pp op <+> pp f2
-    pp (FNot f)          = char '!' <> (parens $ pp f)
-
-instance Show Formula where
-    show = render . pp
 
 fbinop :: BoolBOp -> Formula -> Formula -> Formula
 fbinop Conj f1 f2 = fconj [f1,f2]
@@ -140,7 +92,7 @@ fRel REq  e1 e2 | e1 == e2                         = FTrue
 fRel RNeq e1 e2                                    = fnot $ fRel REq e1 e2
 -- pointers
 fRel REq  (EUnOp AddrOf e1) (EUnOp AddrOf e2)      = fRelAddrOf e1 e2
-fRel REq  e1 e2 | isPtr e1                         = mkAtomForm REq (PTPtr $ scalarExprToTerm e1) (PTPtr $ scalarExprToTerm e2)
+fRel REq  e1 e2 | isPtr e1                         = bvRelNormalise REq (PTPtr $ scalarExprToTerm e1) (PTPtr $ scalarExprToTerm e2)
 -- bools
 fRel REq  e1 e2 | isBool e1                        = FBinOp Equiv (ptrFreeBExprToFormula e1) (ptrFreeBExprToFormula e2)
 -- enums
@@ -148,14 +100,8 @@ fRel REq  e1 e2 | isEnum e1 && isConstExpr e2      = FEqConst (AVarEnum $ scalar
 fRel REq  e1 e2 | isEnum e1                        = FEq      (AVarEnum $ scalarExprToTerm e1) (AVarEnum $ scalarExprToTerm e2)
 -- ints
 fRel op   e1 e2 | isInt e1 && op == REq            = fRelIntEq (e1, e2)
-                | isInt e1                         = mkAtomForm op (PTInt $ scalarExprToTerm e1) (PTInt $ scalarExprToTerm e2)
+                | isInt e1                         = bvRelNormalise op (PTInt $ scalarExprToTerm e1) (PTInt $ scalarExprToTerm e2)
 
-mkAtomForm :: (?spec::Spec) => RelOp -> PTerm -> PTerm -> Formula
-mkAtomForm op t1 t2 = case mkPAtom op t1 t2 of
-                           Left True        -> FTrue
-                           Left False       -> FFalse
-                           Right (True, p)  -> FBoolAVar $ AVarPred p
-                           Right (False, p) -> FNot $ FBoolAVar $ AVarPred p
 
 -- Two addrof expressions are equal if they are isomorphic and
 -- array indices in matching positions in these expressions are equal.
@@ -199,9 +145,9 @@ shortestPrefix e1 e2 =
     combSuffix (Just s1) (Just s2) = Just (s1,s2)
 
 fRelIntEq1 :: (?spec::Spec) => (Expr, Expr) -> Formula
-fRelIntEq1 (e1,e2) | typeWidth e1 == 1 && isConstExpr e2 = FEqConst   (AVarInt $ scalarExprToTerm e1) i where i = fromInteger $ ivalVal $ evalConstExpr e2
-fRelIntEq1 (e1,e2) | typeWidth e1 == 1                   = FEq        (AVarInt $ scalarExprToTerm e1) (AVarInt $ scalarExprToTerm e2)
-                   | otherwise                           = mkAtomForm REq (PTInt $ scalarExprToTerm e1) (PTInt $ scalarExprToTerm e2)
+fRelIntEq1 (e1,e2) | typeWidth e1 == 1 && isConstExpr e2 = FEqConst       (AVarInt $ scalarExprToTerm e1) i where i = fromInteger $ ivalVal $ evalConstExpr e2
+fRelIntEq1 (e1,e2) | typeWidth e1 == 1                   = FEq            (AVarInt $ scalarExprToTerm e1) (AVarInt $ scalarExprToTerm e2)
+                   | otherwise                           = bvRelNormalise REq (PTInt $ scalarExprToTerm e1) (PTInt $ scalarExprToTerm e2)
 
 
 fVar :: (?spec::Spec) => Formula -> [Var]

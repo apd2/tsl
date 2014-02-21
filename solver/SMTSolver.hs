@@ -3,7 +3,7 @@
 module SMTSolver (SMTSolver(..)) where
 
 import Store
-import BFormula
+import BFormulaTypes
 
 data SMTSolver = SMTSolver {
     -- Input:  list of formula

@@ -1,8 +1,11 @@
 module BFormulaTypes (BoolBOp(..),
-                      Formula(..)) where
+                      Formula(..),
+                      bopToBoolOp,
+                      boolOpToBOp) where
 
 import Text.PrettyPrint
 
+import Ops
 import PP
 import Predicate
 

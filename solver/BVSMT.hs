@@ -38,7 +38,7 @@ type VarMap = M.Map String Term
 -- Normalisation interface
 --------------------------------------------------------------------
 
-bvRelNormalise :: (?spec::Spec) => RelOp -> Term -> Term -> Either Bool (Bool, PredOp, Term, Term)
+bvRelNormalise :: (?spec::Spec) => RelOp -> PTerm -> PTerm -> Formula
 bvRelNormalise REq  t1 t2 = bvRelNormalise' BV.Eq  t1 t2
 bvRelNormalise RNeq _  _  = error "Unexpected '!=' in bvRelNormalise"
 bvRelNormalise RLt  t1 t2 = bvRelNormalise' BV.Lt  t1 t2
@@ -46,23 +46,30 @@ bvRelNormalise RGt  t1 t2 = bvRelNormalise' BV.Lt  t2 t1
 bvRelNormalise RLte t1 t2 = bvRelNormalise' BV.Lte t1 t2
 bvRelNormalise RGte t1 t2 = bvRelNormalise' BV.Lte t2 t1
 
-bvRelNormalise' :: (?spec::Spec) => BV.Rel -> Term -> Term -> Either Bool (Bool, PredOp, Term, Term)
-bvRelNormalise' r t1 t2 = {-trace ("bvRelNormalise " ++ show t1 ++ " " ++ show r ++ " " ++ show t2) $-}
-    case BV.atomToCAtom a of
-         Left b                       -> Left b
-         Right (BV.CAtom op' ct1 ct2) -> let ?vmap = vmap in
-                                         let (pol, pop) = case op' of
-                                                               BV.Eq  -> (True,  PEq)
-                                                               BV.Neq -> (False, PEq)
-                                                               BV.Lt  -> (True,  PLt)
-                                                               BV.Lte -> (True,  PLte) in
-                                         Right (pol, pop, scalarExprToTerm $ ctermToExp ct1, scalarExprToTerm $ ctermToExp ct2)
-    where a = BV.Atom r t1' t2'
-          st1 = simplifyTopMod t1
-          st2 = simplifyTopMod t2
+bvRelNormalise' :: (?spec::Spec) => BV.Rel -> PTerm -> PTerm -> Formula
+bvRelNormalise' r pt1 pt2 = {-trace ("bvRelNormalise " ++ show t1 ++ " " ++ show r ++ " " ++ show t2) $-}
+    fdisj $ map (fconj . map catomToFormula) $ BV.atomToCAtoms a
+    where st1 = simplifyTopMod $ ptermTerm pt1
+          st2 = simplifyTopMod $ ptermTerm pt2
           ((t1', t2'), vmap) = runState (do _t1 <- termToBVTerm st1
                                             _t2 <- termToBVTerm st2
                                             return (_t1, _t2)) M.empty
+          a = BV.Atom r t1' t2'
+          catomToFormula (BV.CAtom op' ct1 ct2) = 
+              let ?vmap = vmap in
+              let (pol, pop) = case op' of
+                                    BV.Eq  -> (True,  PEq)
+                                    BV.Neq -> (False, PEq)
+                                    BV.Lt  -> (True,  PLt)
+                                    BV.Lte -> (True,  PLte)
+                  t1 = scalarExprToTerm $ ctermToExp ct1
+                  t2 = scalarExprToTerm $ ctermToExp ct2
+                  (pt1', pt2') = case pt1 of
+                                      PTPtr _ -> (PTPtr t1, PTPtr t2)
+                                      PTInt _ -> (PTInt t1, PTInt t2) in
+              if' pol (FBoolAVar $ AVarPred $ PAtom pop pt1' pt2')
+                      (FNot $ FBoolAVar $ AVarPred $ PAtom pop pt1' pt2')
+
 
 bvTermNormalise :: (?spec::Spec) => Term -> Term
 bvTermNormalise t = let ?vmap = vmap in scalarExprToTerm $ ctermToExp ct
@@ -124,14 +131,17 @@ equant' vs solver rels =
     $ case BV.exTerm qvs atoms of
            Just (Left True)  -> FTrue
            Just (Left False) -> FFalse
-           Just (Right cas)  -> fdisj $ map (fconj . map (catomToForm vmap)) cas
-           Nothing           -> error $ "bvEquant failed on: " ++ show atoms ++ "\nTest case:\n" ++ 
-                                        "([" ++ (intercalate "," $ map BV.varToHaskell qvs) ++ "], [" ++ 
-                                          (intercalate ", " $ map BV.atomToHaskell atoms) ++ "])"
+           Just (Right cas)  -> -- trace ("bvEquant " ++ show atoms ++ "\nTest case:\n" ++ test)
+                                fdisj 
+                                $ filter (\f -> smtCheckSAT solver [f] /= Just False)
+                                $ map (fconj . map (catomToForm vmap)) cas
+           Nothing           -> error $ "bvEquant failed on: " ++ show atoms ++ "\nTest case:\n" ++ test                                        
     where forms         = map (\(r, t1, t2) -> ptrFreeBExprToFormula $ EBinOp (bvRelToOp r) (termToExpr t1) (termToExpr t2)) rels
           ((atoms, qvs), vmap) = runState (do _atoms <- mapM relToAtom rels
                                               _qvs   <- mapM mkVar vs
                                               return (_atoms, concat _qvs)) M.empty
+          test = "([" ++ (intercalate "," $ map BV.varToHaskell qvs) ++ "], [" ++ 
+                         (intercalate ", " $ map BV.atomToHaskell atoms) ++ "])"
 
 mkVar :: (?spec::Spec) => String -> State VarMap [BV.Var]
 mkVar n = do
