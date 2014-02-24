@@ -88,7 +88,7 @@ tmFlattenRels iid tm = map (tmFlattenRel iid tm) (tmRelation tm)
 
 tmFlattenRel :: (?spec::Spec) => IID -> Template -> Relation -> Relation
 tmFlattenRel iid tm r = r { relName = itreeFlattenName iid (name r)
-                          , relRule = map (exprFlatten iid (ScopeRelation tm r)) (relRule r)}
+                          , relRule = map (\rl -> rl{ruleExpr = exprFlatten iid (ScopeRelation tm r) $ ruleExpr rl}) (relRule r)}
 
 tmFlattenApps :: (?spec::Spec) => IID -> Template -> [Apply]
 tmFlattenApps iid tm = map (tmFlattenApp iid tm) (tmApply tm)

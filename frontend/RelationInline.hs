@@ -25,8 +25,8 @@ relToIRel rel =
     let relArgs = let ?scope = ScopeTemplate tmMain in map (\a -> (sname a, mkType $ typ a)) $ relArg rel
         -- Variable map used to compile rules.  One var per argument.
         lmap = M.fromList $ map (\a -> (name a, I.EVar $ sname a)) $ relArg rel
-        ruleToIExpr :: Expr -> I.Expr
-        ruleToIExpr e =  
+        ruleExprToIExpr :: Expr -> I.Expr
+        ruleExprToIExpr e =  
             let sc = ScopeRelation tmMain rel
                 (_,e1) = let ?scope = sc in evalState (exprSimplify e) (0,[])
                 ctx = CFACtx { ctxEPID    = Nothing
@@ -40,7 +40,7 @@ relToIRel rel =
             in let ?procs = []
                    ?nestedmb = False
                in evalState (exprToIExprDet e1) ctx        
-        relRules = map ruleToIExpr $ relRule rel
+        relRules = map (\Rule{..} -> I.Rule ruleOp (ruleExprToIExpr ruleExpr)) $ relRule rel
     in I.Relation {relName = sname rel,..}
 
 

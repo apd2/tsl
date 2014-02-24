@@ -12,9 +12,11 @@ import qualified Data.Graph.Inductive as G
 import qualified Data.Map             as M
 import Data.List
 import Data.Maybe
+import Data.Tuple.Select
 import GHC.Exts
 
 import Util hiding (trace)
+import Ops
 import qualified HAST.HAST as H
 import Cascade
 import Predicate
@@ -69,7 +71,7 @@ mkAST nxtvs ord = mkAST' (vmap1, M.empty) ord
     vmap0 = foldl' (\m l -> foldl' (\m' (av,v) -> M.insert (l,av) (H.FVar v) m') m nxtvs) M.empty
             $ filter ((==0) . G.outdeg ?acfa)
             $ G.nodes ?acfa
-    vmap1 = foldl' (\m l -> foldl' (\m' (av,_) -> M.insert (l,av) (H.NVar $ avarBAVar av) m') m (fst $ fromJust $ G.lab ?acfa l)) vmap0
+    vmap1 = foldl' (\m l -> foldl' (\m' (av,_,_) -> M.insert (l,av) (H.NVar $ avarBAVar av) m') m (fst $ fromJust $ G.lab ?acfa l)) vmap0
             $ filter ((==0) . G.indeg ?acfa)
             $ G.nodes ?acfa
 
@@ -88,7 +90,7 @@ mkAST' (vmap, tmap) (l:ord) =
                                       ((fl `H.XNor` if' (null fll) H.T (disj fll)) `H.And`
                                        mkFanin (vmap', tmap') fl))))
     where 
-    vs  = filter (\v -> M.notMember (l,v) $ vmap) $ map fst $ fst $ fromJust $ G.lab ?acfa l
+    vs  = filter (\v -> M.notMember (l,v) $ vmap) $ map sel1 $ fst $ fromJust $ G.lab ?acfa l
     out = G.lsuc ?acfa l
     mkFanin emap fl = case G.lpre ?acfa l of
                            []  -> fl
@@ -98,7 +100,7 @@ mkAST' (vmap, tmap) (l:ord) =
 compileTransition :: (?spec::Spec, ?acfa::ACFA) => EMap f e c -> Loc -> Loc -> (Int, Maybe Formula, [MECascade]) -> TAST f e c -> TAST f e c
 compileTransition emap from to (idx, mpre, upd) tovar = trvar `H.XNor` (preast `H.And` updast `H.And` tovar)
     where trvar  = (snd emap) M.! (from,idx)
-          tovs   = map fst $ fst $ fromJust $ G.lab ?acfa to
+          tovs   = map (\(av,op,_) -> (av,op)) $ fst $ fromJust $ G.lab ?acfa to
           updast = let ?emap = emap
                        ?from = from
                        ?to = to in
@@ -108,20 +110,22 @@ compileTransition emap from to (idx, mpre, upd) tovar = trvar `H.XNor` (preast `
                    maybe H.T compileFormulaLoc mpre
 
 
-compileTransition1 :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e c, ?from::Loc, ?to::Loc) => (MECascade, AbsVar) -> TAST f e c
-compileTransition1 (cas, av) = 
+compileTransition1 :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e c, ?from::Loc, ?to::Loc) => (MECascade, (AbsVar, LogicOp)) -> TAST f e c
+compileTransition1 (cas, (av, op)) = 
     let astvar = (fst ?emap) M.! (?to, av) in
     let ?loc = ?from
     in case av of
-            AVarBool _ -> compileFCasLoc (fmap (fmap ptrFreeBExprToFormula) cas) astvar
-            AVarPred _ -> compileFCasLoc (fmap (fmap ptrFreeBExprToFormula) cas) astvar
+            AVarBool _ -> compileFCasLoc (fmap (fmap ptrFreeBExprToFormula) cas) (astvar, op)
+            AVarPred _ -> compileFCasLoc (fmap (fmap ptrFreeBExprToFormula) cas) (astvar, op)
             AVarEnum _ -> compileTCasLoc (fmap (fmap scalarExprToTerm)      cas) astvar
             AVarInt  _ -> compileTCasLoc (fmap (fmap scalarExprToTerm)      cas) astvar
 
-compileFCasLoc :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e c, ?loc::Loc) => MFCascade -> TASTVar f e -> TAST f e c
-compileFCasLoc (CasLeaf Nothing)  av = H.T
-compileFCasLoc (CasLeaf (Just f)) av = (H.Var av) `H.XNor` compileFormulaLoc f
-compileFCasLoc (CasTree bs)       av = disj $ map (\(f,cas) -> compileFormulaLoc f `H.And` compileFCasLoc cas av) bs
+compileFCasLoc :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e c, ?loc::Loc) => MFCascade -> (TASTVar f e, LogicOp) -> TAST f e c
+compileFCasLoc (CasLeaf Nothing)  _  = H.T
+compileFCasLoc (CasLeaf (Just f)) (av, Implies) = (H.Var av) `H.Imp` compileFormulaLoc f
+compileFCasLoc (CasLeaf (Just f)) (av, Implied) = compileFormulaLoc f `H.Imp` (H.Var av)
+compileFCasLoc (CasLeaf (Just f)) (av, Iff)     = (H.Var av) `H.XNor` compileFormulaLoc f
+compileFCasLoc (CasTree bs)       (av, op)      = disj $ map (\(f,cas) -> compileFormulaLoc f `H.And` compileFCasLoc cas (av, op)) bs
 
 compileTCasLoc :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e c, ?loc::Loc) => MTCascade -> TASTVar f e -> TAST f e c
 compileTCasLoc (CasTree bs)                 av            = disj $ map (\(f,cas) -> compileFormulaLoc f `H.And` compileTCasLoc cas av) bs
@@ -162,7 +166,7 @@ compileFCas cas av = let ?loc  = cfaInitLoc in
                      let vmap = foldl' (\m v -> M.insert (?loc, v) (H.NVar $ avarBAVar v) m) M.empty (ecasAbsVars $ fmap formToExpr cas) in
                      let ?emap = (vmap, M.empty)
                          ?acfa = G.empty
-                     in compileFCasLoc (fmap Just cas) av
+                     in compileFCasLoc (fmap Just cas) (av, Iff)
 
 compileTCas :: (?spec::Spec) => TCascade -> TASTVar f e -> TAST f e c
 compileTCas cas av = let ?loc  = cfaInitLoc in

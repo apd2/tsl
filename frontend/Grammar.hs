@@ -22,6 +22,7 @@ import Numeric
 import Data.List
 import Data.Bits
 
+import Ops
 import Util hiding (slice,index)
 import TSLUtil
 import PP
@@ -46,7 +47,7 @@ statementParser   = removeTabs *> statement
 statementsParser  = removeTabs *> statements
 statements1Parser = removeTabs *> ((optional whiteSpace) *> statements1)
 
-reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@", "?", "#", "##"]
+reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", "==>", "<==", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@", "?", "#", "##"]
 reservedNames = ["after",
                  "apply",
                  "prefix",
@@ -352,7 +353,9 @@ tgoalDecl    = withPos $ Goal nopos <$  reserved "goal"
 trel         = withPos $ Relation nopos <$  reserved "relation"
                                         <*> ident
                                         <*> (parens $ commaSep1 rarg)
-                                        <*> (many1 $ reservedOp "|==" *> relexpr)
+                                        <*> (many1 $ rule)
+
+
 tapp         = withPos $ Apply nopos <$  reserved "apply"
                                      <*> ident
                                      <*> (parens $ commaSep detexpr)
@@ -369,6 +372,12 @@ arg = withPos $ Arg nopos <$> (option ArgIn (ArgOut <$ reserved "out"))
                               <*> ident
 
 rarg = withPos $ RArg nopos <$> typeSpec True <*> ident
+
+rule = withPos $ Rule nopos <$> ruleop <*> relexpr
+
+ruleop  =  (Implies <$ reservedOp "==>")
+       <|> (Implied <$ reservedOp "<==")
+       <|> (Iff     <$ reservedOp "<=>")
 
 ----------------------------------------------------------------
 -- Statement

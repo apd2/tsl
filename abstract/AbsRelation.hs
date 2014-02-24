@@ -5,21 +5,22 @@ module AbsRelation (RelInst,
 
 import Debug.Trace
 
+import Ops
 import IRelation
 import Predicate
 import IExpr
 import ISpec
 import MkPredicate
 
-type RelInst = (Predicate, [Expr])
+type RelInst = (Predicate, [(LogicOp, Expr)])
 
 -- Assumes that all dereference operations have already been expanded
 instantiateRelation :: (?spec::Spec) => Relation -> [Expr] -> RelInst
-instantiateRelation Relation{..} args = {- trace ("instantiateRelation " ++ relName ++ show args ++ " = " ++ show es)-} (p, es)
+instantiateRelation Relation{..} args = {- trace ("instantiateRelation " ++ relName ++ show args ++ " = " ++ show rls)-} (p, rls)
     where
     p@PRel{..} = mkPRel relName args
     substs = zip (map fst relArgs) pArgs
-    es = map (mapExpr exprSubst) relRules
+    rls = map (\Rule{..} -> (ruleOp, mapExpr exprSubst ruleExpr)) relRules
 
     exprSubst :: Expr -> Expr
     exprSubst e@(EVar v)          = case lookup v substs of

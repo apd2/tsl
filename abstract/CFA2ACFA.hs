@@ -51,7 +51,7 @@ scalarExprAbsVars e | isBool e  = fAbsVars $ ptrFreeBExprToFormula e
 
 -- Compute ACFA for a list of abstract variables for a location inside
 -- transition CFA. 
-tranCFAToACFA :: (?spec::Spec, ?pred::[Predicate]) => [(AbsVar, Expr)] -> Loc -> CFA -> ACFA
+tranCFAToACFA :: (?spec::Spec, ?pred::[Predicate]) => [(AbsVar, LogicOp, Expr)] -> Loc -> CFA -> ACFA
 tranCFAToACFA vs loc cfa = 
     let ?initloc = loc 
         ?cfa = cfaPruneUnreachable cfa [loc] in 
@@ -69,10 +69,10 @@ mkACFA acfa added =
               $ filter (\n -> notElem n added)
               $ G.nodes ?cfa
         -- compute variable updates along all outgoing transitions
-        updates = map (\(loc', tran) -> (loc', tranPrecondition tran, map (exprUpdateTran tran . snd) $ fst $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
+        updates = map (\(loc', tran) -> (loc', tranPrecondition tran, map (exprUpdateTran tran . sel3) $ fst $ fromJust $ G.lab acfa loc')) $ G.lsuc ?cfa loc
         -- extract the list of abstract variables from transitions
         vs = nub $ concatMap (\(_,mpre,upd) -> maybe [] fAbsVars mpre ++ concatMap mecasAbsVars upd) updates
-        acfa'  = addUseDefVar acfa loc $ map (\v -> ((v, avarToExpr v), exprRecomputedLoc loc $ avarToExpr v)) vs
+        acfa'  = addUseDefVar acfa loc $ map (\v -> ((v, Iff, avarToExpr v), exprRecomputedLoc loc $ avarToExpr v)) vs
         acfa'' = foldIdx (\gr (l, pre, upds) i -> G.insEdge (loc, l, (i,pre,upds)) gr) acfa' updates
     in if loc == ?initloc
           then acfa''
@@ -182,7 +182,7 @@ simplifyACFA5 acfa = (G.gmap rm acfa, f)
     where
     used = concatMap (M.toList . snd . snd) $ G.labNodes acfa
     cands = M.fromList $ map (\(loc, (recomp, _)) -> (loc, getCands loc recomp)) $ G.labNodes acfa
-    getCands loc avs = findIndices (\(av,_) -> notElem (av,loc) used) avs
+    getCands loc avs = findIndices (\(av,_,_) -> notElem (av,loc) used) avs
     f = any (\(loc, (recomp,_)) -> not $ null $ getCands loc recomp) $ G.labNodes acfa
     rm (pre, loc, (recomp, defs), suc) = (pre', loc, (recomp',defs), suc')
         where
@@ -194,9 +194,9 @@ simplifyACFA5 acfa = (G.gmap rm acfa, f)
 
 -- Takes a location and a list of variables used in this location and updates
 -- the corresponding use and defined lists.
-addUseDefVar :: ACFA -> Loc -> [((AbsVar, Expr), Loc)] -> ACFA
+addUseDefVar :: ACFA -> Loc -> [((AbsVar, LogicOp, Expr), Loc)] -> ACFA
 addUseDefVar acfa useloc defs = 
-    foldl' (\acfa' (v, defloc) -> let acfa1 = graphUpdNode useloc (\(def, use) -> (def, M.insert (fst v) defloc use)) acfa'
+    foldl' (\acfa' (v, defloc) -> let acfa1 = graphUpdNode useloc (\(def, use) -> (def, M.insert (sel1 v) defloc use)) acfa'
                                   in case G.lab acfa1 defloc of
                                           Nothing -> G.insNode (defloc, ([v], M.empty)) acfa1
                                           Just _  -> graphUpdNode defloc (\(def, use) -> (nub $ v:def, use)) acfa1)

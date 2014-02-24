@@ -18,7 +18,6 @@ import ExprValidate
 import ExprInline
 import ExprOps
 import TypeOps
-import RelationOps
 
 validateRelation :: (?spec::Spec, MonadError String me) => Template -> Relation -> me ()
 validateRelation tm r@Relation{..} = do 
@@ -33,11 +32,11 @@ validateRelation tm r@Relation{..} = do
     _ <- mapM (\a -> do validateTypeSpec (ScopeTemplate tm)  $ tspec a
                         validateTypeSpec2 (ScopeTemplate tm) $ tspec a) relArg
     -- validate rule expressions
-    _ <- mapM (validateExpr (ScopeRelation tm r)) relRule
-    _ <- mapM (\rl -> do let ?scope = ScopeRelation tm r 
-                         assert (isBool rl)            (pos rl) "Relation interpretation must be a boolean expression"
-                         assert (exprNoSideEffects rl) (pos rl) "Relation interpretation must be a side-effect-free expression"
-                         assert (isPureExpr rl)        (pos rl) "Relation interpretation must be a pure expression"
-                         assert (exprIsSimple rl)      (pos rl) "Rule expression too complex" -- makes sure we do not need to constuct a CFA when inlining rule expression
-                         return ()) relRule
+    _ <- mapM (validateExpr (ScopeRelation tm r) . ruleExpr) relRule
+    _ <- mapM (\Rule{..} -> do let ?scope = ScopeRelation tm r 
+                               assert (isBool ruleExpr)            (pos ruleExpr) "Relation interpretation must be a boolean expression"
+                               assert (exprNoSideEffects ruleExpr) (pos ruleExpr) "Relation interpretation must be a side-effect-free expression"
+                               assert (isPureExpr ruleExpr)        (pos ruleExpr) "Relation interpretation must be a pure expression"
+                               assert (exprIsSimple ruleExpr)      (pos ruleExpr) "Rule expression too complex" -- makes sure we do not need to constuct a CFA when inlining rule expression
+                               return ()) relRule
     return ()

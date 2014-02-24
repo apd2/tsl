@@ -18,6 +18,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.State.Lazy
 import Control.Monad.ST
 
+import Ops
 import TSLUtil
 import Util hiding (trace)
 import qualified CuddExplicitDeref as C
@@ -275,27 +276,27 @@ varUpdateTrans trname (av,nxt) Transition{..} = if any G.isEmpty cfas'
                                                    then Nothing
                                                    else Just (H.Conj upds, H.Disj pres)
     where -- list all rules for the relation
-          vexps = (avarToExpr av) : 
+          vexps = (Iff, avarToExpr av) : 
                   (case av of
                         AVarPred p@PRel{..} -> snd $ instantiateRelation (getRelation pRel) pArgs
                         _                   -> [])
           (upds, pres, cfas') = unzip3
-                                $ map (\e -> let cfa' = pruneCFAVar [e] tranCFA
-                                                 cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
-                                                 pre  = varUpdateLoc (trname ++ "_pre") [] tranFrom cfa
-                                                 upd  = varUpdateLoc trname [((av, e), nxt)] tranFrom cfa
-                                             in (upd, pre, cfa'))
+                                $ map (\(op, e) -> let cfa' = pruneCFAVar [e] tranCFA
+                                                       cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
+                                                       pre  = varUpdateLoc (trname ++ "_pre") [] tranFrom cfa
+                                                       upd  = varUpdateLoc trname [((av, op, e), nxt)] tranFrom cfa
+                                                   in (upd, pre, cfa'))
                                   vexps
 
 
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA. 
-varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [((AbsVar, Expr), f)] -> Loc -> CFA -> TAST f e c
+varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [((AbsVar, LogicOp, Expr), f)] -> Loc -> CFA -> TAST f e c
 varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
                                  $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
     where
     acfa = tranCFAToACFA (map fst vs) loc cfa
-    avs  = map (\((av,_),nxt) -> (av, nxt)) vs
+    avs  = map (\((av,_,_),nxt) -> (av, nxt)) vs
     ast  = compileACFA avs acfa
     vs'  = map (\(av,_) -> (av, text $ T.pack $ show av ++ "'")) avs
     vlst = intercalate "_" $ map (show . snd) vs'

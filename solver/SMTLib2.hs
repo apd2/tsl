@@ -22,6 +22,7 @@ import Debug.Trace
 
 import TSLUtil
 import Util hiding (trace)
+import Ops
 import Predicate
 import BFormula
 import AbsRelation
@@ -86,7 +87,11 @@ mkFormulas fs =
 -- variable without losing precision
 expandRels :: (?spec::Spec) => Formula -> Formula
 expandRels f = fbinop Conj f $
-               (fconj $ map (\(p, rules) -> fconj $ map (\r -> fbinop Equiv (FBoolAVar $ AVarPred p) (ptrFreeBExprToFormula r)) rules)
+               (fconj $ map (\(p, rules) -> fconj $ map (\(op,r) -> case op of
+                                                                         Implies -> fbinop Impl (FBoolAVar $ AVarPred p) (ptrFreeBExprToFormula r)
+                                                                         Implied -> fbinop Impl (ptrFreeBExprToFormula r) (FBoolAVar $ AVarPred p)
+                                                                         Iff     -> fbinop Equiv (FBoolAVar $ AVarPred p) (ptrFreeBExprToFormula r)) 
+                                                    rules)
                       $ map (\(n, args) -> instantiateRelation (getRelation n) args)
                       $ fRelations f)
 

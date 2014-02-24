@@ -47,9 +47,9 @@ bvRelNormalise RLte t1 t2 = bvRelNormalise' BV.Lte t1 t2
 bvRelNormalise RGte t1 t2 = bvRelNormalise' BV.Lte t2 t1
 
 bvRelNormalise' :: (?spec::Spec) => BV.Rel -> PTerm -> PTerm -> Formula
-bvRelNormalise' r pt1 pt2 = {-trace ("bvRelNormalise " ++ show t1 ++ " " ++ show r ++ " " ++ show t2) $-}
-    fdisj $ map (fconj . map catomToFormula) $ BV.atomToCAtoms a
-    where st1 = simplifyTopMod $ ptermTerm pt1
+bvRelNormalise' r pt1 pt2 = trace ("bvRelNormalise " ++ show pt1 ++ " " ++ show r ++ " " ++ show pt2 ++ " = " ++ show res) res 
+    where res = fdisj $ map (fconj . map catomToFormula) $ BV.atomToCAtoms a
+          st1 = simplifyTopMod $ ptermTerm pt1
           st2 = simplifyTopMod $ ptermTerm pt2
           ((t1', t2'), vmap) = runState (do _t1 <- termToBVTerm st1
                                             _t2 <- termToBVTerm st2
@@ -129,13 +129,11 @@ equant' vs solver rels =
     if' (smtCheckSAT solver forms == Just False)                      FFalse
     $ if' (smtCheckSAT solver [fdisj $ map fnot forms] == Just False) FTrue
     $ case BV.exTerm qvs atoms of
-           Just (Left True)  -> FTrue
-           Just (Left False) -> FFalse
-           Just (Right cas)  -> -- trace ("bvEquant " ++ show atoms ++ "\nTest case:\n" ++ test)
-                                fdisj 
-                                $ filter (\f -> smtCheckSAT solver [f] /= Just False)
-                                $ map (fconj . map (catomToForm vmap)) cas
-           Nothing           -> error $ "bvEquant failed on: " ++ show atoms ++ "\nTest case:\n" ++ test                                        
+           Just cas -> -- trace ("bvEquant " ++ show atoms ++ "\nTest case:\n" ++ test)
+                       fdisj 
+                       $ filter (\f -> smtCheckSAT solver [f] /= Just False)
+                       $ map (fconj . map (catomToForm vmap)) cas
+           Nothing  -> error $ "bvEquant failed on: " ++ show atoms ++ "\nTest case:\n" ++ test                                        
     where forms         = map (\(r, t1, t2) -> ptrFreeBExprToFormula $ EBinOp (bvRelToOp r) (termToExpr t1) (termToExpr t2)) rels
           ((atoms, qvs), vmap) = runState (do _atoms <- mapM relToAtom rels
                                               _qvs   <- mapM mkVar vs

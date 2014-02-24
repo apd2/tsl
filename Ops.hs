@@ -138,3 +138,17 @@ arithBOp op (i1,s1,w1) (i2,s2,w2)   | elem op [Plus,BinMinus,Mod,Mul] = (i',s,w)
 arithUOp :: UOp -> (Integer, Bool, Int) -> (Integer, Bool, Int)
 arithUOp BNeg   (i,s,w) = (foldl' (\v idx -> complementBit v idx) i [0..w - 1], s, w)
 arithUOp UMinus (i,s,w) = ((-i) .&. (sum $ map bit [0..w - 1]), True, w)
+
+data LogicOp = Implies
+             | Implied
+             | Iff 
+             deriving(Eq, Ord)
+
+instance PP LogicOp where
+    pp Implies = text "==>"
+    pp Implied = text "<=="
+    pp Iff     = text "<=>"
+
+instance Show LogicOp where
+    show = render . pp
+

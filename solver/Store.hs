@@ -18,15 +18,18 @@ module Store (Store(..),
               storeExtendDefaultLabel) where
 
 import Data.List
+import Data.Maybe
 import Control.Monad
 import qualified Data.Map as M
 import Debug.Trace
 
+import Util hiding(trace)
 import Ops
 import IExpr
 import IVar
 import IType
 import ISpec
+import IRelation
 import {-# SOURCE #-} AbsRelation
 
 -- Variable assignments
@@ -104,8 +107,10 @@ storeTryEval s              (ESlice e sl)        = fmap (\v -> SVal $ evalConstE
 storeTryEval s@(SStruct _ sp) (ERel n as)        = trace ("storeTryEval " ++ show (ERel n as)) $
                                                    let ?spec = sp in 
                                                    let rel = getRelation n
-                                                       (_, rule:_) = instantiateRelation rel as
-                                                   in storeTryEval s rule
+                                                       rules = map snd $ filter ((== Implied) . fst) $ snd $ instantiateRelation rel as
+                                                       rulevals = mapMaybe (storeTryEvalBool s) rules
+                                                   in if' (null rulevals) Nothing (Just $ SVal $ BoolVal $ or rulevals)
+                                                      
 
 storeTryEvalScalar :: Store -> Expr -> Maybe Val
 storeTryEvalScalar s e = fmap storeVal $ storeTryEval s e
