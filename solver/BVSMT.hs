@@ -47,7 +47,7 @@ bvRelNormalise RLte t1 t2 = bvRelNormalise' BV.Lte t1 t2
 bvRelNormalise RGte t1 t2 = bvRelNormalise' BV.Lte t2 t1
 
 bvRelNormalise' :: (?spec::Spec) => BV.Rel -> PTerm -> PTerm -> Formula
-bvRelNormalise' r pt1 pt2 = trace ("bvRelNormalise " ++ show pt1 ++ " " ++ show r ++ " " ++ show pt2 ++ " = " ++ show res) res 
+bvRelNormalise' r pt1 pt2 = {-trace ("bvRelNormalise " ++ show pt1 ++ " " ++ show r ++ " " ++ show pt2 ++ " = " ++ show res)-} res 
     where res = fdisj $ map (fconj . map catomToFormula) $ BV.atomToCAtoms a
           st1 = simplifyTopMod $ ptermTerm pt1
           st2 = simplifyTopMod $ ptermTerm pt2
