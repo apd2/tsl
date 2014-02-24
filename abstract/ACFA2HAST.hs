@@ -27,6 +27,7 @@ import CFA
 import Interface
 import ACFA
 import CFA2ACFA
+import {-# SOURCE #-} MkPredicate
 
 type TAST f e c  = H.AST f e c (BAVar AbsVar AbsVar)
 type TASTVar f e = H.ASTVar f e (BAVar AbsVar AbsVar)

@@ -30,6 +30,7 @@ import RefineCommon
 import GroupTag
 import ACFA2HAST
 import Ops
+import {-# SOURCE #-} MkPredicate
 import qualified HAST.BDD as H
 
 type VarMap = M.Map String Term
@@ -62,8 +63,8 @@ bvRelNormalise' r pt1 pt2 = {-trace ("bvRelNormalise " ++ show pt1 ++ " " ++ sho
                                     BV.Neq -> (False, PEq)
                                     BV.Lt  -> (True,  PLt)
                                     BV.Lte -> (True,  PLte)
-                  t1 = scalarExprToTerm $ ctermToExp ct1
-                  t2 = scalarExprToTerm $ ctermToExp ct2
+                  t1 = ctermToTerm ct1
+                  t2 = ctermToTerm ct2
                   (pt1', pt2') = case pt1 of
                                       PTPtr _ -> (PTPtr t1, PTPtr t2)
                                       PTInt _ -> (PTInt t1, PTInt t2) in
@@ -72,8 +73,9 @@ bvRelNormalise' r pt1 pt2 = {-trace ("bvRelNormalise " ++ show pt1 ++ " " ++ sho
 
 
 bvTermNormalise :: (?spec::Spec) => Term -> Term
-bvTermNormalise t = let ?vmap = vmap in scalarExprToTerm $ ctermToExp ct
-    where (t', vmap) = runState (termToBVTerm t) M.empty
+bvTermNormalise t = {-trace ("bvTermNormalise " ++ show t ++ " = " ++ show res)-} res
+    where res = let ?vmap = vmap in ctermToTerm ct
+          (t', vmap) = runState (termToBVTerm t) M.empty
           ct = BV.termToCTerm t'
 
 --------------------------------------------------------------------
@@ -143,7 +145,7 @@ equant' vs solver rels =
 
 mkVar :: (?spec::Spec) => String -> State VarMap [BV.Var]
 mkVar n = do
-    let scalars = map scalarExprToTerm $ exprScalars (EVar n) (typ $ EVar n)
+    let scalars = map scalarExprToTerm' $ exprScalars (EVar n) (typ $ EVar n)
     mapM (\t -> do varMapInsert t
                    return $ BV.Var (show t) (termWidth t)) scalars
 
@@ -316,7 +318,7 @@ termToBVTerm' t                          = error $ "termToBVTerm': term not supp
 
 catomToForm :: (?spec::Spec) => VarMap -> BV.CAtom -> Formula
 catomToForm vmap (BV.CAtom rel ct1 ct2) = 
-    let ?vmap = vmap in ptrFreeBExprToFormula $ fixupTypes $ EBinOp (bvRelToOp rel) (ctermToExp ct1) (ctermToExp ct2)
+    let ?vmap = vmap in ptrFreeBExprToFormula $ fixupTypes $ EBinOp (bvRelToOp rel) (termToExpr $ ctermToTerm ct1) (termToExpr $ ctermToTerm ct2)
 
 bvRelToOp :: BV.Rel -> BOp
 bvRelToOp BV.Eq  = Eq
@@ -335,22 +337,24 @@ fixupTypes (EBinOp op e1 e2) = EBinOp op e1' e2'
                Enum n -> if' (isConstExpr e1) (EConst $ EnumVal $ (enumEnums $ getEnumeration n) !! fromInteger (ivalVal $ evalConstExpr e1)) e1
                _      -> e1
 
-ctermToExp :: (?spec::Spec, ?vmap::VarMap) => BV.CTerm -> Expr
-ctermToExp t@BV.CTerm{..} | null ctVars
-                          = bvconstToExpr ctConst
-                          | BV.cVal ctConst == 0 && (length ctVars == 1)
-                          = ctvarToExpr (BV.width t) (head ctVars)
-                          | otherwise
-                          = plus $ (map (ctvarToExpr (BV.width t)) ctVars) ++ if' (BV.cVal ctConst == 0) [] [bvconstToExpr ctConst]
+ctermToTerm :: (?spec::Spec, ?vmap::VarMap) => BV.CTerm -> Term
+ctermToTerm t@BV.CTerm{..} | null ctVars
+                           = bvconstToTerm ctConst
+                           | BV.cVal ctConst == 0 && (length ctVars == 1)
+                           = ctvarToTerm (BV.width t) (head ctVars)
+                           | otherwise
+                           = pls $ (map (ctvarToTerm (BV.width t)) ctVars) ++ if' (BV.cVal ctConst == 0) [] [bvconstToTerm ctConst]
+    where pls [x]    = x
+          pls (x:xs) = (TBinOp APlus x (pls xs))
 
-bvconstToExpr :: BV.Const -> Expr
-bvconstToExpr BV.Const{..} = EConst $ UIntVal cWidth cVal
+bvconstToTerm :: BV.Const -> Term
+bvconstToTerm BV.Const{..} = TUInt cWidth cVal
 
-ctvarToExpr :: (?spec::Spec, ?vmap::VarMap) => Int -> (Integer, (BV.Var, (Int,Int))) -> Expr
-ctvarToExpr w (c, (v,(l,h))) = vmul
-    where v' = termToExpr $ ?vmap M.! (BV.vName v)
-          vslice = if' ((l==0) && (h == BV.vWidth v - 1)) v' (ESlice v' (l,h))
-          vext = if' (h - l + 1 == w) vslice                                                          $
-                 if' (h - l + 1 < w)  (EBinOp BConcat vslice (EConst $ UIntVal (w - (h - l + 1)) 0)) $
-                 exprSlice vslice (0, w - 1)
-          vmul = if' (c == 1) vext (EBinOp Mul (EConst $ UIntVal w c) vext)
+ctvarToTerm :: (?spec::Spec, ?vmap::VarMap) => Int -> (Integer, (BV.Var, (Int,Int))) -> Term
+ctvarToTerm w (c, (v,(l,h))) = vmul
+    where v' = ?vmap M.! (BV.vName v)
+          vslice = if' ((l==0) && (h == BV.vWidth v - 1)) v' (TSlice v' (l,h))
+          vext = if' (h - l + 1 == w) vslice                                              $
+                 if' (h - l + 1 < w)  (TBinOp ABConcat vslice (TUInt (w - (h - l + 1)) 0)) $
+                 scalarExprToTerm' $ exprSlice (termToExpr vslice) (0, w - 1)
+          vmul = if' (c == 1) vext (TBinOp AMul (TUInt w c) vext)

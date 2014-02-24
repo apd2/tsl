@@ -25,7 +25,6 @@ module Predicate(PVarOps,
                  termWidth,
                  termCategory,
                  termVar,
-                 termPad,
                  evalConstTerm,
                  isConstTerm,
                  RelOp(..),
@@ -39,8 +38,6 @@ module Predicate(PVarOps,
                  predCategory,
                  predVar,
                  predToExpr,
-                 scalarExprToTerm,
-                 valToTerm,
                  termToExpr,
                  ) where
 
@@ -209,9 +206,6 @@ termVar = exprVars . termToExpr
 evalConstTerm :: Term -> Val
 evalConstTerm = evalConstExpr . termToExpr
 
-termPad :: (?spec::Spec) => Int -> Term -> Term
-termPad i = scalarExprToTerm . exprPad i . termToExpr
-
 --termSimplify :: Term -> Term
 --termSimplify = scalarExprToTerm . exprSimplify . termToExpr
 
@@ -344,22 +338,6 @@ predCategory p = if any ((==VarTmp) . varCat) $ exprVars $ predToExpr p
                     then VarTmp
                     else VarState
 
--- Convert scalar expression without pointer dereferences and boolean operators to a term
-scalarExprToTerm :: Expr -> Term
-scalarExprToTerm (EVar n)                = TVar n
-scalarExprToTerm (EConst (BoolVal True)) = TTrue
-scalarExprToTerm (EConst (SIntVal w i))  = TSInt w i
-scalarExprToTerm (EConst (UIntVal w i))  = TUInt w i
-scalarExprToTerm (EConst (EnumVal e))    = TEnum  e
-scalarExprToTerm (EField s f)            = TField (scalarExprToTerm s) f
-scalarExprToTerm (EIndex a i)            = TIndex (scalarExprToTerm a) (scalarExprToTerm i)
-scalarExprToTerm (EUnOp AddrOf e)        = TAddr  (scalarExprToTerm e)
-scalarExprToTerm (EUnOp op e)            = TUnOp  (uopToArithOp op) (scalarExprToTerm e)
-scalarExprToTerm (EBinOp op e1 e2)       = TBinOp (bopToArithOp op) (scalarExprToTerm e1) (scalarExprToTerm e2)
-scalarExprToTerm (ESlice e s)            = TSlice (scalarExprToTerm e) s
-
-valToTerm :: Val -> Term
-valToTerm = scalarExprToTerm . EConst
 
 termToExpr :: Term -> Expr
 termToExpr (TVar n)          = EVar   n

@@ -42,6 +42,7 @@ import BFormula
 import Cascade
 import RefineCommon 
 import GroupTag
+import MkPredicate
 
 type AbsPriv = [[AbsVar]]
 type PDB pdb s u = StateT AbsPriv (StateT pdb (ST s))

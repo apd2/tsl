@@ -33,6 +33,7 @@ import IExpr
 import SMTLib2Parse
 import Store
 import SMTSolver
+import MkPredicate
 
 data SMT2Config = SMT2Config {
     s2Solver :: String,  -- Name of the solver executable

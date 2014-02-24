@@ -25,6 +25,7 @@ import IType
 import CFA
 import Ops
 import ACFA
+import {-# SOURCE #-} MkPredicate
 
 ecasAbsVars :: (?spec::Spec) => ECascade -> [AbsVar]
 ecasAbsVars = nub . ecasAbsVars'
