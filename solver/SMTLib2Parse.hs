@@ -29,7 +29,7 @@ import Predicate
 assertName = "__assert"
 
 data ModelDecl = DeclConst  {dconstName::String, dconstType::TypeSpec}
-               | DeclVarAsn {dvarName::String, dvarVal::SMTExpr}
+               | DeclVarAsn {dvarName::String, dvarArgs::[String], dvarVal::SMTExpr}
                deriving (Eq)
 
 declIsConst :: ModelDecl -> Bool
@@ -37,17 +37,19 @@ declIsConst (DeclConst _ _) = True
 declIsConst _               = False
 
 declIsAsn :: ModelDecl -> Bool
-declIsAsn (DeclVarAsn _ _) = True
-declIsAsn _                = False
+declIsAsn (DeclVarAsn _ _ _) = True
+declIsAsn _                  = False
 
-data TypeSpec = TypeName String
-              | TypeBV   Int
+data TypeSpec = TypeName  String
+              | TypeArray TypeSpec TypeSpec                
+              | TypeBV    Int
               deriving (Eq)
 
-data SMTExpr = ExpIdent String
-             | ExpBool  Bool
-             | ExpInt   Integer
-             | ExpApply String [SMTExpr]
+data SMTExpr = ExpIdent   String
+             | ExpBool    Bool
+             | ExpInt     Integer
+             | ExpApply   String [SMTExpr]
+             | ExpAsArray String
              deriving (Eq, Ord, Show)
 
 ------------------------------------------------------
@@ -69,7 +71,7 @@ errorParser = char '(' *> symbol "error" *> (many $ noneOf ['(',')']) <* char ')
 -- Parsing solver output
 ------------------------------------------------------
 
-reservedNames   = ["model", "declare-fun", "define-fun", "forall", "BitVec", "true", "false"]
+reservedNames   = ["model", "declare-fun", "define-fun", "forall", "BitVec", "Array", "true", "false", "as-array"]
 reservedOpNames = ["_"]
 
 lexer  = T.makeTokenParser emptyDef { T.identStart      =  letter 
@@ -107,25 +109,28 @@ model_decl =  try const_decl
           <|> try forall
 
 const_decl = parens $ (\n t -> Just $ DeclConst n t)    <$ reserved "declare-fun" <*> ident <* (parens spaces) <*> typespec
-var_asn    = parens $ (\n _ e -> if' (isPrefixOf assertName n) Nothing (Just $ DeclVarAsn n e)) -- ignore assignments to assertions
-                                                        <$ reserved "define-fun"  <*> ident <* (parens spaces) <*> typespec <*> expr
+var_asn    = parens $ (\n as _ e -> if' (isPrefixOf assertName n) Nothing (Just $ DeclVarAsn n as e)) -- ignore assignments to assertions
+                                                        <$ reserved "define-fun"  <*> ident <*> args <*> typespec <*> expr
 forall     = parens $ (\_ _ -> Nothing)                 <$ reserved "forall"      <*> args  <*> expr
 
-args = parens $ (,) <$> many arg
-arg  = parens $ (,) <$> ident <*> typespec
+args = parens $ many arg
+arg  = parens $ ident <* typespec
 
-expr =  fapply
+expr =  (isarray *> asarray)
+    <|> fapply
     <|> literal
     <|> (ExpIdent <$> ident)
+
+asarray = parens $ ExpAsArray <$> (reservedOp "_" *> reserved "as-array" *> ident)
+isarray = try $ lookAhead asarray
 
 fapply = parens $ ExpApply <$> fname <*> (many expr)
 fname  =  ident 
       <|> operator
 
-typespec =  TypeName <$> ident
-        <|> bvtype
-
-bvtype = parens $ (TypeBV . fromInteger) <$> (reservedOp "_" *> reserved "BitVec" *> decimal)
+typespec =  (parens $  (TypeArray <$ reserved "Array" <*> typespec <*> typespec)
+                   <|> ((TypeBV . fromInteger) <$> (reservedOp "_" *> reserved "BitVec" *> decimal)))
+        <|> TypeName <$> ident
 
 literal =  (ExpInt <$> decimal)
        <|> (ExpBool True <$ reserved "true")
@@ -144,37 +149,49 @@ storeFromModel ptrmap decls =
     let ?addrofmap = map (\(v,n) -> case lookup n ptrmap of
                                          Nothing -> error "storeFromModel: undefined constant"
                                          Just t  -> (v,t))
-                     $ map ((\(DeclVarAsn n v) -> (v,n)) . head)
+                     $ map ((\(DeclVarAsn n _ v) -> (v,n)) . head)
                      $ sortAndGroup dvarVal
-                     $ filter (\d -> declIsAsn d && isPrefixOf "addrof-" (dvarName d)) decls in
+                     $ filter (\d -> declIsAsn d && isPrefixOf "addrof-" (dvarName d)) decls 
+        ?alldecls = decls in
     storeUnions ?spec (mapMaybe storeFromAsn asndecls)
 
-storeFromAsn :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => (String, SMTExpr) -> Maybe Store
-storeFromAsn (n, e) = fmap (\var -> let val = storeFromExpr (varType var) e in
+storeFromAsn :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)], ?alldecls::[ModelDecl]) => (String, SMTExpr) -> Maybe Store
+storeFromAsn (n, e) = fmap (\var -> let val = storeFromExpr (varType var) e M.empty in
                                     SStruct (M.singleton (varName var) val) ?spec)
                            $ lookupVar n
 
-storeFromExpr :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => Type -> SMTExpr -> Store
-storeFromExpr t e = case lookup e ?addrofmap of
-                         Nothing   -> storeFromExpr' t e
-                         Just term -> SVal $ PtrVal $ evalLExpr $ termToExpr term
+storeFromExpr :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)], ?alldecls::[ModelDecl]) => Type -> SMTExpr -> M.Map String SMTExpr -> Store
+storeFromExpr t e args = case lookup e ?addrofmap of
+                              Nothing   -> storeFromExpr' t e args
+                              Just term -> SVal $ PtrVal $ evalLExpr $ termToExpr term
 
-storeFromExpr' :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)]) => Type -> SMTExpr -> Store
-storeFromExpr' t (ExpIdent i) = if' (typ v /= t) (error "storeFromExpr: identifier type mismatch") $ 
-                                (SVal v)
-    where v = valFromIdent i
-storeFromExpr' t (ExpBool b) = if' (t /= Bool) (error "storeFromExpr: bool type mismatch") $ 
-                               (SVal $ BoolVal b)
-storeFromExpr' (UInt w) (ExpInt v) = SVal $ UIntVal w v
-storeFromExpr' (SInt w) (ExpInt v) | msb v == w - 1 = 
+storeFromExpr' :: (?spec::Spec, ?addrofmap::[(SMTExpr, Term)], ?alldecls::[ModelDecl]) => Type -> SMTExpr -> M.Map String SMTExpr -> Store
+storeFromExpr' t (ExpIdent i) args = 
+    case lookupEnumerator i of
+         Just _  -> SVal $ EnumVal i
+         Nothing -> case M.lookup i args of
+                         Just e  -> storeFromExpr t e M.empty
+                         Nothing -> error $ "storeFromExpr: unknown enumerator: " ++ show i
+storeFromExpr' t (ExpBool b) _ = if' (t /= Bool) (error "storeFromExpr: bool type mismatch") $ 
+                                     (SVal $ BoolVal b)
+storeFromExpr' (UInt w) (ExpInt v) _ = SVal $ UIntVal w v
+storeFromExpr' (SInt w) (ExpInt v) _ | msb v == w - 1 = 
     SVal $ SIntVal w $ - ((foldl' complementBit v [0..w-1]) + 1)
-                                   | otherwise      = SVal $ SIntVal w v
-storeFromExpr' (Struct fs) (ExpApply _ as) | length fs /= length as = error "storeFromExpr: incorrect number of fields in a struct"
-                                           | otherwise = 
-    SStruct (M.fromList $ map (\((Field n t), e) -> (n, storeFromExpr t e)) $ zip fs as) ?spec
-storeFromExpr' t e = error $ "storeFromExp " ++ show t ++ " " ++ show e
-
-valFromIdent :: (?spec::Spec) => String -> Val
-valFromIdent i = case lookupEnumerator i of
-                      Just _  -> EnumVal i
-                      Nothing -> error $ "valFromIdent: unknown enumerator: " ++ show i
+                                     | otherwise      = SVal $ SIntVal w v
+storeFromExpr' t (ExpApply "=" [a1,a2]) args = SVal $ BoolVal $ v1 == v2
+    where -- XXX: assume that comparisons are always between (integer) array indices
+          SVal (UIntVal _ v1) = storeFromExpr (UInt 32) a1 args
+          SVal (UIntVal _ v2) = storeFromExpr (UInt 32) a2 args
+storeFromExpr' t (ExpApply "ite" [i,th,el]) args = if' cond (storeFromExpr' t th args) (storeFromExpr' t el args)
+    where cond = case storeFromExpr Bool i args of
+                      SVal (BoolVal b) -> b
+                      _                -> error $ "storeFromExpr: cannot evaluate boolean expression " ++ show i
+storeFromExpr' (Struct fs) (ExpApply n as) args | isPrefixOf "Struct" n =
+    if length fs /= length as 
+       then error "storeFromExpr: incorrect number of fields in a struct"
+       else SStruct (M.fromList $ map (\((Field n t), e) -> (n, storeFromExpr t e args)) $ zip fs as) ?spec
+storeFromExpr' (Array t l) (ExpAsArray n) _ | isNothing marr = error $ "storeFromExpr: array \"" ++ n ++ "\" not found"
+                                            | otherwise      = SArr $ M.fromList $ map (\i -> (i, storeFromExpr t e $ M.singleton a (ExpInt $ fromIntegral i))) [0..l-1]
+    where marr = find ((==n) . dvarName) ?alldecls
+          Just (DeclVarAsn _ [a] e) = marr
+storeFromExpr' t e _ = error $ "storeFromExp " ++ show t ++ " " ++ show e
