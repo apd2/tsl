@@ -186,7 +186,7 @@ storeFromExpr' t (ExpApply "ite" [i,th,el]) args = if' cond (storeFromExpr' t th
     where cond = case storeFromExpr Bool i args of
                       SVal (BoolVal b) -> b
                       _                -> error $ "storeFromExpr: cannot evaluate boolean expression " ++ show i
-storeFromExpr' (Struct fs) (ExpApply n as) args | isPrefixOf "Struct" n =
+storeFromExpr' (Struct fs) (ExpApply n as) args | isPrefixOf "mk-Struct" n =
     if length fs /= length as 
        then error "storeFromExpr: incorrect number of fields in a struct"
        else SStruct (M.fromList $ map (\((Field n t), e) -> (n, storeFromExpr t e args)) $ zip fs as) ?spec
