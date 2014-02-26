@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Relation (RArg(RArg),
+module Relation (RArg(RArg,rargType),
                  Rule(Rule,ruleOp,ruleExpr),
                  Relation(Relation, relName, relArg, relRule),
                  Apply(Apply, applyRel, applyArg)) where
@@ -14,12 +14,12 @@ import PP
 import Type
 import Ops
 
-data RArg = RArg { apos  :: Pos
-                 , atype :: TypeSpec
-                 , aname :: Ident}
+data RArg = RArg { apos     :: Pos
+                 , rargType :: TypeSpec
+                 , aname    :: Ident}
 
 instance PP RArg where
-    pp RArg{..} = pp atype <+> pp aname
+    pp RArg{..} = pp rargType <+> pp aname
 
 instance Show RArg where
     show = render . pp
@@ -32,7 +32,7 @@ instance WithPos RArg where
     atPos a p = a{apos = p}
 
 instance WithTypeSpec RArg where 
-    tspec = atype
+    tspec = rargType
 
 
 data Rule = Rule { rlpos    :: Pos

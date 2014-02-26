@@ -270,7 +270,7 @@ validateCall p mref as = do
     return ()
 
 validateApply :: (?spec::Spec, MonadError String me) => Scope -> Ident -> [Expr] -> me ()
-validateApply sc rel args = do
+validateApply sc rel args = trace ("validateApply " ++ show sc ++ " " ++ show rel) $ do
     let ?privoverride = False
     -- Relation name refers to a valid relation
     (_, r@Relation{..}) <- checkRelation sc rel

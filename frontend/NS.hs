@@ -392,7 +392,7 @@ checkTypeDecl s n = do
 
 
 getTypeDecl :: (?spec::Spec) => Scope -> StaticSym -> (TypeDecl,Scope)
-getTypeDecl s = fromJustMsg "getTypeDecl: type not found" . lookupTypeDecl s
+getTypeDecl s sym = fromJustMsg ("getTypeDecl: type not found " ++ show s ++ " " ++ show sym) $ lookupTypeDecl s sym
 
 -- Term lookup
 -- A term is either a local name, which corresponds to any object in the local or
