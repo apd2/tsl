@@ -121,8 +121,9 @@ bvEquant spec solver m ops avs vs = do
                       $ resolveIndices 
                       $ return 
                       $ map avarToRel avs
-        f = fdisj $ map (equant' vs solver) dnf
-    H.compileBDD m ops (avarGroupTag . bavarAVar) $ compileFormula $ trace ("bvEquant " ++ show vs ++ ". "++ show avs ++ " = " ++ show f) $ f
+        f  = fdisj $ map (equant' vs solver) dnf
+        f' = if' (smtCheckSAT solver [fnot f] == Just False) FTrue f
+    H.compileBDD m ops (avarGroupTag . bavarAVar) $ compileFormula $ trace ("bvEquant " ++ show vs ++ ". "++ show avs ++ " = " ++ show f') $ f'
 
 equant' :: (?spec::Spec) => [String] -> SMTSolver -> [(BV.Rel, Term, Term)] -> Formula
 equant' vs solver rels = 
