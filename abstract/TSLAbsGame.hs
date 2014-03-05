@@ -280,20 +280,28 @@ tranPrecondition trname Transition{..} = varUpdateLoc trname [] tranFrom (cfaLoc
 -- can be used to generate complementary condition when variable value remains 
 -- unchanged.  
 varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => String -> (AbsVar,f) -> Transition -> Maybe (TAST f e c)
-varUpdateTrans trname (av,nxt) Transition{..} = if any G.isEmpty cfas'
+varUpdateTrans trname (av,nxt) Transition{..} = if G.isEmpty cfa'
                                                    then Nothing
-                                                   else Just (H.Conj upds)
+                                                   else Just upd
     where -- list all rules for the relation
-          vexps = (Iff, avarToExpr av) :
-                  (case av of
-                        AVarPred p@PRel{..} -> snd $ instantiateRelation (getRelation pRel) pArgs
-                        _                   -> [])
-          (upds, cfas') = unzip
-                          $ map (\(op, e) -> let cfa' = pruneCFAVar [e] tranCFA
-                                                 cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
-                                                 upd  = varUpdateLoc trname [((av, op, e), nxt)] tranFrom cfa
-                                             in (upd, cfa'))
-                            vexps
+          vexp = disj $
+                 (avarToExpr av) :
+                 (case av of
+                       AVarPred p@PRel{..} -> map snd $ snd $ instantiateRelation (getRelation pRel) pArgs
+                       _                   -> [])
+
+          op = case av of 
+                    AVarPred PRel{..} -> Implied
+                    _                 -> Iff
+          cfa' = pruneCFAVar [vexp] tranCFA
+          cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
+          upd  = varUpdateLoc trname [((av, op, vexp), nxt)] tranFrom cfa
+--          (upds, cfas') = unzip
+--                          $ map (\(op, e) -> let cfa' = pruneCFAVar [e] tranCFA
+--                                                 cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
+--                                                 upd  = varUpdateLoc trname [((av, op, e), nxt)] tranFrom cfa
+--                                             in (upd, cfa'))
+--                            vexps
 
 
 -- Compute update functions for a list of variables for a location inside
