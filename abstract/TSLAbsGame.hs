@@ -167,20 +167,9 @@ tslInconsistent spec m ops = do
     H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond, contcond]
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
-tslUpdateAbsVar (av, n) = do
-    upd   <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
-    ident <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
-    lift $ lift $ do --trace ("compiling " ++ show av) 
-         vcube <- C.nodesToCube ?m n
-         pre   <- C.bexists ?m upd vcube
-         C.deref ?m vcube
-         unchanged <- C.band ?m (C.bnot pre) ident
-         C.deref ?m pre
-         C.deref ?m ident
-         res <- C.bor ?m upd unchanged
-         C.deref ?m upd
-         C.deref ?m unchanged
-         return res
+tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av) 
+                          $ lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
+
 
 tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
 tslUpdateAbsVarAST (av, n) | M.member (show av) (specUpds ?spec) = 
@@ -195,9 +184,13 @@ tslUpdateAbsVarAST (av, n) | M.member (show av) (specUpds ?spec) =
                        in compileTCas cas (H.FVar n)
          _          -> error "tslUpdateAbsVarAST: not a bool or enum variable"
 
-tslUpdateAbsVarAST (av, n) = 
-    H.Disj $ catMaybes 
-    $ mapIdx (\tr i -> varUpdateTrans (show i) (av,n) tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
+tslUpdateAbsVarAST (av, n)                                       = H.Disj (unchanged:upds)
+    where
+    trans = mapIdx (\tr i -> varUpdateTrans (show i) (av,n) tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
+    (upds, pres) = unzip $ catMaybes trans
+    -- generate condition when variable value does not change
+    ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
+    unchanged = H.And (H.Conj $ map H.Not pres) ident
 
 tslFilterCandidates :: Spec -> C.STDdManager s u -> [AbsVar] -> PDB pdb s u ([AbsVar], [AbsVar])
 tslFilterCandidates _ _ avs = do
@@ -279,21 +272,22 @@ tranPrecondition trname Transition{..} = varUpdateLoc trname [] tranFrom (cfaLoc
 -- Returns update function and precondition of the transition.  The precondition
 -- can be used to generate complementary condition when variable value remains 
 -- unchanged.  
-varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => String -> (AbsVar,f) -> Transition -> Maybe (TAST f e c)
+varUpdateTrans :: (?spec::Spec, ?pred::[Predicate]) => String -> (AbsVar,f) -> Transition -> Maybe (TAST f e c, TAST f e c)
 varUpdateTrans trname (av,nxt) Transition{..} = if any G.isEmpty cfas'
                                                    then Nothing
-                                                   else Just (H.Conj upds)
+                                                   else Just (H.Conj upds, H.Disj pres)
     where -- list all rules for the relation
-          vexps = (Iff, avarToExpr av) :
+          vexps = (Iff, avarToExpr av) : 
                   (case av of
                         AVarPred p@PRel{..} -> snd $ instantiateRelation (getRelation pRel) pArgs
                         _                   -> [])
-          (upds, cfas') = unzip
-                          $ map (\(op, e) -> let cfa' = pruneCFAVar [e] tranCFA
-                                                 cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
-                                                 upd  = varUpdateLoc trname [((av, op, e), nxt)] tranFrom cfa
-                                             in (upd, cfa'))
-                            vexps
+          (upds, pres, cfas') = unzip3
+                                $ map (\(op, e) -> let cfa' = pruneCFAVar [e] tranCFA
+                                                       cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
+                                                       pre  = varUpdateLoc (trname ++ "_pre") [] tranFrom cfa
+                                                       upd  = varUpdateLoc trname [((av, op, e), nxt)] tranFrom cfa
+                                                   in (upd, pre, cfa'))
+                                  vexps
 
 
 -- Compute update functions for a list of variables for a location inside
