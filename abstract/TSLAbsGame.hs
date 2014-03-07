@@ -164,7 +164,7 @@ tslInconsistent spec m ops = do
                                                  $ enumEnums $ getEnumeration tname)
                    $ filter avarIsEnum $ map bavarAVar allvars
         contcond = compileFormula $ ptrFreeBExprToFormula $ conj [mkContLVar, neg mkMagicVar]
-    H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond, contcond]
+    H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond {-, contcond-}]
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
 tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av) 
