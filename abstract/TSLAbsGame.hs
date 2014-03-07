@@ -62,7 +62,7 @@ tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = []
                                       , Abs.contAbs                 = tslContAbs                 spec m
                                       , Abs.initialVars             = []
                                       --, gameConsistent  = tslGameConsistent  spec
-                                      , Abs.stateLabelConstraintAbs = lift . tslStateLabelConstraintAbs spec m
+                                      --, Abs.stateLabelConstraintAbs = lift . tslStateLabelConstraintAbs spec m
                                       , Abs.updateAbs               = tslUpdateAbs               spec m ts
                                       --, Abs.filterPromoCandidates   = tslFilterCandidates        spec m
                                       }
@@ -128,7 +128,7 @@ tslContAbs spec m ops = do
         ?pred = p
     lift $ H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContLVar === true
 
-tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u, C.DDNode s u)
+tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
 tslUpdateAbs spec m _ avars ops = do
     trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops    = ops
@@ -159,7 +159,7 @@ tslUpdateAbs spec m _ avars ops = do
 --    lift $ C.deref m inconsistent
 --    lift $ C.deref m (last upd)
 --    let upd' = init upd ++ [updwithinc]
-    return (upd, inconsistent', {-rel-}C.bone m)
+    return (upd, inconsistent')
 
 tslInconsistent :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> StateT pdb (ST s) (C.DDNode s u)
 tslInconsistent spec m ops = do
