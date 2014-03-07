@@ -137,10 +137,18 @@ tslUpdateAbs spec m _ avars ops = do
         ?m      = m
         ?pred   = p
 --    avarbef <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
-    upd <- mapM tslUpdateAbsVar avars
+    (upd, blocked) <- (liftM unzip) $ mapM tslUpdateAbsVar avars
 --    avaraft <- (liftM $ map bavarAVar) $ Abs.allVars ?ops
 --    let avarnew = S.toList $ S.fromList avaraft S.\\ S.fromList avarbef
     inconsistent <- lift $ tslInconsistent spec m ops
+    let disjunct acc []     = return acc
+        disjunct acc (x:xs) = do 
+            acc' <- C.bor ?m acc x
+            C.deref ?m acc
+            C.deref ?m x
+            disjunct acc' xs
+    inconsistent' <- lift $ lift $ disjunct inconsistent blocked
+
 --    inconsistent <- case avarnew of
 --                         [] -> return $ C.bzero m
 --                         _  -> H.compileBDD m ops (avarGroupTag . bavarAVar)
@@ -151,7 +159,7 @@ tslUpdateAbs spec m _ avars ops = do
 --    lift $ C.deref m inconsistent
 --    lift $ C.deref m (last upd)
 --    let upd' = init upd ++ [updwithinc]
-    return (upd, inconsistent, {-rel-}C.bone m)
+    return (upd, inconsistent', {-rel-}C.bone m)
 
 tslInconsistent :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> StateT pdb (ST s) (C.DDNode s u)
 tslInconsistent spec m ops = do
@@ -166,10 +174,17 @@ tslInconsistent spec m ops = do
         contcond = compileFormula $ ptrFreeBExprToFormula $ conj [mkContLVar, neg mkMagicVar]
     H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond {-, contcond-}]
 
-tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u)
-tslUpdateAbsVar (av, n) = trace ("compiling " ++ show av) 
-                          $ lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
-
+tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u, C.DDNode s u)
+tslUpdateAbsVar (av, n) = do
+    -- trace ("compiling " ++ show av) 
+    upd <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
+    -- include blocked states into inconsistent (to avoid splitting on those states)
+    blocked <- lift $ lift $ do --trace ("compiling " ++ show av) 
+          vcube <- C.nodesToCube ?m n
+          pre   <- C.bexists ?m upd vcube
+          C.deref ?m vcube
+          return $ C.bnot pre
+    return (upd, blocked)
 
 tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
 tslUpdateAbsVarAST (av, n) | M.member (show av) (specUpds ?spec) = 
