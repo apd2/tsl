@@ -3,7 +3,8 @@
 module Pos(Pos, 
            WithPos(..),
            spos,
-           nopos) where
+           nopos,
+           posInside) where
 
 import Text.Parsec.Pos
 
@@ -23,3 +24,14 @@ spos x = let p = fst $ pos x
 
 nopos::Pos 
 nopos = (initialPos "",initialPos "")
+
+posInside :: SourcePos -> Pos -> Bool
+posInside p (p1, p2) = sourceName p == sourceName p1 &&
+                       sourceLine p >= sourceLine p1 && sourceLine p <= sourceLine p2 &&
+                       (if sourceLine p == sourceLine p1
+                           then sourceColumn p >= sourceColumn p1
+                           else True) &&
+                       (if sourceLine p == sourceLine p2
+                           then sourceColumn p <= sourceColumn p2
+                           else True)
+
