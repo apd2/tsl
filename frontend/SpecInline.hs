@@ -289,10 +289,10 @@ mkCond descr s extra = do
                    ?nestedmb = False
                in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                 ctxPause aft I.true I.ActNone) ctx
-        trans = locTrans (ctxCFA ctx') I.cfaInitLoc
+        trans = I.cfaLocTrans (ctxCFA ctx') I.cfaInitLoc
         -- precondition
     return $ case trans of
-                  [t] -> let res = foldl' tranAppend t (map I.SAssume extra)
+                  [t] -> let res = foldl' tranAppend (I.Transition (head $ I.cfaSource t) (head $ I.cfaSink t) t) (map I.SAssume extra)
                          in {-I.cfaTraceFile (I.tranCFA res) descr $-} res
                   _   -> error $ "mkCond " ++ show s ++ ": Invalid condition"
 
@@ -516,42 +516,20 @@ cfaToITransitions epid cfa = {-I.cfaTraceFileMany (map I.tranCFA trans') ("tran_
     where
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa
-    trans = concatMap (locTrans cfa) states
+    trans = concatMap (I.cfaLocTrans cfa) states
     trans' = map (extractTransition epid cfa) trans
 
-locTrans :: I.CFA -> I.Loc -> [I.Transition]
-locTrans cfa loc =
-    let -- compute all reachable locations before pause
-        r = I.cfaReachInst cfa loc
-        -- construct subgraph with only these nodes
-        cfa' = I.cfaPrune cfa (S.insert loc r)
-        -- (This is a good place to check for loop freedom.)
-        -- for each final location, compute a subgraph that connects the two
-        dsts = filter (I.isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
-    in map (\dst -> I.Transition loc dst $ pruneTrans cfa' loc dst) dsts
-
--- iteratively prune dead-end locations until only transitions connecting from and to remain
-pruneTrans :: I.CFA -> I.Loc -> I.Loc -> I.CFA
-pruneTrans cfa from to = if G.noNodes cfa'' == G.noNodes cfa then cfa'' else pruneTrans cfa'' from to
-    where -- eliminate from-->from loops and to-->... transitions, unless we are generating a loop transition
-          cfa' = if from /= to
-                    then foldl' (\cfa0 (f,t,_) -> G.delEdge (f,t) cfa0) cfa $ G.inn cfa from ++ G.out cfa to
-                    else cfa
-          cfa'' = foldl' (\g loc -> if loc /= to && null (G.suc g loc) then G.delNode loc g else g) cfa' (G.nodes cfa') 
-
 -- Extract transition into a separate CFA
-extractTransition :: EPID -> I.CFA -> I.Transition -> I.Transition
-extractTransition epid cfa (I.Transition from to tcfa) = 
-    let -- If this is a loop transition, split the initial node
-        (lfinal, cfa1) = if from == to
-                            then I.cfaSplitLoc from tcfa
-                            else (to, tcfa)
+extractTransition :: EPID -> I.CFA -> I.CFA -> I.Transition
+extractTransition epid cfa tcfa = 
+    let from = head $ I.cfaSource tcfa
+        to   = head $ I.cfaSink tcfa
     in case epid of 
-            EPIDCont -> I.Transition from lfinal cfa1
+            EPIDCont -> I.Transition from to tcfa
             EPIDProc pid -> -- check PC value before the transition
-                            let (cfa2, befpc) = I.cfaInsLoc (I.LInst I.ActNone) cfa1
+                            let (cfa2, befpc) = I.cfaInsLoc (I.LInst I.ActNone) tcfa
                                 cfa3 = I.cfaInsTrans befpc from (I.TranStat $ I.SAssume $ mkPCEq cfa pid (mkPC pid from)) cfa2
-                            in I.Transition befpc lfinal cfa3
+                            in I.Transition befpc to cfa3
 
 tranAppend :: I.Transition -> I.Statement -> I.Transition
 tranAppend (I.Transition from to cfa) s = I.Transition from to' cfa'

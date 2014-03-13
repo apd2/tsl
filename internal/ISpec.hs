@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, ImplicitParams #-}
+{-# LANGUAGE RecordWildCards, ImplicitParams, TupleSections #-}
 
 module ISpec(Spec(..),
              Process(..),
@@ -7,6 +7,7 @@ module ISpec(Spec(..),
              specGetProcess,
              specAllCFAs,
              specAllProcs,
+             specLookupMB,
              specGetCFA,
              specMapCFA,
              specInlineWirePrefix,
@@ -25,6 +26,7 @@ import qualified Data.Map as M
 import qualified Data.Graph.Inductive.Graph as G
 import Text.PrettyPrint
 
+import Pos
 import Util
 import CFA
 import IVar
@@ -34,6 +36,7 @@ import IRelation
 import TranSpec
 import PP
 import PID
+import qualified NS as F
 
 data Process = Process {
     procName     :: String,
@@ -115,6 +118,20 @@ specGetCFA spec EPIDCont       = specCAct spec
 specAllCFAs :: Spec -> [(EPID, CFA)]
 specAllCFAs Spec{..} = concatMap (\p -> procAllCFAs (PrID (procName p) []) p) specProc  ++
                        [(EPIDCont, specCAct)]
+
+--specAllMBs :: Spec -> [(PrID, Loc)]
+--specAllMBs spec = concatMap (\(pid, proc) -> map ((pid, ) . fst) $ filter (isMBLabel . snd) $ G.labNodes $ procCFA proc)
+--                  $ specAllProcs spec
+
+specLookupMB :: Spec -> Pos -> Maybe (PrID, F.Scope)
+specLookupMB spec p = listToMaybe
+    $ concatMap (\(pid, proc) -> map ((pid, ) . fScope . head . locStack . snd)
+                                 $ (\xs -> if' (length xs > 1) (error "specLookupMB: multiple instantiations of the same MB") xs)
+                                 $ filter ((== p) . pos . locAct . snd)
+                                 $ filter (isMBLabel . snd) 
+                                 $ G.labNodes $ procCFA proc)
+    $ specAllProcs spec
+
 
 procAllCFAs :: PrID -> Process -> [(EPID, CFA)]
 procAllCFAs pid proc = (EPIDProc pid, procCFA proc) :

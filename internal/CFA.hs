@@ -14,6 +14,9 @@ module CFA(Statement(..),
            CFA,
            isDelayLabel,
            isDeadendLoc,
+           isMBLabel,
+           cfaFindMBs,
+           cfaFindMBAtPos,
            newCFA,
            cfaNop,
            cfaErrVarName,
@@ -21,6 +24,7 @@ module CFA(Statement(..),
            cfaDelayLocs,
            cfaInsLoc,
            cfaLocLabel,
+           cfaLocPos,
            cfaFindLabel,
            cfaLocSetAct,
            cfaLocSetStack,
@@ -43,7 +47,10 @@ module CFA(Statement(..),
            cfaTraceFileMany,
            cfaShow,
            cfaSave,
-           cfaSplitLoc) where
+           cfaSplitLoc,
+           cfaLocTrans,
+           cfaSource,
+           cfaSink) where
 
 import qualified Data.Graph.Inductive as G
 import Data.Maybe
@@ -52,7 +59,9 @@ import Data.Tuple
 import qualified Data.Set             as S
 import qualified Data.Map             as M
 import Text.PrettyPrint
+import qualified Text.Parsec          as P
 
+import Pos
 import Name
 import PP
 import Util hiding (name)
@@ -103,12 +112,18 @@ instance PP LocAction where
 instance Show LocAction where
     show = render . pp
 
+instance WithPos LocAction where
+    pos (ActStat s) = pos s
+    pos (ActExpr e) = pos e
+    atPos _ _ = error "LocAction::atPos not implemented"
+
+
 -- Stack frame
 data Frame = Frame { fScope :: F.Scope
                    , fLoc   :: Loc}
 
 instance PP Frame where
-    pp (Frame sc loc) =                         text (show sc) <> char ':' <+> pp loc
+    pp (Frame sc loc) = text (show sc) <> char ':' <+> pp loc
 
 frameMethod :: Frame -> Maybe F.Method
 frameMethod f = case fScope f of
@@ -193,10 +208,31 @@ isDelayLabel (LInst _)        = False
 isDeadendLoc :: CFA -> Loc -> Bool
 isDeadendLoc cfa loc = G.outdeg cfa loc == 0
 
+isMBLabel :: LocLabel -> Bool
+isMBLabel lab = isDelayLabel lab && 
+                         case locAct lab of
+                              ActStat (F.SMagic _ _) -> True
+                              _                      -> False                             
+cfaFindMBs :: CFA -> [Loc]
+cfaFindMBs cfa = nub 
+                 $ filter (\l -> case locAct $ cfaLocLabel l cfa of
+                                      ActStat (F.SMagic _ _) -> True
+                                      _                      -> False)
+                 $ cfaDelayLocs cfa
+
+cfaFindMBAtPos :: CFA -> P.SourcePos -> Maybe Loc
+cfaFindMBAtPos cfa sp = find (\l -> case locAct $ cfaLocLabel l cfa of
+                                         ActStat (F.SMagic p _) -> posInside sp p
+                                         _                      -> False)
+                     $ cfaDelayLocs cfa
+
 cfaLocWaitCond :: CFA -> Loc -> Expr
 cfaLocWaitCond cfa loc = case cfaLocLabel loc cfa of
                               LPause _ _ _ c -> c
                               LFinal _ _ _   -> true
+
+cfaLocPos :: CFA -> Loc -> Pos
+cfaLocPos cfa loc = pos $ locAct $ cfaLocLabel loc cfa
 
 newCFA :: F.Scope -> F.Statement -> Expr -> CFA 
 newCFA sc stat initcond = G.insNode (cfaInitLoc,LPause (ActStat stat) [Frame sc cfaInitLoc] [] initcond) G.empty
@@ -330,3 +366,35 @@ cfaSplitLoc loc cfa = (loc', cfa3)
           cfa1         = foldl' (\cfa0 (f,t,_) -> G.delEdge (f,t) cfa0) cfa i 
           (cfa2, loc') = cfaInsLoc (LInst ActNone) cfa1
           cfa3         = foldl' (\cfa0 (f,_,l) -> G.insEdge (f,loc',l) cfa0) cfa2 i
+
+-- Atomic transitions originating from location
+-- Each returned CFA has a single source and a single sink location.
+cfaLocTrans :: CFA -> Loc -> [CFA]
+cfaLocTrans cfa loc =
+    let -- compute all reachable locations before pause
+        r = cfaReachInst cfa loc
+        -- construct subgraph with only these nodes
+        cfa' = cfaPrune cfa (S.insert loc r)
+        -- (This is a good place to check for loop freedom.)
+        -- for each final location, compute a subgraph that connects the two
+        dsts = filter (isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
+    in map (\dst -> let cfa'' = pruneTrans cfa' loc dst in
+                    if' (dst == loc) (snd $ cfaSplitLoc loc cfa'') cfa'') 
+           dsts
+
+-- Source location (without incoming edges)
+cfaSource :: CFA -> [Loc]
+cfaSource cfa = filter (null . G.pre cfa) $ G.nodes cfa
+
+-- Sink locations (without outgoing edges)
+cfaSink :: CFA -> [Loc]
+cfaSink cfa = filter (null . G.suc cfa) $ G.nodes cfa
+
+-- iteratively prune dead-end locations until only transitions connecting from and to remain
+pruneTrans :: CFA -> Loc -> Loc -> CFA
+pruneTrans cfa from to = if G.noNodes cfa'' == G.noNodes cfa then cfa'' else pruneTrans cfa'' from to
+    where -- eliminate from-->from loops and to-->... transitions, unless we are generating a loop transition
+          cfa' = if from /= to
+                    then foldl' (\cfa0 (f,t,_) -> G.delEdge (f,t) cfa0) cfa $ G.inn cfa from ++ G.out cfa to
+                    else cfa
+          cfa'' = foldl' (\g loc -> if loc /= to && null (G.suc g loc) then G.delNode loc g else g) cfa' (G.nodes cfa') 
