@@ -1,12 +1,29 @@
 
+-- Annotate pause locations with sets of states
+-- Assumes that pause locations that represent magic blocks do not have outgoing transitions.
+cfaAnnotateReachable :: CFA -> DDNode -> M.Map Loc DDNode
+cfaAnnotateReachable =
+    where 
+    -- decompose into transitions
+    states = I.cfaDelayLocs cfa
+    tcfas = concatMap (cfaLocTrans cfa) states
+    trans = map (\tcfa -> let from = head $ I.cfaSource tcfa
+                              to   = head $ I.cfaSink tcfa
+                          in I.Transition from to tcfa) tcfas
 
--- magic block map
--- GUI command to compile magic block (including nested ones)
--- update map after every compilation
--- GUI command to generate code for a magic block (one statement)
---
--- calculate the set of states at the magic block entry (Adam)
--- choosing the next action given a set of states (Adam)
--- Generate one statement
---
--- Code generation and compilation are separated
+    -- compile transitions
+    -- fix point computation
+
+
+compileTransition :: Transition -> DDNode
+
+
+-- Enumerate MBs in the spec.
+-- Compile action - refreshes all magic blocks.
+-- coords-to-magic block mapping
+-- magic block-to-state set mapping
+-- state-set to statement mapping (Adam)
+-- concretise statement
+-- abstract statement
+-- simulate abstract statement
+-- Generate action 
