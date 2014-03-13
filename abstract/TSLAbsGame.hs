@@ -5,7 +5,9 @@ module TSLAbsGame(AbsPriv,
                   tslUpdateAbsVarAST,
                   tslStateLabelConstraintAbs,
                   tslInconsistent,
-                  tslUpdateAbs) where
+                  tslUpdateAbs,
+                  pdbPred,
+                  varUpdateTrans) where
 
 import Data.List
 import qualified Data.Map             as M
