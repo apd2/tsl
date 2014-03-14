@@ -123,9 +123,9 @@ specAllCFAs Spec{..} = concatMap (\p -> procAllCFAs (PrID (procName p) []) p) sp
 --specAllMBs spec = concatMap (\(pid, proc) -> map ((pid, ) . fst) $ filter (isMBLabel . snd) $ G.labNodes $ procCFA proc)
 --                  $ specAllProcs spec
 
-specLookupMB :: Spec -> Pos -> Maybe (PrID, F.Scope)
+specLookupMB :: Spec -> Pos -> Maybe (PrID, Loc, F.Scope)
 specLookupMB spec p = listToMaybe
-    $ concatMap (\(pid, proc) -> map ((pid, ) . fScope . head . locStack . snd)
+    $ concatMap (\(pid, proc) -> map (\(loc, lab) -> (pid, loc, fScope $ head $ locStack lab))
                                  $ (\xs -> if' (length xs > 1) (error "specLookupMB: multiple instantiations of the same MB") xs)
                                  $ filter ((== p) . pos . locAct . snd)
                                  $ filter (isMBLabel . snd) 
