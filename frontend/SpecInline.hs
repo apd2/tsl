@@ -289,7 +289,7 @@ mkCond descr s extra = do
                    ?nestedmb = False
                in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                 ctxPause aft I.true I.ActNone) ctx
-        trans = I.cfaLocTrans (ctxCFA ctx') I.cfaInitLoc
+        trans = map snd $ I.cfaLocTrans (ctxCFA ctx') I.cfaInitLoc
         -- precondition
     return $ case trans of
                   [t] -> let res = foldl' tranAppend (I.Transition (head $ I.cfaSource t) (head $ I.cfaSink t) t) (map I.SAssume extra)
@@ -517,7 +517,7 @@ cfaToITransitions epid cfa = {-I.cfaTraceFileMany (map I.tranCFA trans') ("tran_
     -- compute a set of transitions for each location labelled with pause or final
     states = I.cfaDelayLocs cfa
     trans = concatMap (I.cfaLocTrans cfa) states
-    trans' = map (extractTransition epid cfa) trans
+    trans' = map (extractTransition epid cfa . snd) trans
 
 -- Extract transition into a separate CFA
 extractTransition :: EPID -> I.CFA -> I.CFA -> I.Transition

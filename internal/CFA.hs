@@ -369,7 +369,7 @@ cfaSplitLoc loc cfa = (loc', cfa3)
 
 -- Atomic transitions originating from location
 -- Each returned CFA has a single source and a single sink location.
-cfaLocTrans :: CFA -> Loc -> [CFA]
+cfaLocTrans :: CFA -> Loc -> [(Loc, CFA)]
 cfaLocTrans cfa loc =
     let -- compute all reachable locations before pause
         r = cfaReachInst cfa loc
@@ -379,7 +379,7 @@ cfaLocTrans cfa loc =
         -- for each final location, compute a subgraph that connects the two
         dsts = filter (isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
     in map (\dst -> let cfa'' = pruneTrans cfa' loc dst in
-                    if' (dst == loc) (snd $ cfaSplitLoc loc cfa'') cfa'') 
+                    if' (dst == loc) (dst, snd $ cfaSplitLoc loc cfa'') (dst, cfa'')) 
            dsts
 
 -- Source location (without incoming edges)
