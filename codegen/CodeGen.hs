@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, RecordWildCards, TemplateHaskell #-}
 
-module CodeGen() where
+module CodeGen(simulateCFAAbstract) where
 
 import Data.List
 import Data.Tuple.Select
@@ -9,6 +9,7 @@ import Control.Monad.State
 import Control.Monad.ST
 
 import Interface
+import TermiteGame
 import BddRecord
 import ISpec hiding (getVar)
 import Predicate
@@ -17,26 +18,30 @@ import TSLAbsGame
 import GroupTag
 import ACFA2HAST
 import CFA
+import Pos
+import CG
 import qualified CuddExplicitDeref as C
 import qualified HAST.HAST         as H
 import qualified HAST.BDD          as H
 
----- code generator interface
---data CodeGen = CodeGen {
---    Pos ->
---}
---
---
---
---
+--computeReachable :: ST s (DDNode s u)
 
-adamsFunction = undefined
+----------------------------------------------------------
+-- Interface
+----------------------------------------------------------
 
-simulateCFAAbstract :: Spec -> C.STDdManager s u -> DB s u AbsVar AbsVar -> CFA -> DDNode s u -> Loc -> ST s (Maybe (DDNode s u))
-simulateCFAAbstract spec m pdb cfa initset loc = do
+-- Generate condition that holds whenever the magic block specified by 
+-- mbpos is active.
+mbToStateConstraint :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> Pos -> ST s (DDNode s u)
+mbToStateConstraint spec m refdyn pdb mbpos = do
+    undefined
+
+simulateCFAAbstract :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> CFA -> DDNode s u -> Loc -> ST s (Maybe (DDNode s u))
+simulateCFAAbstract spec m refdyn pdb cfa initset loc = do
     let ?m    = m
         ?spec = spec
         ?db   = pdb
+        ?rd   = refdyn
     let Ops{..} = constructOps ?m
     annot <- cfaAnnotateReachable cfa initset
     res <- maybe (return Nothing)
@@ -46,11 +51,41 @@ simulateCFAAbstract spec m pdb cfa initset loc = do
     mapM_ deref $ M.elems annot
     return res
 
+----------------------------------------------------------
+-- Internals
+----------------------------------------------------------
+
+-- Simulate a controllable transition tr from "from" followed by a transitive 
+-- closure of uncontrollable transitions.
+-- Assumes that label variables and don't cares in tr.
+simulateControllable :: (?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> DDNode s u -> ST s (DDNode s u)
+simulateControllable from tr = do
+    -- E x, u, l . tr & from & c+c
+    let ops@Ops{..} = constructOps ?m
+        RefineDynamic{..} = ?rd
+        DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
+    trfrom  <- tr .& from
+    trfromc0 <- trfrom .& consistentPlusCULCont
+    deref trfrom
+    trfromc1 <- bexists _trackedCube trfromc0
+    deref trfromc0
+    trfromc2 <- bexists _untrackedCube trfromc1
+    deref trfromc1
+    trfromc3 <- bexists _outcomeCube trfromc2
+    deref trfromc2
+    to' <- bexists _labelCube trfromc3
+    deref trfromc3
+    to <- shift _nextNodes _trackedNodes to'
+    deref to'
+    totc <- applyUncontrollableTC ops (SynthData sinfo trans (error "simulateControllable: uncontrollableTransitions is undefined")) to
+    deref to
+    return totc
+
 
 -- Annotate pause locations with sets of states
 -- initset - set of possible initial states
 -- Assumes that pause locations that represent magic blocks do not have outgoing transitions.
-cfaAnnotateReachable :: (?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => CFA -> DDNode s u -> ST s (M.Map Loc (DDNode s u))
+cfaAnnotateReachable :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar) => CFA -> DDNode s u -> ST s (M.Map Loc (DDNode s u))
 cfaAnnotateReachable cfa initset = do
     let Ops{..} = constructOps ?m
     -- decompose into transitions
@@ -68,9 +103,9 @@ cfaAnnotateReachable cfa initset = do
     mapM_ (deref . sel3) tupds
     return res
 
-annotate' :: (?spec::Spec, ?m::C.STDdManager s u, ?db :: DB s u AbsVar AbsVar)
+annotate' :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db :: DB s u AbsVar AbsVar)
           => [(Loc, Loc, DDNode s u)]    -- Compiled transitions
-          -> [Loc]                               -- Frontier
+          -> [Loc]                       -- Frontier
           -> M.Map Loc (DDNode s u)      -- Annotations computed so far
           -> ST s (M.Map Loc (DDNode s u))
 annotate' _    []          annot = return annot
@@ -78,7 +113,7 @@ annotate' upds (loc:front) annot = do
     let Ops{..} = constructOps ?m
     -- transitions from loc
     (front'', annot'') <- foldM (\(front', annot') (_, to, upd) -> do 
-                                   nxt <- adamsFunction (annot M.! loc) upd
+                                   nxt <- simulateControllable (annot M.! loc) upd
                                    -- If new reachable state have been discovered in to, 
                                    -- annotate to with these states and add it to the frontier
                                    case M.lookup to annot of
