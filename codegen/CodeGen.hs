@@ -1,13 +1,16 @@
 {-# LANGUAGE ImplicitParams, RecordWildCards, TemplateHaskell #-}
 
-module CodeGen(simulateCFAAbstract) where
+module CodeGen(simulateCFAAbstractToLoc,
+               simulateCFAAbstractToCompletion) where
 
 import Data.List
+import Data.Maybe
 import Data.Tuple.Select
 import qualified Data.Map          as M
 import Control.Monad.State
 import Control.Monad.ST
 
+import PID
 import Interface
 import TermiteGame
 import BddRecord
@@ -20,6 +23,8 @@ import ACFA2HAST
 import CFA
 import Pos
 import CG
+import Inline
+import BFormula
 import qualified CuddExplicitDeref as C
 import qualified HAST.HAST         as H
 import qualified HAST.BDD          as H
@@ -32,12 +37,22 @@ import qualified HAST.BDD          as H
 
 -- Generate condition that holds whenever the magic block specified by 
 -- mbpos is active.
-mbToStateConstraint :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> Pos -> ST s (DDNode s u)
-mbToStateConstraint spec m refdyn pdb mbpos = do
-    undefined
+mbToStateConstraint :: Spec -> C.STDdManager s u -> DB s u AbsVar AbsVar -> Pos -> ST s (DDNode s u)
+mbToStateConstraint spec m pdb mbpos = do
+    let ?spec = spec
+    let ops@Ops{..} = constructOps m
+        (pid, mbloc, _) = fromJust $ specLookupMB spec mbpos
+        cfa = specGetCFA spec (EPIDProc pid)
+    (flip evalStateT) (CompileState (NewVars []) pdb) 
+     $ H.compileBDD m (compileOps ops) (avarGroupTag . bavarAVar) 
+     $ compileFormula 
+     $ ptrFreeBExprToFormula 
+     $ mkPCEq cfa pid (mkPC pid mbloc)
 
-simulateCFAAbstract :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> CFA -> DDNode s u -> Loc -> ST s (Maybe (DDNode s u))
-simulateCFAAbstract spec m refdyn pdb cfa initset loc = do
+-- Abstractly simulate CFA consisting of controllable transitions from 
+-- initial location to the specified pause location.
+simulateCFAAbstractToLoc :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> CFA -> DDNode s u -> Loc -> ST s (Maybe (DDNode s u))
+simulateCFAAbstractToLoc spec m refdyn pdb cfa initset loc = do
     let ?m    = m
         ?spec = spec
         ?db   = pdb
@@ -50,6 +65,22 @@ simulateCFAAbstract spec m refdyn pdb cfa initset loc = do
                  (M.lookup loc annot)
     mapM_ deref $ M.elems annot
     return res
+
+-- Abstractly simulate controllable CFA to completion.  
+-- Return the set of final states.
+simulateCFAAbstractToCompletion :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> CFA -> DDNode s u -> ST s (DDNode s u)
+simulateCFAAbstractToCompletion spec m refdyn pdb cfa initset = do
+    let ?m    = m
+        ?spec = spec
+        ?db   = pdb
+        ?rd   = refdyn
+    let Ops{..} = constructOps ?m
+    annot <- cfaAnnotateReachable cfa initset
+    let finalsets = mapMaybe (\loc -> M.lookup loc annot) $ cfaFinal cfa
+    res <- disjderef finalsets
+    mapM_ deref $ M.elems annot
+    return res
+
 
 ----------------------------------------------------------
 -- Internals
@@ -77,7 +108,7 @@ simulateControllable from tr = do
     deref trfromc3
     to <- shift _nextNodes _trackedNodes to'
     deref to'
-    totc <- applyUncontrollableTC ops (SynthData sinfo trans (error "simulateControllable: uncontrollableTransitions is undefined")) to
+    totc <- applyUncontrollableTC ops (SynthData sinfo trans (error "simulateControllable: combinedTrel is undefined") (error "simulateControllable: uncontrollableTransitions is undefined")) to
     deref to
     return totc
 
