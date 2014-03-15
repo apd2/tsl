@@ -14,6 +14,7 @@ import PID
 import Interface
 import TermiteGame
 import BddRecord
+import BddUtil
 import ISpec hiding (getVar)
 import Predicate
 import TranSpec
@@ -28,8 +29,6 @@ import BFormula
 import qualified CuddExplicitDeref as C
 import qualified HAST.HAST         as H
 import qualified HAST.BDD          as H
-
---computeReachable :: ST s (DDNode s u)
 
 ----------------------------------------------------------
 -- Interface
@@ -70,6 +69,7 @@ simulateCFAAbstractToLoc spec m refdyn pdb cfa initset loc = do
 -- Return the set of final states.
 simulateCFAAbstractToCompletion :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> CFA -> DDNode s u -> ST s (DDNode s u)
 simulateCFAAbstractToCompletion spec m refdyn pdb cfa initset = do
+    let ops = constructOps m
     let ?m    = m
         ?spec = spec
         ?db   = pdb
@@ -77,9 +77,12 @@ simulateCFAAbstractToCompletion spec m refdyn pdb cfa initset = do
     let Ops{..} = constructOps ?m
     annot <- cfaAnnotateReachable cfa initset
     let finalsets = mapMaybe (\loc -> M.lookup loc annot) $ cfaFinal cfa
-    res <- disjderef finalsets
     mapM_ deref $ M.elems annot
+    res <- disj ops finalsets
+    mapM_ deref finalsets
     return res
+
+-- simulateGameAbstract :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> 
 
 
 ----------------------------------------------------------
