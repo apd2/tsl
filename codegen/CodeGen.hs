@@ -1,7 +1,9 @@
 {-# LANGUAGE ImplicitParams, RecordWildCards, TemplateHaskell #-}
 
-module CodeGen(simulateCFAAbstractToLoc,
-               simulateCFAAbstractToCompletion) where
+module CodeGen(CompiledMB,
+               simulateCFAAbstractToLoc,
+               simulateCFAAbstractToCompletion,
+               simulateGameAbstract) where
 
 import Data.List
 import Data.Maybe
@@ -26,9 +28,18 @@ import Pos
 import CG
 import Inline
 import BFormula
+import qualified IExpr             as I
 import qualified CuddExplicitDeref as C
 import qualified HAST.HAST         as H
 import qualified HAST.BDD          as H
+
+
+----------------------------------------------------------
+-- Type
+----------------------------------------------------------
+
+type CompiledMB      = (Pos, CFA)
+type CompiledMB' s u = (DDNode s u, CFA)
 
 ----------------------------------------------------------
 -- Interface
@@ -39,14 +50,11 @@ import qualified HAST.BDD          as H
 mbToStateConstraint :: Spec -> C.STDdManager s u -> DB s u AbsVar AbsVar -> Pos -> ST s (DDNode s u)
 mbToStateConstraint spec m pdb mbpos = do
     let ?spec = spec
-    let ops@Ops{..} = constructOps m
-        (pid, mbloc, _) = fromJust $ specLookupMB spec mbpos
+        ?m    = m
+        ?db   = pdb
+    let (pid, mbloc, _) = fromJust $ specLookupMB spec mbpos
         cfa = specGetCFA spec (EPIDProc pid)
-    (flip evalStateT) (CompileState (NewVars []) pdb) 
-     $ H.compileBDD m (compileOps ops) (avarGroupTag . bavarAVar) 
-     $ compileFormula 
-     $ ptrFreeBExprToFormula 
-     $ mkPCEq cfa pid (mkPC pid mbloc)
+    compileExpr $ I.conj [mkMagicVar, mkPCEq cfa pid (mkPC pid mbloc)]
 
 -- Abstractly simulate CFA consisting of controllable transitions from 
 -- initial location to the specified pause location.
@@ -82,12 +90,82 @@ simulateCFAAbstractToCompletion spec m refdyn pdb cfa initset = do
     mapM_ deref finalsets
     return res
 
--- simulateGameAbstract :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> 
+-- Simulate the entire game starting from the initial set. Include 
+-- completely implemented magic blocks in the simulation.  Returns the set
+-- of reachable states.
+simulateGameAbstract :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> [CompiledMB] -> DDNode s u -> ST s (DDNode s u)
+simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sections = SectionInfo{..}, ..} mbs initset' = do
+    let Ops{..} = constructOps m
+    let ?m = m
+        ?spec = spec
+        ?rd = refdyn
+        ?db = pdb
+    -- Compute the set of initial states
+    let initvs = (concatMap sel1 $ M.elems _initVars) \\ (concatMap sel1 $ M.elems _stateVars)
+    initcube <- nodesToCube initvs
+    init0 <- bexists initcube initset'
+    deref initcube
+    initset <- bexists _untrackedCube init0
+    deref init0
+    -- Compute magic block constraints
+    mbs' <- mapM (\(p, cfa) -> do cond <- mbToStateConstraint spec m pdb p
+                                  return (cond, cfa)) mbs
+    -- Start fix point computation from this set
+    res <- simulateGameAbstractFrom mbs' initset
+    mapM_ (deref . fst) mbs'
+    return res
 
 
 ----------------------------------------------------------
 -- Internals
 ----------------------------------------------------------
+
+-- Simulate the entire game starting from the given set.
+simulateGameAbstractFrom ::(?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar) => [CompiledMB' s u] -> DDNode s u -> ST s (DDNode s u)
+simulateGameAbstractFrom mbs initset = do
+    let ops@Ops{..} = constructOps ?m
+        RefineDynamic{..} = ?rd
+        DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
+    -- transitive closure of uncontrollable from initset
+    reach <- applyUncontrollableTC ops (SynthData sinfo trans (error "simulateControllable: combinedTrel is undefined") (error "simulateControllable: uncontrollableTransitions is undefined")) initset
+    -- simulate magic blocks
+    deltas <- mapM (\(cond, cfa) -> do bef <- cond .& reach
+                                       aft <- simulateCFAAbstractToCompletion ?spec ?m ?rd ?db cfa bef
+                                       deref bef
+                                       aft' <- clearMagic aft
+                                       deref aft
+                                       return aft')
+                   mbs
+    -- add new sets
+    reach' <- disj ops $ reach:deltas
+    mapM_ deref $ reach:deltas
+    done <- leq reach' initset
+    deref initset
+    -- repeat unless fixed point reached
+    if done
+       then return reach'
+       else simulateGameAbstractFrom mbs reach'
+
+-- Takes a set of states and forces the magic variable to false.
+clearMagic :: (?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> ST s (DDNode s u)
+clearMagic set = do
+    let Ops{..} = constructOps ?m
+        DB{_symbolTable = SymbolInfo{..}, ..} = ?db
+    magcube <- nodesToCube $ sel1 $ _stateVars M.! (AVarBool $ TVar mkMagicVarName)
+    set' <- bexists magcube set
+    deref magcube
+    nmagic <- compileExpr $ I.neg mkMagicVar
+    res <- band set' nmagic
+    deref nmagic
+    deref set'
+    return res
+
+compileExpr :: (?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => I.Expr -> ST s (DDNode s u)
+compileExpr e = 
+    (flip evalStateT) (CompileState (NewVars []) ?db) 
+     $ H.compileBDD ?m (compileOps $ constructOps ?m) (avarGroupTag . bavarAVar) 
+     $ compileFormula 
+     $ ptrFreeBExprToFormula e
 
 -- Simulate a controllable transition tr from "from" followed by a transitive 
 -- closure of uncontrollable transitions.
