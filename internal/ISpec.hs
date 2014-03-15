@@ -7,6 +7,7 @@ module ISpec(Spec(..),
              specGetProcess,
              specAllCFAs,
              specAllProcs,
+             specAllMBs,
              specLookupMB,
              specGetCFA,
              specMapCFA,
@@ -119,9 +120,9 @@ specAllCFAs :: Spec -> [(EPID, CFA)]
 specAllCFAs Spec{..} = concatMap (\p -> procAllCFAs (PrID (procName p) []) p) specProc  ++
                        [(EPIDCont, specCAct)]
 
---specAllMBs :: Spec -> [(PrID, Loc)]
---specAllMBs spec = concatMap (\(pid, proc) -> map ((pid, ) . fst) $ filter (isMBLabel . snd) $ G.labNodes $ procCFA proc)
---                  $ specAllProcs spec
+specAllMBs :: Spec -> [(Pos, PrID, Loc)]
+specAllMBs spec = concatMap (\(pid, proc) -> map (\(loc, lab) -> (pos $ locAct lab, pid, loc)) $ filter (isMBLabel . snd) $ G.labNodes $ procCFA proc)
+                  $ specAllProcs spec
 
 specLookupMB :: Spec -> Pos -> Maybe (PrID, Loc, F.Scope)
 specLookupMB spec p = listToMaybe
