@@ -3,7 +3,8 @@
 module CodeGen(CompiledMB,
                simulateCFAAbstractToLoc,
                simulateCFAAbstractToCompletion,
-               simulateGameAbstract) where
+               simulateGameAbstract,
+               restrictToMB) where
 
 import Data.List
 import Data.Maybe
@@ -55,6 +56,15 @@ mbToStateConstraint spec m pdb mbpos = do
     let (pid, mbloc, _) = fromJust $ specLookupMB spec mbpos
         cfa = specGetCFA spec (EPIDProc pid)
     compileExpr $ I.conj [mkMagicVar, mkPCEq cfa pid (mkPC pid mbloc)]
+
+-- Restrict a relation to states inside the MB
+restrictToMB :: Spec -> C.STDdManager s u -> DB s u AbsVar AbsVar -> Pos -> DDNode s u -> ST s (DDNode s u)
+restrictToMB spec m pdb mbpos set = do
+    let Ops{..} = constructOps m
+    cond <- mbToStateConstraint spec m pdb mbpos
+    res <- cond .& set
+    deref cond
+    return res
 
 -- Abstractly simulate CFA consisting of controllable transitions from 
 -- initial location to the specified pause location.
