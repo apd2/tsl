@@ -210,16 +210,14 @@ simulateControllable from tr = do
 cfaAnnotateReachable :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar) => CFA -> DDNode s u -> ST s (M.Map Loc (DDNode s u))
 cfaAnnotateReachable cfa initset = do
     let Ops{..} = constructOps ?m
-    -- decompose into transitions
-    let states = cfaDelayLocs cfa
+    -- decompose into transitions; ignore transitions from MBs
+    let states = filter (not . isMBLoc cfa) $ cfaDelayLocs cfa
         tcfas = concatMap (cfaLocTrans cfa) states
     -- compile transitions
     tupds <- mapM (\(to, tcfa) -> do let from = head $ cfaSource tcfa
                                          sink = head $ cfaSink   tcfa
                                      upd <- compileTransition (Transition from sink tcfa)
-                                     if isMBLabel $ cfaLocLabel from cfa
-                                        then error "cfaAnnotateReachable: outgoing transition from magic block"
-                                        else return (from, to, upd))
+                                     return (from, to, upd))
                   tcfas
     res <- annotate' tupds [cfaInitLoc] (M.singleton cfaInitLoc initset) 
     mapM_ (deref . sel3) tupds
