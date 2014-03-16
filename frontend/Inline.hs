@@ -253,14 +253,16 @@ mkTagVarName = "$tag"
 mkTagVar :: I.Expr
 mkTagVar = I.EVar mkTagVarName
 
-mkTagIdle = "$tagidle"
+mkTagExit      = "$tagexit" -- exit magic block
+mkTagDoNothing = "$tagnop"  -- idle loop transition
 -- mkTagNone = "$tagnone"
 
 mkTagVarDecl :: (?spec::Spec) => (I.Var, I.Enumeration)
 mkTagVarDecl = (I.Var False I.VarTmp mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" mkTagList)
 
 mkTagList :: (?spec::Spec) => [String]
-mkTagList = mkTagIdle :
+mkTagList = mkTagExit :
+            mkTagDoNothing :
             (map sname
              $ filter ((== Task Controllable) . methCat)
              $ tmMethod tmMain)
