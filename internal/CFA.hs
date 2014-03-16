@@ -15,6 +15,7 @@ module CFA(Statement(..),
            isDelayLabel,
            isDeadendLoc,
            isMBLabel,
+           isMBLoc,
            cfaFindMBs,
            cfaFindMBAtPos,
            newCFA,
@@ -212,7 +213,11 @@ isMBLabel :: LocLabel -> Bool
 isMBLabel lab = isDelayLabel lab && 
                          case locAct lab of
                               ActStat (F.SMagic _ _) -> True
-                              _                      -> False                             
+                              _                      -> False
+
+isMBLoc :: CFA -> Loc -> Bool
+isMBLoc cfa loc = isMBLabel $ cfaLocLabel loc cfa
+
 cfaFindMBs :: CFA -> [Loc]
 cfaFindMBs cfa = nub 
                  $ filter (\l -> case locAct $ cfaLocLabel l cfa of
