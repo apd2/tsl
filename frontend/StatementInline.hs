@@ -323,10 +323,12 @@ statToCFA' before after s@(SMagic _ _) | ?nestedmb = do
 --             Left  i -> pos i
 --             Right c -> pos c
 
-statToCFA' before after (SMagExit _ _) = do
---    aftcont <- ctxInsTrans' before  $ I.TranStat $ mkContVar  I.=: I.false
---    aftpid  <- ctxInsTrans' aftcont $ I.TranStat $ mkPIDVar   I.=: mkPIDEnum pidCont
+statToCFA' before after (SMagExit _ _) = 
     ctxInsTrans before after $ I.TranStat $ mkMagicVar I.=: I.false
+
+statToCFA' before after (SDoNothing _ _) = 
+    ctxInsTrans before after $ I.TranNop
+
 
 methInline :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> I.Loc -> Method -> [Maybe Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
 methInline before after meth margs mlhs act = do

@@ -311,6 +311,7 @@ mkCTran = {- I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar c
     where sc   = ScopeTemplate tmMain
           ctasks = filter ((== Task Controllable) . methCat) $ tmMethod tmMain
           stats = SMagExit nopos Nothing : 
+                  SDoNothing nopos Nothing :
                   (map (\m -> SInvoke nopos Nothing (MethodRef nopos [name m]) 
                               $ map (\a -> if' (argDir a == ArgIn) (Just $ ENonDet nopos) Nothing) (methArg m))
                    ctasks)

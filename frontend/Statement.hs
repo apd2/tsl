@@ -1,6 +1,6 @@
 module Statement(Statement(SVarDecl,SReturn,SSeq,SPar,SForever,SDo,
                            SWhile,SFor,SChoice,SPause,SWait,SStop,SBreak,SInvoke,
-                           SAssert,SAssume,SAssign,SITE,SCase,SMagic,SMagExit,stLab),
+                           SAssert,SAssume,SAssign,SITE,SCase,SMagic,SMagExit,SDoNothing,stLab),
                  stmtVar,
                  sSeq) where
 
@@ -14,27 +14,28 @@ import Expr
 import TVar
 
 -- Statements
-data Statement = SVarDecl {stpos::Pos, stLab::Maybe Ident, svar::Var}
-               | SReturn  {stpos::Pos, stLab::Maybe Ident, retval::(Maybe Expr)}
-               | SSeq     {stpos::Pos, stLab::Maybe Ident, statements::[Statement]}
-               | SPar     {stpos::Pos, stLab::Maybe Ident, procs::[Statement]}
-               | SForever {stpos::Pos, stLab::Maybe Ident, body::Statement}
-               | SDo      {stpos::Pos, stLab::Maybe Ident, body::Statement, cond::Expr}
-               | SWhile   {stpos::Pos, stLab::Maybe Ident, cond::Expr, body::Statement}
-               | SFor     {stpos::Pos, stLab::Maybe Ident, limits::(Maybe Statement, Expr, Statement), body::Statement}
-               | SChoice  {stpos::Pos, stLab::Maybe Ident, statements::[Statement]}
-               | SPause   {stpos::Pos, stLab::Maybe Ident}
-               | SWait    {stpos::Pos, stLab::Maybe Ident, cond::Expr}
-               | SStop    {stpos::Pos, stLab::Maybe Ident}
-               | SBreak   {stpos::Pos, stLab::Maybe Ident}
-               | SInvoke  {stpos::Pos, stLab::Maybe Ident, mname::MethodRef, args::[Maybe Expr]}
-               | SAssert  {stpos::Pos, stLab::Maybe Ident, cond::Expr}
-               | SAssume  {stpos::Pos, stLab::Maybe Ident, cond::Expr}
-               | SAssign  {stpos::Pos, stLab::Maybe Ident, lhs::Expr, rhs::Expr}
-               | SITE     {stpos::Pos, stLab::Maybe Ident, cond::Expr, sthen::Statement, selse::(Maybe Statement)}     -- if () then {..} [else {..}]
-               | SCase    {stpos::Pos, stLab::Maybe Ident, caseexpr::Expr, cases::[(Expr, Statement)], def::(Maybe Statement)}
-               | SMagic   {stpos::Pos, stLab::Maybe Ident}
-               | SMagExit {stpos::Pos, stLab::Maybe Ident}
+data Statement = SVarDecl   {stpos::Pos, stLab::Maybe Ident, svar::Var}
+               | SReturn    {stpos::Pos, stLab::Maybe Ident, retval::(Maybe Expr)}
+               | SSeq       {stpos::Pos, stLab::Maybe Ident, statements::[Statement]}
+               | SPar       {stpos::Pos, stLab::Maybe Ident, procs::[Statement]}
+               | SForever   {stpos::Pos, stLab::Maybe Ident, body::Statement}
+               | SDo        {stpos::Pos, stLab::Maybe Ident, body::Statement, cond::Expr}
+               | SWhile     {stpos::Pos, stLab::Maybe Ident, cond::Expr, body::Statement}
+               | SFor       {stpos::Pos, stLab::Maybe Ident, limits::(Maybe Statement, Expr, Statement), body::Statement}
+               | SChoice    {stpos::Pos, stLab::Maybe Ident, statements::[Statement]}
+               | SPause     {stpos::Pos, stLab::Maybe Ident}
+               | SWait      {stpos::Pos, stLab::Maybe Ident, cond::Expr}
+               | SStop      {stpos::Pos, stLab::Maybe Ident}
+               | SBreak     {stpos::Pos, stLab::Maybe Ident}
+               | SInvoke    {stpos::Pos, stLab::Maybe Ident, mname::MethodRef, args::[Maybe Expr]}
+               | SAssert    {stpos::Pos, stLab::Maybe Ident, cond::Expr}
+               | SAssume    {stpos::Pos, stLab::Maybe Ident, cond::Expr}
+               | SAssign    {stpos::Pos, stLab::Maybe Ident, lhs::Expr, rhs::Expr}
+               | SITE       {stpos::Pos, stLab::Maybe Ident, cond::Expr, sthen::Statement, selse::(Maybe Statement)}     -- if () then {..} [else {..}]
+               | SCase      {stpos::Pos, stLab::Maybe Ident, caseexpr::Expr, cases::[(Expr, Statement)], def::(Maybe Statement)}
+               | SMagic     {stpos::Pos, stLab::Maybe Ident}
+               | SMagExit   {stpos::Pos, stLab::Maybe Ident}
+               | SDoNothing {stpos::Pos, stLab::Maybe Ident}
 instance PP Statement where
     pp s = case stLab s of
                 Nothing -> pp' s
@@ -69,6 +70,7 @@ instance PP Statement where
         pp' (SMagic   _ _)                     = text "..."
         pp' (SMagic   _ _)                     = text "..."
         pp' (SMagExit _ _)                     = text "exit"
+        pp' (SDoNothing _ _)                   = text "do_nothing"
 
 instance WithPos Statement where
     pos       = stpos
