@@ -135,7 +135,7 @@ equant' vs solver rels =
            Just cas -> -- trace ("bvEquant " ++ show atoms ++ "\nTest case:\n" ++ test)
                        fdisj 
                        $ filter (\f -> smtCheckSAT solver [f] /= Just False)
-                       $ map (fconj . map (catomToForm vmap)) cas
+                       $ map (fconj . map (catomToForm vmap) . fst) cas
            Nothing  -> error $ "bvEquant failed on: " ++ show atoms ++ "\nTest case:\n" ++ test                                        
     where forms         = map (\(r, t1, t2) -> ptrFreeBExprToFormula $ EBinOp (bvRelToOp r) (termToExpr t1) (termToExpr t2)) rels
           ((atoms, qvs), vmap) = runState (do _atoms <- mapM relToAtom rels
