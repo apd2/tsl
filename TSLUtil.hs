@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module TSLUtil(err,
+module TSLUtil((<$*>),
+               err,
                assert,
                uniqNames,
                grCycle,
@@ -17,6 +18,7 @@ module TSLUtil(err,
                sanitize) where
 
 import Control.Monad.Error
+import Control.Applicative
 import Data.List
 import Data.Maybe
 import Data.Graph.Inductive
@@ -32,6 +34,9 @@ import Data.String.Utils
 import Util hiding (name)
 import Pos
 import Name
+
+(<$*>) :: [[a]] -> [[a]]
+(<$*>) as = foldl' (\xs a -> (\bs b -> bs++[b]) <$> xs <*> a) (map (\x->[x]) (head as)) (tail as)
 
 err :: (MonadError String me) => Pos -> String -> me a
 err p e = throwError $ spos p ++ ": " ++ e
