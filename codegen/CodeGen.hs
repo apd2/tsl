@@ -3,13 +3,13 @@
 module CodeGen (Step(..),
                 Branch(..),
                 gen1Step,
-                derefStep) where
+                derefStep,
+                mkCondition,
+                mkLabel) where
 
 import Data.Tuple.Select
 import qualified Data.Map          as M
-import Control.Monad
 import Control.Applicative
-import Data.Maybe
 import Data.List
 
 import TSLUtil
@@ -26,7 +26,6 @@ import BFormula
 import qualified IExpr             as I
 import qualified CuddExplicitDeref as C
 import qualified BddUtil           as C
-import qualified DbgTypes          as D
 
 data Branch s u = BranchITE    (DDNode s u) (DDNode s u) (Branch s u)
                 | BranchAction (DDNode s u) (DDNode s u)
@@ -51,7 +50,7 @@ derefBranch m (BranchITE i t e) = do
 derefBranch m (BranchAction i t) = do
     C.deref m i
     C.deref m t
-derefBranch m BranchStuck = return ()
+derefBranch _ BranchStuck = return ()
 
 gen1Step :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> DDNode s u -> ST s (Step s u)
 gen1Step spec m refdyn pdb set strategy = do
@@ -124,3 +123,22 @@ cubeToAsns Ops{..} rel vs = do
     let supvars = filter (any (\idx -> elem idx support) . snd) vs
     return $ map (\(av, is) -> (av, map boolArrToBitsBe $ (<$*>) $ map (C.expand . (asn !!)) is))
            $ nub supvars
+
+cubeToAsn :: Ops s u -> DDNode s u -> [(AbsVar, [Int])] -> ST s [(AbsVar, [Bool])]
+cubeToAsn Ops{..} rel vs = do
+    support <- supportIndices rel
+    asn     <- satCube rel
+    let supvars = filter (any (\idx -> elem idx support) . snd) vs
+    return $ map (\(av, is) -> (av, map (satBitToBool . (asn !!)) is))
+           $ nub supvars
+    where satBitToBool Zero  = False
+          satBitToBool One   = True
+          satBitToBool _     = False
+
+mkLabel :: C.STDdManager s u -> DB s u AbsVar AbsVar -> DDNode s u -> ST s [(AbsVar, [Bool])]
+mkLabel m DB{_symbolTable = SymbolInfo{..}, ..} lab = do
+    let ops@Ops{..} = constructOps m
+    lab' <- C.largePrime ops lab
+    asn <- cubeToAsn ops lab' $ map (mapSnd sel2) $ M.toList _labelVars
+    deref lab'
+    return asn
