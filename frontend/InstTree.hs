@@ -50,9 +50,9 @@ mapInstTree' f iid = (f iid (itreeTemplate iid)):
 itreeFlattenName :: IID -> Ident -> Ident
 itreeFlattenName iid i = Ident (pos i) $ intercalate ":" $ map sname (iid ++ [i])
 
-itreeParseName :: Ident -> (IID, Ident)
-itreeParseName i = (map atNopos $ init ids, atNopos $ last ids)
-    where ids = split ":" (sname i)
+itreeParseName :: String -> (IID, String)
+itreeParseName i = (map atNopos $ init ids, last ids)
+    where ids = split ":" i
           atNopos x = Ident nopos x
           
 
