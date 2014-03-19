@@ -1,10 +1,11 @@
 {-# LANGUAGE RecordWildCards, ImplicitParams #-}
 
-module CodeGen(exprToCGExpr,
-               cgVarRelName) where
+module CodeGen(exprToTSL2) where
 
 import Data.List
+import Text.PrettyPrint
 
+import PP
 import Name
 import InstTree
 import PID
@@ -19,6 +20,11 @@ data CGVar = PVar {cgvProc::[(IID, String)]                         , cgvVar::St
 
 type CGExpr = GExpr CGVar
 
+
+instance (?spec::F.Spec, ?pid::PrID, ?sc::Scope) => PP CGVar where
+    pp v = case cgVarRelName ?spec ?pid ?sc v of
+                Nothing  -> text $ "/*" ++ cgvVar v ++ "*/"
+                Just str -> text str
 
 cgVarRelName :: F.Spec -> PrID -> Scope -> CGVar -> Maybe String
 cgVarRelName spec pid sc cgv =
@@ -58,3 +64,11 @@ varToCGVar v =
          (Just pid, Just m)  -> let PrID p ps = pid       
                                 in  MVar (map itreeParseName (p:ps)) (itreeParseName m) vname
     where (mpid, mmeth, vname) = parseVarName v
+
+
+exprToTSL2 :: F.Spec -> PrID -> Scope -> Expr -> Doc
+exprToTSL2 spec pid sc e = 
+    let ?spec = spec
+        ?pid  = pid
+        ?sc   = sc
+    in pp $ exprToCGExpr e
