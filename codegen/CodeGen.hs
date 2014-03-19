@@ -1,0 +1,60 @@
+{-# LANGUAGE RecordWildCards, ImplicitParams #-}
+
+module CodeGen(exprToCGExpr,
+               cgVarRelName) where
+
+import Data.List
+
+import Name
+import InstTree
+import PID
+import NS
+import IExpr
+import Inline
+import qualified Spec as F
+
+data CGVar = PVar {cgvProc::[(IID, String)]                         , cgvVar::String} -- Process-scope variable
+           | MVar {cgvProc::[(IID, String)], cgvMethod::(IID,String), cgvVar::String} -- Method-scope variable (argument or local)
+           | GVar {cgvInst::IID                                     , cgvVar::String} -- Template-global variable
+
+type CGExpr = GExpr CGVar
+
+
+cgVarRelName :: F.Spec -> PrID -> Scope -> CGVar -> Maybe String
+cgVarRelName spec pid sc cgv =
+    case cgv of
+         PVar{..} -> Nothing -- cannot access process-scope variables inside magic block
+         MVar{..} -> if pid' == cgvProc && m' == cgvMethod -- can only access variables inside local method scope
+                        then Just cgvVar
+                        else Nothing
+         GVar{..} -> fmap (\path -> intercalate "." $ (map sname path) ++ [cgvVar])
+                          $ let ?spec = spec in itreeAbsToRelPath (fst m') cgvInst
+    where PrID p ps       = pid
+          ScopeMethod _ m = sc
+          pid'            = map itreeParseName (p:ps)
+          m'              = itreeParseName $ sname m
+
+
+exprToCGExpr :: Expr -> CGExpr
+exprToCGExpr (EVar n)          = EVar $ varToCGVar n
+exprToCGExpr (EConst c)        = EConst c
+exprToCGExpr (EField e f)      = EField (exprToCGExpr e) f
+exprToCGExpr (EIndex a i)      = EIndex (exprToCGExpr a) (exprToCGExpr i)
+exprToCGExpr (ERange e (f, t)) = ERange (exprToCGExpr e) (exprToCGExpr f, exprToCGExpr t)
+exprToCGExpr (ELength e)       = ELength (exprToCGExpr e)
+exprToCGExpr (EUnOp op e)      = EUnOp op (exprToCGExpr e)
+exprToCGExpr (EBinOp op e1 e2) = EBinOp op (exprToCGExpr e1) (exprToCGExpr e2)
+exprToCGExpr (ESlice e s)      = ESlice (exprToCGExpr e) s
+exprToCGExpr (ERel n es)       = ERel n (map exprToCGExpr es)
+
+
+varToCGVar :: String -> CGVar
+varToCGVar v = 
+    case (mpid, mmeth) of
+         (Nothing , Nothing) -> let (iid, v') = itreeParseName vname 
+                                in  GVar iid v'
+         (Just pid, Nothing) -> let PrID p ps = pid
+                                in  PVar (map itreeParseName (p:ps)) vname
+         (Just pid, Just m)  -> let PrID p ps = pid       
+                                in  MVar (map itreeParseName (p:ps)) (itreeParseName m) vname
+    where (mpid, mmeth, vname) = parseVarName v
