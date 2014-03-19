@@ -12,6 +12,7 @@ module ExprInline(NameGen,
 import Data.List
 import Data.Maybe
 import Control.Monad.State
+import Control.Applicative
 import qualified Data.Map as M
 
 import qualified IExpr as I
@@ -163,15 +164,13 @@ exprToIExprs e@(EStruct _ _ (Left fs)) _ = do
     sc <- gets ctxScope
     let ?scope = sc
     let Type _ (StructSpec _ sfs) = typ' e
-    fs' <- mapM (\f -> do let v = snd $ fromJust $ (\n -> find ((==n) . fst) fs) $ name f
-                          exprToIExprs v (tspec f)) sfs
-    return $ concat fs'
+    concat <$> mapM (\f -> do let v = snd $ fromJust $ (\n -> find ((==n) . fst) fs) $ name f
+                              exprToIExprs v (tspec f)) sfs
 exprToIExprs e@(EStruct _ _ (Right fs)) _ = do 
     sc <- gets ctxScope
     let ?scope = sc
     let Type _ (StructSpec _ sfs) = typ' e
-    fs' <- mapM (\(f,v) -> exprToIExprs v (tspec f)) $ zip sfs fs
-    return $ concat fs'
+    concat <$> mapM (\(f,v) -> exprToIExprs v (tspec f)) (zip sfs fs)
 exprToIExprs e t                              = do 
     sc <- gets ctxScope
     let ?scope = sc
