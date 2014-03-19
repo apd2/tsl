@@ -104,7 +104,7 @@ storeTryEval s              (EBinOp op e1 e2)  = do s1 <- storeTryEval s e1
                                                                           Eq  -> s1 == s2
                                                                           Neq -> s1 /= s2
 storeTryEval s              (ESlice e sl)        = fmap (\v -> SVal $ evalConstExpr (ESlice (EConst v) sl)) $ storeTryEvalScalar s e
-storeTryEval s@(SStruct _ sp) (ERel n as)        = trace ("storeTryEval " ++ show (ERel n as)) $
+storeTryEval s@(SStruct _ sp) e@(ERel n as)      = trace ("storeTryEval " ++ show e) $
                                                    let ?spec = sp in 
                                                    let rel = getRelation n
                                                        rules = map snd $ filter ((== Implied) . fst) $ snd $ instantiateRelation rel as

@@ -2,7 +2,8 @@
 
 module IExpr(LVal(..),
              Val(..),
-             Expr(..),
+             GExpr(..),
+             Expr,
              lvalToExpr,
              valSlice,
              valDefault,
@@ -156,17 +157,19 @@ parseVal (Enum n) str =
          Just enum  -> if' (enumName enum == n) (return $ EnumVal str)
                        $ throwError $ "Enumerator type mismatch" 
 
-data Expr = EVar      String
-          | EConst    Val
-          | EField    Expr String
-          | EIndex    Expr Expr
-          | ERange    Expr (Expr, Expr)
-          | ELength   Expr              -- Expr must be a VarArray
-          | EUnOp     UOp Expr
-          | EBinOp    BOp Expr Expr
-          | ESlice    Expr Slice
-          | ERel      String [Expr]
-          deriving (Eq, Ord)
+data GExpr v = EVar      v
+             | EConst    Val
+             | EField    (GExpr v) String
+             | EIndex    (GExpr v) (GExpr v)
+             | ERange    (GExpr v) (GExpr v, GExpr v)
+             | ELength   (GExpr v)            -- Expr must be a VarArray
+             | EUnOp     UOp (GExpr v)
+             | EBinOp    BOp (GExpr v) (GExpr v)
+             | ESlice    (GExpr v) Slice
+             | ERel      String [GExpr v]
+             deriving (Eq, Ord)
+
+type Expr = GExpr String
 
 instance PP Expr where
     pp (EVar n)          = pp n
