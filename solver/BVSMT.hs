@@ -3,7 +3,8 @@
 
 {-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
-module BVSMT(bvSolver,
+module BVSMT(VarAsn(..),
+             bvSolver,
              bvSolve,
              bvRelNormalise,
              bvTermNormalise) where
@@ -80,7 +81,7 @@ bvTermNormalise t = {-trace ("bvTermNormalise " ++ show t ++ " = " ++ show res)-
           ct = BV.termToCTerm t'
 
 --------------------------------------------------------------------
--- 
+-- Symbolically solving systems of equations and inequalities
 --------------------------------------------------------------------
 
 -- Represents a solution of a system of equations.
@@ -128,7 +129,8 @@ solToScalarAsn sol e = AsnScalar
     $ filter ((== show e) . BV.vName . fst . fst) sol
     where convert :: Either Bool BV.CTerm -> Either Bool Expr
           convert (Left b)   = Left b
-          convert (Right ct) = Right $ termToExpr $ ctermToTerm ct
+          convert (Right ct) = Right $ fixupType (typ e) $ termToExpr $ ctermToTerm ct
+
 --------------------------------------------------------------------
 -- SMT solver interface
 --------------------------------------------------------------------
@@ -383,14 +385,11 @@ bvRelToOp BV.Lte = Lte
 
 -- Change integer constants to enums where appropriate
 fixupTypes :: (?spec::Spec) => Expr -> Expr
-fixupTypes (EBinOp op e1 e2) = EBinOp op e1' e2'
-    where
-    e2' = case typ e1 of 
-               Enum n -> if' (isConstExpr e2) (EConst $ EnumVal $ (enumEnums $ getEnumeration n) !! fromInteger (ivalVal $ evalConstExpr e2)) e2
-               _      -> e2
-    e1' = case typ e1 of
-               Enum n -> if' (isConstExpr e1) (EConst $ EnumVal $ (enumEnums $ getEnumeration n) !! fromInteger (ivalVal $ evalConstExpr e1)) e1
-               _      -> e1
+fixupTypes (EBinOp op e1 e2) = EBinOp op (fixupType (typ e2) e1) (fixupType (typ e1) e2)
+
+fixupType :: (?spec::Spec) => Type -> Expr -> Expr
+fixupType (Enum n) e = if' (isConstExpr e) (EConst $ EnumVal $ (enumEnums $ getEnumeration n) !! fromInteger (ivalVal $ evalConstExpr e)) e
+fixupType _        e = e
 
 ctermToTerm :: (?spec::Spec, ?vmap::VarMap) => BV.CTerm -> Term
 ctermToTerm t@BV.CTerm{..} | null ctVars
