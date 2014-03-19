@@ -1,11 +1,11 @@
 {-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
-module CodeGen (Step(..),
-                Branch(..),
-                gen1Step,
-                derefStep,
-                mkCondition,
-                mkLabel) where
+module CFG (Step(..),
+            Branch(..),
+            gen1Step,
+            derefStep,
+            mkCondition,
+            mkLabel) where
 
 import Data.Tuple.Select
 import qualified Data.Map          as M

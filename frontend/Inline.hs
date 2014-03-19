@@ -301,7 +301,7 @@ scopeLMap mpid sc =
          ScopeMethod   _ meth -> methodLMap mpid meth
          ScopeProcess  _ proc -> procLMap proc
          ScopeTemplate _      -> M.empty
-         
+ 
 globalNMap :: (?spec::Spec) => NameMap
 globalNMap = M.fromList $ gvars ++ wires ++ enums ++ consts
     where -- global variables
