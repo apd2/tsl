@@ -171,7 +171,7 @@ data GExpr v = EVar      v
 
 type Expr = GExpr String
 
-instance PP Expr where
+instance (PP v) => PP (GExpr v) where
     pp (EVar n)          = pp n
     pp (EConst v)        = pp v
     pp (EField e f)      = pp e <> char '.' <> pp f
