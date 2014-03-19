@@ -3,7 +3,8 @@
 
 {-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
-module BVSMT(bvSolver, 
+module BVSMT(bvSolver,
+             bvSolve,
              bvRelNormalise,
              bvTermNormalise) where
 
@@ -78,6 +79,56 @@ bvTermNormalise t = {-trace ("bvTermNormalise " ++ show t ++ " = " ++ show res)-
           (t', vmap) = runState (termToBVTerm t) M.empty
           ct = BV.termToCTerm t'
 
+--------------------------------------------------------------------
+-- 
+--------------------------------------------------------------------
+
+-- Represents a solution of a system of equations.
+-- Matches every scalar field of a variable to an expression, 
+-- or True if any value is allowed or False if no solution could be
+-- found for this variable.
+data VarAsn = AsnScalar [((Int,Int), Either Bool Expr)]
+            | AsnStruct [(String, VarAsn)]
+
+
+-- Solve a system of equations for a subset of variables.
+bvSolve :: (?spec::Spec) => [(AbsVar,[Bool])] -> [String] -> [(Expr, [(String, VarAsn)])]
+bvSolve asns vs = 
+    case BV.exTerm qvs atoms of
+         Just cas -> let ?vmap = vmap in map (solToVarAsns vmap vs) cas 
+         Nothing  -> error $ "bvSolve failed on: " ++ show atoms ++ "\nTest case:\n" ++ test
+    where rels = if any (avarIsRelPred . fst) asns
+                    then error "bvSolve: cannot handle inductive predicates"
+                    else -- TODO: commented out stuff may actually be useful
+                         -- resolveAddresses 
+                         -- $ resolveIndices 
+                         -- $ return $
+                         map avarToRel asns
+          ((atoms, qvs), vmap) = runState (do _atoms <- mapM relToAtom rels
+                                              _qvs   <- mapM mkVar vs
+                                              return (_atoms, concat _qvs)) M.empty
+          test = "([" ++ (intercalate "," $ map BV.varToHaskell qvs) ++ "], [" ++ 
+                         (intercalate ", " $ map BV.atomToHaskell atoms) ++ "])"
+
+solToVarAsns :: (?spec::Spec, ?vmap::VarMap) => VarMap -> [String] -> ([BV.CAtom], [(BV.SVar, Either Bool BV.CTerm)]) -> (Expr, [(String, VarAsn)])
+solToVarAsns vmap vs (cond, sol) = (conj $ map (catomToExpr vmap) cond, map (\v -> (v, solToVarAsn sol $ EVar v)) vs)
+
+solToVarAsn :: (?spec::Spec, ?vmap::VarMap) => [(BV.SVar, Either Bool BV.CTerm)] -> Expr -> VarAsn
+solToVarAsn sol e = 
+    case typ e of
+         Struct fs  -> AsnStruct $ map (\(Field n _) -> (n, solToVarAsn sol $ EField e n)) fs
+         Array _ _  -> error "solToVarAsn: Array is not supported"
+         VarArray _ -> error "solToVarAsn: VarArray is not supported"
+         _          -> solToScalarAsn sol e
+
+solToScalarAsn :: (?spec::Spec, ?vmap::VarMap) => [(BV.SVar, Either Bool BV.CTerm)] -> Expr -> VarAsn
+solToScalarAsn sol e = AsnScalar 
+    $ sortBy (\((l1,_),_) ((l2,_),_) -> compare l1 l2)
+    $ map (\((_,s),v) -> (s, convert v))
+    $ filter ((== show e) . BV.vName . fst . fst) sol
+    where convert :: Either Bool BV.CTerm -> Either Bool Expr
+          convert (Left b)   = Left b
+          convert (Right ct) = Right $ termToExpr $ ctermToTerm ct
 --------------------------------------------------------------------
 -- SMT solver interface
 --------------------------------------------------------------------
@@ -317,9 +368,12 @@ termToBVTerm' t                          = error $ "termToBVTerm': term not supp
 -- Conversion back to our data structures
 --------------------------------------------------------------------
 
+catomToExpr :: (?spec::Spec) => VarMap -> BV.CAtom -> Expr
+catomToExpr vmap (BV.CAtom rel ct1 ct2) = 
+    let ?vmap = vmap in fixupTypes $ EBinOp (bvRelToOp rel) (termToExpr $ ctermToTerm ct1) (termToExpr $ ctermToTerm ct2)
+
 catomToForm :: (?spec::Spec) => VarMap -> BV.CAtom -> Formula
-catomToForm vmap (BV.CAtom rel ct1 ct2) = 
-    let ?vmap = vmap in ptrFreeBExprToFormula $ fixupTypes $ EBinOp (bvRelToOp rel) (termToExpr $ ctermToTerm ct1) (termToExpr $ ctermToTerm ct2)
+catomToForm vmap ca = ptrFreeBExprToFormula $ catomToExpr vmap ca
 
 bvRelToOp :: BV.Rel -> BOp
 bvRelToOp BV.Eq  = Eq
