@@ -167,14 +167,16 @@ derefBranch m (BranchAction i t) = do
     C.deref m t
 derefBranch _ BranchStuck = return ()
 
-gen1Step :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> DDNode s u -> ST s (Step s u)
-gen1Step spec m refdyn pdb set strategy = do
+gen1Step :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> C.DDNode s u -> Lab s u -> DDNode s u -> DDNode s u -> ST s (Step s u)
+gen1Step spec m refdyn pdb cont lp set strategy = do
     let Ops{..} = constructOps m
         DB{_sections=SectionInfo{..}, ..} = pdb
     let ?spec = spec
         ?m    = m
         ?db   = pdb
         ?rd   = refdyn
+        ?cont = cont
+        ?lp   = lp
     tagNopCond <- compileExpr (mkTagVar I.=== (I.EConst $ I.EnumVal mkTagDoNothing))
     -- Use strategy to determine states where $tagnop is a winning action
     stratinset <- set .& strategy
@@ -192,12 +194,12 @@ gen1Step spec m refdyn pdb set strategy = do
     return Step{..}
 
 -- consumes input reference
-mkBranches :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> DDNode s u -> ST s (Branch s u)
+mkBranches :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) => DDNode s u -> DDNode s u -> ST s (Branch s u)
 mkBranches strategy set = do
     let ops@Ops{..} = constructOps ?m
         DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
         RefineDynamic{..} = ?rd
-        sd = SynthData sinfo trans (error "mkBranches: combinedTrel is undefined") (error "mkBranches: cont is undefined") ?rd (error "mkBranches: lb is undefined") (error "mkBranches: cPlus is undefined")
+        sd = SynthData sinfo trans ?cont ?rd ?lp
     mcond <- ifCondition ops sd strategy set
     case mcond of
          Nothing   -> do deref set

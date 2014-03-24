@@ -69,12 +69,14 @@ restrictToMB spec m pdb mbpos set = do
 
 -- Abstractly simulate CFA consisting of controllable transitions from 
 -- initial location to the specified pause location.
-simulateCFAAbstractToLoc :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> CFA -> DDNode s u -> Loc -> ST s (Maybe (DDNode s u))
-simulateCFAAbstractToLoc spec m refdyn pdb cfa initset loc = do
+simulateCFAAbstractToLoc :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> Lab s u -> CFA -> DDNode s u -> Loc -> ST s (Maybe (DDNode s u))
+simulateCFAAbstractToLoc spec m refdyn pdb cont lp cfa initset loc = do
     let ?m    = m
         ?spec = spec
         ?db   = pdb
         ?rd   = refdyn
+        ?cont = cont
+        ?lp   = lp
     let Ops{..} = constructOps ?m
     annot <- cfaAnnotateReachable cfa initset
     res <- maybe (return Nothing)
@@ -86,13 +88,15 @@ simulateCFAAbstractToLoc spec m refdyn pdb cfa initset loc = do
 
 -- Abstractly simulate controllable CFA to completion.  
 -- Return the set of final states.
-simulateCFAAbstractToCompletion :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> CFA -> DDNode s u -> ST s (DDNode s u)
-simulateCFAAbstractToCompletion spec m refdyn pdb cfa initset = do
+simulateCFAAbstractToCompletion :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> Lab s u -> CFA -> DDNode s u -> ST s (DDNode s u)
+simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset = do
     let ops = constructOps m
     let ?m    = m
         ?spec = spec
         ?db   = pdb
         ?rd   = refdyn
+        ?cont = cont
+        ?lp   = lp
     let Ops{..} = constructOps ?m
     annot <- cfaAnnotateReachable cfa initset
     let finalsets = mapMaybe (\loc -> M.lookup loc annot) $ cfaFinal cfa
@@ -104,13 +108,15 @@ simulateCFAAbstractToCompletion spec m refdyn pdb cfa initset = do
 -- Simulate the entire game starting from the initial set. Include 
 -- completely implemented magic blocks in the simulation.  Returns the set
 -- of reachable states.
-simulateGameAbstract :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> [CompiledMB] -> DDNode s u -> ST s (DDNode s u)
-simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sections = SectionInfo{..}, ..} mbs initset' = do
+simulateGameAbstract :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> Lab s u -> [CompiledMB] -> DDNode s u -> ST s (DDNode s u)
+simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sections = SectionInfo{..}, ..} cont lp mbs initset' = do
     let Ops{..} = constructOps m
-    let ?m = m
+    let ?m    = m
         ?spec = spec
-        ?rd = refdyn
-        ?db = pdb
+        ?rd   = refdyn
+        ?db   = pdb
+        ?cont = cont
+        ?lp   = lp
     -- Compute the set of initial states
     let initvs = (concatMap sel1 $ M.elems _initVars) \\ (concatMap sel1 $ M.elems _stateVars)
     initcube <- nodesToCube initvs
@@ -132,16 +138,16 @@ simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sectio
 ----------------------------------------------------------
 
 -- Simulate the entire game starting from the given set.
-simulateGameAbstractFrom ::(?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar) => [CompiledMB' s u] -> DDNode s u -> ST s (DDNode s u)
+simulateGameAbstractFrom ::(?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u) => [CompiledMB' s u] -> DDNode s u -> ST s (DDNode s u)
 simulateGameAbstractFrom mbs initset = do
     let ops@Ops{..} = constructOps ?m
         RefineDynamic{..} = ?rd
         DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
     -- transitive closure of uncontrollable from initset
-    reach <- applyUncontrollableTC ops (SynthData sinfo trans (error "simulateControllable: combinedTrel is undefined") (error "simulateControllable: cont is undefined") ?rd (error "simulateControllable: lp is undefined") (error "simulateControllable: cPlus is undefined")) initset
+    reach <- applyUncontrollableTC ops (SynthData sinfo trans ?cont ?rd ?lp) initset
     -- simulate magic blocks
     deltas <- mapM (\(cond, cfa) -> do bef <- cond .& reach
-                                       aft <- simulateCFAAbstractToCompletion ?spec ?m ?rd ?db cfa bef
+                                       aft <- simulateCFAAbstractToCompletion ?spec ?m ?rd ?db ?cont ?lp cfa bef
                                        deref bef
                                        aft' <- clearMagic aft
                                        deref aft
@@ -181,7 +187,7 @@ compileExpr e =
 -- Simulate a controllable transition tr from "from" followed by a transitive 
 -- closure of uncontrollable transitions.
 -- Assumes that label variables and don't cares in tr.
-simulateControllable :: (?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> DDNode s u -> ST s (DDNode s u)
+simulateControllable :: (?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u) => DDNode s u -> DDNode s u -> ST s (DDNode s u)
 simulateControllable from tr = do
     -- E x, u, l . tr & from & c+c
     let ops@Ops{..} = constructOps ?m
@@ -200,7 +206,7 @@ simulateControllable from tr = do
     deref trfromc3
     to <- shift _nextNodes _trackedNodes to'
     deref to'
-    totc <- applyUncontrollableTC ops (SynthData sinfo trans (error "simulateControllable: combinedTrel is undefined") (error "simulateControllable: cont is undefined") ?rd (error "simulateControllable: lp is undefined") (error "simulateControllable: cPlus is undefined")) to
+    totc <- applyUncontrollableTC ops (SynthData sinfo trans ?cont ?rd ?lp) to
     deref to
     return totc
 
@@ -208,7 +214,7 @@ simulateControllable from tr = do
 -- Annotate pause locations with sets of states
 -- initset - set of possible initial states
 -- Assumes that pause locations that represent magic blocks do not have outgoing transitions.
-cfaAnnotateReachable :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar) => CFA -> DDNode s u -> ST s (M.Map Loc (DDNode s u))
+cfaAnnotateReachable :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u) => CFA -> DDNode s u -> ST s (M.Map Loc (DDNode s u))
 cfaAnnotateReachable cfa initset = do
     let Ops{..} = constructOps ?m
     -- decompose into transitions; ignore transitions from MBs
@@ -224,7 +230,7 @@ cfaAnnotateReachable cfa initset = do
     mapM_ (deref . sel3) tupds
     return res
 
-annotate' :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db :: DB s u AbsVar AbsVar)
+annotate' :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db :: DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u)
           => [(Loc, Loc, DDNode s u)]    -- Compiled transitions
           -> [Loc]                       -- Frontier
           -> M.Map Loc (DDNode s u)      -- Annotations computed so far
