@@ -39,7 +39,7 @@ cgVarRelName spec pid sc cgv =
           ScopeMethod _ m = sc
           pid'            = map itreeParseName (p:ps)
           m'              = itreeParseName $ sname m
-
+                        
 
 exprToCGExpr :: Expr -> CGExpr
 exprToCGExpr (EVar n)          = EVar $ varToCGVar n
@@ -61,6 +61,7 @@ varToCGVar v =
                                 in  GVar iid v'
          (Just pid, Nothing) -> let PrID p ps = pid
                                 in  PVar (map itreeParseName (p:ps)) vname
+         (Nothing , Just m)  -> MVar [] (itreeParseName m) vname
          (Just pid, Just m)  -> let PrID p ps = pid       
                                 in  MVar (map itreeParseName (p:ps)) (itreeParseName m) vname
     where (mpid, mmeth, vname) = parseVarName v
