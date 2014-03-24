@@ -90,6 +90,7 @@ bvTermNormalise t = {-trace ("bvTermNormalise " ++ show t ++ " = " ++ show res)-
 -- found for this variable.
 data VarAsn = AsnScalar [((Int,Int), Either Bool Expr)]
             | AsnStruct [(String, VarAsn)]
+            deriving (Eq, Show)
 
 
 -- Solve a system of equations for a subset of variables.
@@ -389,6 +390,7 @@ fixupTypes (EBinOp op e1 e2) = EBinOp op (fixupType (typ e2) e1) (fixupType (typ
 
 fixupType :: (?spec::Spec) => Type -> Expr -> Expr
 fixupType (Enum n) e = if' (isConstExpr e) (EConst $ EnumVal $ (enumEnums $ getEnumeration n) !! fromInteger (ivalVal $ evalConstExpr e)) e
+fixupType Bool     e = if' (isConstExpr e) (EConst $ BoolVal $ if' ((ivalVal $ evalConstExpr e) == 0) False True) e
 fixupType _        e = e
 
 ctermToTerm :: (?spec::Spec, ?vmap::VarMap) => BV.CTerm -> Term
