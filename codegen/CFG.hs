@@ -197,7 +197,7 @@ mkBranches strategy set = do
     let ops@Ops{..} = constructOps ?m
         DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
         RefineDynamic{..} = ?rd
-        sd = SynthData sinfo trans (error "mkBranches: combinedTrel is undefined") (error "mkBranches: cont is undefined") ?rd (error "mkBranches: lb is undefined")
+        sd = SynthData sinfo trans (error "mkBranches: combinedTrel is undefined") (error "mkBranches: cont is undefined") ?rd (error "mkBranches: lb is undefined") (error "mkBranches: cPlus is undefined")
     mcond <- ifCondition ops sd strategy set
     case mcond of
          Nothing   -> do deref set
