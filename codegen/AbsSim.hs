@@ -14,6 +14,7 @@ import qualified Data.Map          as M
 import Control.Monad.State
 import Control.Monad.ST
 
+import Util
 import PID
 import Interface
 import TermiteGame
@@ -51,19 +52,32 @@ type CompiledMB' s u = (DDNode s u, CFA)
 -- mbpos is active.
 mbToStateConstraint :: Spec -> C.STDdManager s u -> DB s u AbsVar AbsVar -> Pos -> ST s (DDNode s u)
 mbToStateConstraint spec m pdb mbpos = do
+    let Ops{..} = constructOps m
     let ?spec = spec
         ?m    = m
         ?db   = pdb
-    let (pid, mbloc, _) = fromJust $ specLookupMB spec mbpos
-        cfa = specGetCFA spec (EPIDProc pid)
-    compileExpr $ I.conj [mkMagicVar, mkPCEq cfa pid (mkPC pid mbloc)]
+    case specLookupMB spec mbpos of
+         Nothing -> do ref bfalse
+                       return bfalse
+         Just (pid, mbloc, _) -> do let cfa = specGetCFA spec (EPIDProc pid)
+                                    compileExpr $ I.conj [mkMagicVar, mkPCEq cfa pid (mkPC pid mbloc)]
 
 -- Restrict a relation to states inside the MB
 restrictToMB :: Spec -> C.STDdManager s u -> DB s u AbsVar AbsVar -> Pos -> DDNode s u -> ST s (DDNode s u)
 restrictToMB spec m pdb mbpos set = do
     let Ops{..} = constructOps m
+    if set == bfalse
+       then traceST "restrictToMB: set is false"
+       else traceST "restrictToMB: set is not false"
     cond <- mbToStateConstraint spec m pdb mbpos
+    if cond == bfalse
+       then traceST "restrictToMB: cond is false"
+       else traceST "restrictToMB: cond is not false"
     res <- cond .& set
+    if res == bfalse
+       then traceST "restrictToMB: res is false"
+       else traceST "restrictToMB: res is not false"
+
     deref cond
     return res
 
@@ -90,6 +104,7 @@ simulateCFAAbstractToLoc spec m refdyn pdb cont lp cfa initset loc = do
 -- Return the set of final states.
 simulateCFAAbstractToCompletion :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> Lab s u -> CFA -> DDNode s u -> ST s (DDNode s u)
 simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset = do
+    traceST "simulateCFAAbstractToCompletion"
     let ops = constructOps m
     let ?m    = m
         ?spec = spec
@@ -103,6 +118,7 @@ simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset = do
     mapM_ deref $ M.elems annot
     res <- disj ops finalsets
     mapM_ deref finalsets
+    traceST "simulateCFAAbstractToCompletion done"
     return res
 
 -- Simulate the entire game starting from the initial set. Include 
@@ -143,8 +159,15 @@ simulateGameAbstractFrom mbs initset = do
     let ops@Ops{..} = constructOps ?m
         RefineDynamic{..} = ?rd
         DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
+    if initset == bfalse
+       then traceST "simulateGameAbstractFrom: initset is false"
+       else traceST "simulateGameAbstractFrom: initset is not false"
     -- transitive closure of uncontrollable from initset
     reach <- applyUncontrollableTC ops (SynthData sinfo trans ?cont ?rd ?lp) initset
+    traceST "applyUncontrollableTC done"
+    if reach == bfalse
+       then traceST "simulateGameAbstractFrom: reach is false"
+       else traceST "simulateGameAbstractFrom: reach is not false"
     -- simulate magic blocks
     deltas <- mapM (\(cond, cfa) -> do bef <- cond .& reach
                                        aft <- simulateCFAAbstractToCompletion ?spec ?m ?rd ?db ?cont ?lp cfa bef
@@ -153,6 +176,7 @@ simulateGameAbstractFrom mbs initset = do
                                        deref aft
                                        return aft')
                    mbs
+    traceST "deltas done"
     -- add new sets
     reach' <- disj ops $ reach:deltas
     mapM_ deref $ reach:deltas
@@ -309,14 +333,15 @@ allocTmpUntracked ops var size grp = do
                           put $ CompileState (NewVars $ (var, nodes) : _allocatedStateVars _cnv) _cdb
                           return nodes
 
-compileOps :: Ord sp => Ops s u -> VarOps (CompileState s u sp lp) (BAVar sp lp) s u
+compileOps :: (Ord sp, Ord lp, Show lp) => Ops s u -> VarOps (CompileState s u sp lp) (BAVar sp lp) s u
 compileOps ops = VarOps {withTmp = withTmpCompile' ops, allVars = liftToCompileState allVars', ..}
     where
     getVar (StateVar var size) grp = do
         SymbolInfo{..} <- gets (_symbolTable . _cdb)
         findWithDefaultM sel1 var _stateVars (allocTmpUntracked ops var size grp)
-    getVar  _ _ = error "Requested non-state variable when compiling controllable CFA"
-
+    getVar (LabelVar var _)    _ = do
+        SymbolInfo{..} <- gets (_symbolTable . _cdb)
+        findWithDefaultM sel1 var _labelVars (error $ "Requested unknown label variable " ++ show var ++ " when compiling controllable CFA")
 
 compileTransitionVar :: (?spec::Spec, ?pred::[Predicate]) => Transition -> (AbsVar, f) -> TAST f e c
 compileTransitionVar t (av, n) = maybe (H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)) fst 
