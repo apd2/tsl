@@ -138,7 +138,7 @@ simulateGameAbstractFrom mbs initset = do
         RefineDynamic{..} = ?rd
         DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
     -- transitive closure of uncontrollable from initset
-    reach <- applyUncontrollableTC ops (SynthData sinfo trans (error "simulateControllable: combinedTrel is undefined") (error "simulateControllable: cont is undefined")) initset
+    reach <- applyUncontrollableTC ops (SynthData sinfo trans (error "simulateControllable: combinedTrel is undefined") (error "simulateControllable: cont is undefined") ?rd (error "simulateControllable: lp is undefined")) initset
     -- simulate magic blocks
     deltas <- mapM (\(cond, cfa) -> do bef <- cond .& reach
                                        aft <- simulateCFAAbstractToCompletion ?spec ?m ?rd ?db cfa bef
@@ -200,7 +200,7 @@ simulateControllable from tr = do
     deref trfromc3
     to <- shift _nextNodes _trackedNodes to'
     deref to'
-    totc <- applyUncontrollableTC ops (SynthData sinfo trans (error "simulateControllable: combinedTrel is undefined") (error "simulateControllable: cont is undefined")) to
+    totc <- applyUncontrollableTC ops (SynthData sinfo trans (error "simulateControllable: combinedTrel is undefined") (error "simulateControllable: cont is undefined") ?rd (error "simulateControllable: lp is undefined")) to
     deref to
     return totc
 
