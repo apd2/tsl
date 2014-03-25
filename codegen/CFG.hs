@@ -101,7 +101,7 @@ ppAction' ((cond, lab):sol) = if null sol
                     _                                                          -> throwError $ "cannot extract tag from label assignment " ++ show lab
         -- generate method invocation
         if' (tag == mkTagDoNothing) (throwError "unexpected no-op tag") $
-            if' (tag == mkTagExit) (return [PP.empty]) $
+            if' (tag == mkTagExit) (return []) $
             do let mpath = tagToPath tag 
                    -- method in the flat spec
                    meth  = let ?spec = flatspec in snd $ F.getMethod ?sc $ MethodRef nopos [Ident nopos tag]
@@ -113,11 +113,15 @@ ppAction' ((cond, lab):sol) = if null sol
                Right a -> a
 
 mkITE :: PP.Doc -> [PP.Doc] -> [PP.Doc] -> PP.Doc
-mkITE i t e = ((PP.text "if" PP.<+> PP.parens i) PP.<+> (if' (length t > 1) (PP.char '{') PP.empty))
-           PP.$$ (nest' $ PP.vcat $ PP.punctuate PP.semi t)
-           PP.$$ ((if' (length t > 1) (PP.char '}') PP.empty) PP.<+> (PP.text "else") PP.<+> (if' (length e > 1) (PP.char '{') PP.empty))
-           PP.$$ (nest' $ PP.vcat $ PP.punctuate PP.semi e)
-           PP.$$ (if' (length e > 1) (PP.char '}') PP.empty)
+mkITE i t e = ((PP.text "if" PP.<+> PP.parens i) PP.<+> (if' (length t /= 1) (PP.char '{') PP.empty))
+           PP.$$ (nest' $ PP.vcat $ map (PP.<> PP.semi) t)
+           PP.$$ ((if' (length t /= 1) (PP.char '}') PP.empty) PP.<+> (PP.text "else") PP.<+> (if' (length e /= 1) (PP.char '{') $ if' nestedif elcond PP.empty))
+           PP.$$ (if' nestedif elbody $ (nest' $ PP.vcat $ map (PP.<> PP.semi) e))
+           PP.$$ (if' (length e /= 1) (PP.char '}') PP.empty)
+    where eltxt = PP.render $ head e
+          nestedif = length e == 1 && isPrefixOf "if (" eltxt
+          elcond = PP.text $ head $ lines eltxt
+          elbody = PP.text $ unlines $ tail $ lines eltxt
 
 tagToPath :: (?inspec::F.Spec, ?sc::F.Scope) => String -> String
 tagToPath tag = intercalate "." $ (map sname path) ++ [mname]
@@ -169,6 +173,7 @@ derefBranch _ BranchStuck = return ()
 
 gen1Step :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> C.DDNode s u -> Lab s u -> DDNode s u -> DDNode s u -> ST s (Step s u)
 gen1Step spec m refdyn pdb cont lp set strategy = do
+    traceST "gen1Step"
     let Ops{..} = constructOps m
         DB{_sections=SectionInfo{..}, ..} = pdb
     let ?spec = spec
@@ -185,12 +190,13 @@ gen1Step spec m refdyn pdb cont lp set strategy = do
     deref tagNopCond
     stepWaitCond1 <- bexists _labelCube stepWaitCond0
     deref stepWaitCond0
-    stepWaitCond <- bexists _untrackedCube stepWaitCond1
+    stepWaitCond <- bnot <$> bexists _untrackedCube stepWaitCond1
     deref stepWaitCond1
     -- Remove these states from set
-    set' <- set .& bnot stepWaitCond
+    set' <- set .& stepWaitCond
     -- Iterate through what remains
     stepBranches <- mkBranches strategy set'
+    traceST "gen1Step complete"
     return Step{..}
 
 -- consumes input reference
