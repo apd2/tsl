@@ -26,8 +26,7 @@ nopos::Pos
 nopos = (initialPos "",initialPos "")
 
 posInside :: SourcePos -> Pos -> Bool
-posInside p (p1, p2) = sourceName p == sourceName p1 &&
-                       sourceLine p >= sourceLine p1 && sourceLine p <= sourceLine p2 &&
+posInside p (p1, p2) = sourceLine p >= sourceLine p1 && sourceLine p <= sourceLine p2 &&
                        (if sourceLine p == sourceLine p1
                            then sourceColumn p >= sourceColumn p1
                            else True) &&
