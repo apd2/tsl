@@ -115,9 +115,8 @@ simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset = do
     let Ops{..} = constructOps ?m
     annot <- cfaAnnotateReachable cfa initset
     let finalsets = mapMaybe (\loc -> M.lookup loc annot) $ cfaFinal cfa
-    mapM_ deref $ M.elems annot
     res <- disj ops finalsets
-    mapM_ deref finalsets
+    mapM_ deref $ M.elems annot
     traceST "simulateCFAAbstractToCompletion done"
     return res
 
@@ -264,10 +263,10 @@ annotate' upds (loc:front) annot = do
     let Ops{..} = constructOps ?m
     -- transitions from loc
     (front'', annot'') <- foldM (\(front', annot') (_, to, upd) -> do 
-                                   nxt <- simulateControllable (annot M.! loc) upd
-                                   -- If new reachable state have been discovered in to, 
+                                   nxt <- simulateControllable (annot' M.! loc) upd
+                                   -- If new reachable states have been discovered in to, 
                                    -- annotate to with these states and add it to the frontier
-                                   case M.lookup to annot of
+                                   case M.lookup to annot' of
                                       Nothing  -> return (to:front', M.insert to nxt annot')
                                       Just ann -> do issubset <- leq nxt ann
                                                      if issubset
