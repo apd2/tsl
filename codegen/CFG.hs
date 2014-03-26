@@ -105,8 +105,7 @@ ppAction' ((cond, lab):sol) = if null sol
             do let mpath = tagToPath tag 
                    -- method in the flat spec
                    meth  = let ?spec = flatspec in snd $ F.getMethod ?sc $ MethodRef nopos [Ident nopos tag]
-                   nsid  = epid2nsid EPIDCont (F.ScopeMethod (let ?spec = ?flatspec in tmMain) meth)
-                   args  = map (mkArg lab . mkVarName nsid) $ methArg meth
+                   args  = map (mkArg lab . mkArgTmpVarName meth) $ methArg meth
                return [(PP.text mpath PP.<> (PP.parens $ PP.hsep $ PP.punctuate PP.comma $ args)), PP.text "..."]
     act = case eact of
                Left  e -> [PP.text $ "/* " ++ e ++ " */"]
@@ -240,17 +239,17 @@ mkCondCube cub = do
     
 cubeToAsns :: Ops s u -> DDNode s u -> [(AbsVar, [Int])] -> ST s [(AbsVar, [Integer])]
 cubeToAsns Ops{..} rel vs = do
-    support <- supportIndices rel
-    asn     <- satCube rel
-    let supvars = filter (any (\idx -> elem idx support) . snd) vs
+    supp <- supportIndices rel
+    asn  <- satCube rel
+    let supvars = filter (any (\idx -> elem idx supp) . snd) vs
     return $ map (\(av, is) -> (av, map boolArrToBitsBe $ (<$*>) $ map (C.expand . (asn !!)) is))
            $ nub supvars
 
 cubeToAsn :: Ops s u -> DDNode s u -> [(AbsVar, [Int])] -> ST s [(AbsVar, [Bool])]
 cubeToAsn Ops{..} rel vs = do
-    support <- supportIndices rel
-    asn     <- satCube rel
-    let supvars = filter (any (\idx -> elem idx support) . snd) vs
+    supp <- supportIndices rel
+    asn  <- satCube rel
+    let supvars = filter (any (\idx -> elem idx supp) . snd) vs
     return $ map (\(av, is) -> (av, map (satBitToBool . (asn !!)) is))
            $ nub supvars
     where satBitToBool Zero  = False
