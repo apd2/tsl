@@ -147,7 +147,7 @@ eval' (EStruct _ n (Left fs)) _  = StructVal $ M.fromList $ map (mapSnd eval) fs
 eval' (EStruct _ n (Right fs)) t = let StructSpec _ fs' = tspec $ typ' t
                                        fnames = map name fs'
                                    in StructVal $ M.fromList $ map (mapSnd eval) (zip fnames fs)
-eval' (ENonDet _) _           = NondetVal
+eval' (ENonDet _ _) _            = NondetVal
 
 
 evalInt :: (?spec::Spec, ?scope::Scope) => ConstExpr -> Integer
@@ -247,7 +247,7 @@ isConstExpr (ESlice _ e (l,h))       = isConstExpr e && isConstExpr l && isConst
 isConstExpr (EStruct _ _ (Left fs))  = and $ map (isConstExpr . snd) fs
 isConstExpr (EStruct _ _ (Right fs)) = and $ map isConstExpr fs
 isConstExpr (ERel _ _ _)             = False
-isConstExpr (ENonDet _)              = False
+isConstExpr (ENonDet _ _)            = False
 
 
 -- Side-effect free expressions
@@ -322,7 +322,7 @@ isPureExpr (EStruct _ _ (Left fs))  = all isPureExpr $ map snd fs
 isPureExpr (EStruct _ _ (Right fs)) = all isPureExpr fs
 isPureExpr (EAtLab  _ _)            = False
 isPureExpr (ERel    _ _ as)         = all isPureExpr as
-isPureExpr (ENonDet _)              = False
+isPureExpr (ENonDet _ _)            = False
 
 -- True if expression _can_ terminate instantaneously 
 -- (but is not necessarily guaranteed to always do so)
@@ -350,7 +350,7 @@ isInstExpr (ESlice  _ e _)          = isInstExpr e
 isInstExpr (EStruct _ _ (Left fs))  = all isInstExpr $ map snd fs
 isInstExpr (EStruct _ _ (Right fs)) = all isInstExpr fs
 isInstExpr (ERel _ _ as)            = all isInstExpr as
-isInstExpr (ENonDet _)              = True
+isInstExpr (ENonDet _ _)            = True
 
 -- Objects referred to by the expression
 exprObjs :: (?spec::Spec, ?scope::Scope) => Expr -> [Obj]
@@ -438,7 +438,7 @@ instance (?spec::Spec,?scope::Scope) => WithType Expr where
     typ (EStruct p tn _)        = Type ?scope $ UserTypeSpec p tn
     typ (EAtLab p l)            = Type ?scope $ BoolSpec p
     typ (ERel   p _ _)          = Type ?scope $ BoolSpec p
-    typ (ENonDet p)             = Type ?scope $ FlexTypeSpec p
+    typ (ENonDet p _)           = Type ?scope $ FlexTypeSpec p
 
 
 instance (?spec::Spec,?scope::Scope) => WithTypeSpec Expr where

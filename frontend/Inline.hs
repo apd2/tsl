@@ -267,6 +267,9 @@ mkTagList = mkTagExit :
              $ filter ((== Task Controllable) . methCat)
              $ tmMethod tmMain)
 
+mkArgTmpVarName :: Method -> Arg -> String
+mkArgTmpVarName m a = "$$" ++ sname m ++ "." ++ sname a
+
 mkChoiceTypeName :: Int -> String
 mkChoiceTypeName n = "$choice" ++ show n
 
@@ -436,13 +439,13 @@ ctxInsTransMany' from ts = do
     ctxInsTransMany from to ts
     return to
 
-ctxInsTmpVar :: I.Type -> State CFACtx I.Var
-ctxInsTmpVar t = do
+ctxInsTmpVar :: Maybe Ident -> I.Type -> State CFACtx I.Var
+ctxInsTmpVar mn t = do
     lst   <- gets ctxLastVar
     mepid <- gets ctxEPID
     sc    <- gets ctxScope
     let nsid = maybe (NSID Nothing Nothing) (\epid -> epid2nsid epid sc) mepid
-        vname = mkVarNameS nsid ("$tmp" ++ show (lst + 1))
+        vname = mkVarNameS nsid $ maybe ("$tmp" ++ show (lst + 1)) sname mn
         v = I.Var False I.VarTmp vname t
     modify $ (\ctx -> ctx { ctxLastVar = lst + 1
                           , ctxVar     = v:(ctxVar ctx)})

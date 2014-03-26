@@ -236,7 +236,7 @@ validateExpr' (ERel p n as) =
          ScopeTop -> err p "relation instantiation in top-level scope"
          _        -> validateApply ?scope n as
 
-validateExpr' (ENonDet p) = 
+validateExpr' (ENonDet p _) = 
     case ?scope of
          ScopeMethod  _ m -> case methCat m of
                                   Function            -> err p "non-deterministic value inside function"

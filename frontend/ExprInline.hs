@@ -176,8 +176,8 @@ exprToIExprs e t                              = do
     let ?scope = sc
     e' <- exprToIExpr e t
     let t' = case e of
-                  ENonDet _ -> mkType $ Type sc t
-                  _         -> mkType $ typ e
+                  ENonDet _ _ -> mkType $ Type sc t
+                  _           -> mkType $ typ e
     return [(e', t')]
 
 exprToIExpr' :: (?spec::Spec) => Expr -> Type -> State CFACtx I.Expr
@@ -245,7 +245,7 @@ exprToIExpr' e@(ELength _ a) _              = do -- static array lengths known a
                                                  let ?scope = sc
                                                  if' (isConstExpr e) (return $ I.EConst $ I.UIntVal arrLengthBits $ evalInt e)
                                                                      (liftM I.ELength $ exprToIExprDet a)
-exprToIExpr' (ENonDet _) t                  = do v <- ctxInsTmpVar $ mkType t
+exprToIExpr' (ENonDet _ mn) t               = do v <- ctxInsTmpVar mn $ mkType t
                                                  return $ I.EVar $ I.varName v
 exprToIExpr' e _                            = error $ "exprToIExpr' " ++ show e
 

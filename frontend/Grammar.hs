@@ -551,7 +551,7 @@ mkLit (Just w) True  r     v | w < 2               = fail "Signed literals must 
 expr' True  = expr
 expr' False = detexpr
 
-expr = (withPos $ ENonDet nopos <$ reservedOp "*")
+expr = (withPos $ ENonDet nopos Nothing <$ reservedOp "*")
     <|> buildExpressionParser table term
     <?> "expression"
 

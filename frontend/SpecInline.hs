@@ -313,7 +313,7 @@ mkCTran = {- I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar c
           stats = SMagExit nopos Nothing : 
                   SDoNothing nopos Nothing :
                   (map (\m -> SInvoke nopos Nothing (MethodRef nopos [name m]) 
-                              $ map (\a -> if' (argDir a == ArgIn) (Just $ ENonDet nopos) Nothing) (methArg m))
+                              $ map (\a -> if' (argDir a == ArgIn) (Just $ ENonDet nopos (Just $ Ident nopos $ mkArgTmpVarName m a)) Nothing) (methArg m))
                    ctasks)
           stats' = map (\stat -> let ?scope = sc in evalState (statSimplify stat) (0,[])) stats
           ctx  = CFACtx { ctxEPID    = Just EPIDCont

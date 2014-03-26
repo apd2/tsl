@@ -12,7 +12,6 @@ import qualified Data.Traversable as Tr
 
 import Util hiding (name,trace)
 import Inline
-import TSLUtil
 import Spec
 import Pos
 import Name
@@ -230,7 +229,7 @@ statToCFA' before after (SFor _ _ (minit, cond, inc) body) = do
     ctxInsTrans aftinc loopback I.TranNop
 
 statToCFA' before after (SChoice _ _ ss) = do
-    v <- ctxInsTmpVar $ mkChoiceType $ length ss
+    v <- ctxInsTmpVar Nothing $ mkChoiceType $ length ss
     _ <- mapIdxM (\s i -> do aftAssume <- ctxInsTrans' before (I.TranStat $ I.SAssume $ I.EVar (I.varName v) I.=== mkChoice v i)
                              aft <- statToCFA aftAssume s
                              ctxInsTrans aft after I.TranNop) ss
