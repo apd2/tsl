@@ -16,6 +16,7 @@ import Data.Bits
 import Numeric
 import Data.Char
 
+import TSLUtil
 import Ops
 import PP
 import Pos
@@ -87,21 +88,8 @@ instance Eq Expr where
 
 
 instance PP Expr where
-    pp (ETerm _ s)              = pp s
-    pp (ELit _ w s r v)         = let -- negate v if v<0
-                                      v' = if v >= 0 
-                                              then v
-                                              else (foldl' (\v i -> complementBit (abs v) i) v [0..w-1]) + 1
-                                  in pp w <> 
-                                     case (s,r) of
-                                          (False, Rad2)  -> text "'b"  <> (text $ showIntAtBase 2 intToDigit v' "")
-                                          (True,  Rad2)  -> text "'sb" <> (text $ showIntAtBase 2 intToDigit v' "")
-                                          (False, Rad8)  -> text "'o"  <> (text $ showOct v' "")
-                                          (True,  Rad8)  -> text "'so" <> (text $ showOct v' "")
-                                          (False, Rad10) -> text "'d"  <> pp v
-                                          (True,  Rad10) -> text "'sd" <> pp v
-                                          (False, Rad16) -> text "'h"  <> (text $ showHex v' "")
-                                          (True,  Rad16) -> text "'sh" <> (text $ showHex v' "")
+    pp (ETerm _ s)               = pp s
+    pp (ELit _ w s r v)          = ppInt w s r v
     pp (EBool _ True)            = text "true"
     pp (EBool _ False)           = text "false"
     pp (EApply _ m args)         = pp m <+> (parens $ hsep $ punctuate comma $ map pp args)

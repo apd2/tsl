@@ -15,25 +15,28 @@ module TSLUtil((<$*>),
                graphShow,
                graphSave,
                traceFile,
-               sanitize) where
+               sanitize,
+               ppInt) where
 
 import Control.Monad.Error
 import Control.Applicative
 import Data.List
 import Data.Maybe
+import Data.Char
 import Data.Graph.Inductive
-import Data.Graph.Inductive.Graphviz 
+import qualified Text.PrettyPrint as PP
+import Numeric
 
 import System.IO.Unsafe
-import Data.IORef
 import Data.Bits
-import System.IO.Unsafe
 import System.Process
 import Data.String.Utils
 
 import Util hiding (name)
+import PP
 import Pos
 import Name
+import Ops
 
 (<$*>) :: [[a]] -> [[a]]
 (<$*>) as = foldl' (\xs a -> (\bs b -> bs++[b]) <$> xs <*> a) (map (\x->[x]) (head as)) (tail as)
@@ -162,3 +165,20 @@ traceFile :: String -> FilePath -> a -> a
 traceFile str fname x = unsafePerformIO $ do
     writeFile (sanitize fname) str
     return x
+
+ppInt :: Int -> Bool -> Radix -> Integer -> PP.Doc
+ppInt w s r v = 
+    let -- negate v if v<0
+        v' = if v >= 0 
+                then v
+                else (foldl' (\v i -> complementBit (abs v) i) v [0..w-1]) + 1
+    in pp w PP.<>
+       case (s,r) of
+            (False, Rad2)  -> PP.text "'b"  PP.<> (PP.text $ showIntAtBase 2 intToDigit v' "")
+            (True,  Rad2)  -> PP.text "'sb" PP.<> (PP.text $ showIntAtBase 2 intToDigit v' "")
+            (False, Rad8)  -> PP.text "'o"  PP.<> (PP.text $ showOct v' "")
+            (True,  Rad8)  -> PP.text "'so" PP.<> (PP.text $ showOct v' "")
+            (False, Rad10) -> PP.text "'d"  PP.<> pp v
+            (True,  Rad10) -> PP.text "'sd" PP.<> pp v
+            (False, Rad16) -> PP.text "'h"  PP.<> (PP.text $ showHex v' "")
+            (True,  Rad16) -> PP.text "'sh" PP.<> (PP.text $ showHex v' "")

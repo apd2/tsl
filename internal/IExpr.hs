@@ -100,8 +100,8 @@ instance (?spec::Spec) => Typed Val where
 instance PP Val where
     pp (BoolVal True)  = text "true"
     pp (BoolVal False) = text "false"
-    pp (SIntVal _ v)   = text $ show v
-    pp (UIntVal _ v)   = text $ show v
+    pp (SIntVal w v)   = ppInt w True  Rad16 v
+    pp (UIntVal w v)   = ppInt w False Rad16 v
     pp (EnumVal n)     = text n
     pp (PtrVal a)      = char '&' <> pp a
     pp (NullVal _)     = text "NULL"
