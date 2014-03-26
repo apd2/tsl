@@ -240,6 +240,7 @@ simulateControllable from tr = do
 cfaAnnotateReachable :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u) => CFA -> DDNode s u -> ST s (M.Map Loc (DDNode s u))
 cfaAnnotateReachable cfa initset = do
     let Ops{..} = constructOps ?m
+    ref initset
     -- decompose into transitions; ignore transitions from MBs
     let states = filter (not . isMBLoc cfa) $ cfaDelayLocs cfa
         tcfas = concatMap (cfaLocTrans cfa) states
