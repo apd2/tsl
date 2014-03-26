@@ -142,7 +142,7 @@ mkArg' lab e =
 
 mkScalar :: (?spec::Spec) => [(String, VarAsn)] -> I.Expr -> PP.Doc
 mkScalar lab e | masn == Nothing = PP.text "/* any value */"
-               | otherwise       = PP.hcat $ PP.punctuate (PP.text "++") es'
+               | otherwise       = PP.hcat $ PP.punctuate (PP.text " ++ ") es'
     where masn = lookup (show e) lab 
           Just (AsnScalar asns) = masn
           (off, es) = foldl' (\(o, exps) ((l,h), v) -> ((h+1), exps ++ (if' (l > o) [anyvalue (l-o)] []) ++ [ppAsn (h-l) v]))
@@ -151,8 +151,8 @@ mkScalar lab e | masn == Nothing = PP.text "/* any value */"
           ppAsn w (Left True)  = anyvalue w
           ppAsn w (Left False) = novalue w
           ppAsn _ (Right x)    = pp x
-          anyvalue w = PP.text $ "/*any value (" ++ show w ++ ") bits*/"
-          novalue  w = PP.text $ "/*??? (" ++ show w ++ ") bits*/"
+          anyvalue w = PP.text $ "/*any value*/" ++ show w  ++ "'h0"
+          novalue  w = PP.text $ "/*??? (" ++ show w ++ " bits)*/"
 
 
 derefStep :: C.STDdManager s u -> Step s u -> ST s ()
