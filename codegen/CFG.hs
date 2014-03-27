@@ -210,10 +210,10 @@ mkBranches strategy set = do
          Nothing   -> do deref set
                          return $ BranchStuck 
          Just cond -> do condset  <- set .& cond
-                         deref set
                          Just act <- pickLabel ops sd strategy condset
                          deref condset
                          set'     <- set .& bnot cond
+                         deref set
                          if set' == bfalse
                             then do deref set'
                                     return $ BranchAction cond act
