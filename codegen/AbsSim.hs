@@ -44,6 +44,8 @@ import qualified HAST.BDD          as H
 type CompiledMB      = (Pos, CFA)
 type CompiledMB' s u = (DDNode s u, CFA)
 
+type DbgNotify s u = (String -> DDNode s u -> ST s ())
+
 ----------------------------------------------------------
 -- Interface
 ----------------------------------------------------------
@@ -83,14 +85,15 @@ restrictToMB spec m pdb mbpos set = do
 
 -- Abstractly simulate CFA consisting of controllable transitions from 
 -- initial location to the specified pause location.
-simulateCFAAbstractToLoc :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> Lab s u -> CFA -> DDNode s u -> Loc -> ST s (Maybe (DDNode s u))
-simulateCFAAbstractToLoc spec m refdyn pdb cont lp cfa initset loc = do
+simulateCFAAbstractToLoc :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> Lab s u -> CFA -> DDNode s u -> Loc -> DbgNotify s u -> ST s (Maybe (DDNode s u))
+simulateCFAAbstractToLoc spec m refdyn pdb cont lp cfa initset loc cb = do
     let ?m    = m
         ?spec = spec
         ?db   = pdb
         ?rd   = refdyn
         ?cont = cont
         ?lp   = lp
+        ?cb   = cb
     let Ops{..} = constructOps ?m
     annot <- cfaAnnotateReachable cfa initset
     res <- maybe (return Nothing)
@@ -102,8 +105,8 @@ simulateCFAAbstractToLoc spec m refdyn pdb cont lp cfa initset loc = do
 
 -- Abstractly simulate controllable CFA to completion.  
 -- Return the set of final states.
-simulateCFAAbstractToCompletion :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> Lab s u -> CFA -> DDNode s u -> ST s (DDNode s u)
-simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset = do
+simulateCFAAbstractToCompletion :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> Lab s u -> CFA -> DDNode s u -> DbgNotify s u -> ST s (DDNode s u)
+simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset cb = do
     traceST "simulateCFAAbstractToCompletion"
     let ops = constructOps m
     let ?m    = m
@@ -112,6 +115,7 @@ simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset = do
         ?rd   = refdyn
         ?cont = cont
         ?lp   = lp
+        ?cb   = cb
     let Ops{..} = constructOps ?m
     annot <- cfaAnnotateReachable cfa initset
     let finalsets = mapMaybe (\loc -> M.lookup loc annot) $ cfaFinal cfa
@@ -123,8 +127,8 @@ simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset = do
 -- Simulate the entire game starting from the initial set. Include 
 -- completely implemented magic blocks in the simulation.  Returns the set
 -- of reachable states.
-simulateGameAbstract :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> Lab s u -> [CompiledMB] -> DDNode s u -> ST s (DDNode s u)
-simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sections = SectionInfo{..}, ..} cont lp mbs initset' = do
+simulateGameAbstract :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> DDNode s u -> Lab s u -> [CompiledMB] -> DDNode s u -> DbgNotify s u -> ST s (DDNode s u)
+simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sections = SectionInfo{..}, ..} cont lp mbs initset' cb = do
     let Ops{..} = constructOps m
     let ?m    = m
         ?spec = spec
@@ -132,6 +136,7 @@ simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sectio
         ?db   = pdb
         ?cont = cont
         ?lp   = lp
+        ?cb   = cb
     -- Compute the set of initial states
     let initvs = (concatMap sel1 $ M.elems _initVars) \\ (concatMap sel1 $ M.elems _stateVars)
     initcube <- nodesToCube initvs
@@ -153,23 +158,17 @@ simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sectio
 ----------------------------------------------------------
 
 -- Simulate the entire game starting from the given set.
-simulateGameAbstractFrom ::(?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u) => [CompiledMB' s u] -> DDNode s u -> ST s (DDNode s u)
+simulateGameAbstractFrom ::(?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?cb::DbgNotify s u) => [CompiledMB' s u] -> DDNode s u -> ST s (DDNode s u)
 simulateGameAbstractFrom mbs initset = do
     let ops@Ops{..} = constructOps ?m
         RefineDynamic{..} = ?rd
         DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
-    if initset == bfalse
-       then traceST "simulateGameAbstractFrom: initset is false"
-       else traceST "simulateGameAbstractFrom: initset is not false"
     -- transitive closure of uncontrollable from initset
     reach <- applyUncontrollableTC ops (SynthData sinfo trans ?cont ?rd ?lp) initset
     traceST "applyUncontrollableTC done"
-    if reach == bfalse
-       then traceST "simulateGameAbstractFrom: reach is false"
-       else traceST "simulateGameAbstractFrom: reach is not false"
     -- simulate magic blocks
     deltas <- mapM (\(cond, cfa) -> do bef <- cond .& reach
-                                       aft <- simulateCFAAbstractToCompletion ?spec ?m ?rd ?db ?cont ?lp cfa bef
+                                       aft <- simulateCFAAbstractToCompletion ?spec ?m ?rd ?db ?cont ?lp cfa bef ?cb
                                        deref bef
                                        aft' <- clearMagic aft
                                        deref aft
@@ -237,17 +236,18 @@ simulateControllable from tr = do
 -- Annotate pause locations with sets of states
 -- initset - set of possible initial states
 -- Assumes that pause locations that represent magic blocks do not have outgoing transitions.
-cfaAnnotateReachable :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u) => CFA -> DDNode s u -> ST s (M.Map Loc (DDNode s u))
+cfaAnnotateReachable :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?cb::DbgNotify s u) => CFA -> DDNode s u -> ST s (M.Map Loc (DDNode s u))
 cfaAnnotateReachable cfa initset = do
     let Ops{..} = constructOps ?m
     ref initset
     -- decompose into transitions; ignore transitions from MBs
-    let states = filter (not . isMBLoc cfa) $ cfaDelayLocs cfa
+    let states = filter (not . isMBLoc cfa) {-$ cfaTraceFile cfa "cfaAnnotateReachable"-} $ cfaDelayLocs cfa
         tcfas = concatMap (cfaLocTrans cfa) states
     -- compile transitions
     tupds <- mapM (\(to, tcfa) -> do let from = head $ cfaSource tcfa
                                          sink = head $ cfaSink   tcfa
                                      upd <- compileTransition (Transition from sink tcfa)
+                                     ?cb ("from" ++ show from ++ "to" ++ show to) upd
                                      return (from, to, upd))
                   tcfas
     res <- annotate' tupds [cfaInitLoc] (M.singleton cfaInitLoc initset) 
@@ -309,13 +309,15 @@ compileTransition t = do
     let DB{_symbolTable = SymbolInfo{..}, _sections = SectionInfo{..}, ..} = ?db
     let ops@Ops{..} = constructOps ?m
     let ?ops = compileOps ops
+    let trname = ("from" ++ show (tranFrom t) ++ "to" ++ show (tranTo t))
     let svars = map (\(av, (_, _, d', _)) -> (av, d'))
                 $ filter (\(_, (_, is, _, _)) -> not $ null $ intersect is _trackedInds) 
                 $ M.toList _stateVars
     (upd, CompileState newvars _) <- (flip runStateT) (CompileState (NewVars []) ?db) $ do
           p <- pdbPred
           let ?pred = p
-          let ast = H.Conj $ map (compileTransitionVar t) $ svars
+          let pre = tranPrecondition trname t
+              ast = H.Conj $ pre : (map (compileTransitionVar t) $ svars)
           H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) ast
     cube <- nodesToCube $ concatMap snd $ _allocatedStateVars newvars
     upd' <- bexists cube upd
@@ -344,5 +346,8 @@ compileOps ops = VarOps {withTmp = withTmpCompile' ops, allVars = liftToCompileS
         findWithDefaultM sel1 var _labelVars (error $ "Requested unknown label variable " ++ show var ++ " when compiling controllable CFA")
 
 compileTransitionVar :: (?spec::Spec, ?pred::[Predicate]) => Transition -> (AbsVar, f) -> TAST f e c
-compileTransitionVar t (av, n) = maybe (H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)) fst 
+compileTransitionVar t (av, n) = maybe ident
+                                       (\(upd, pre) -> let unchanged = H.And (H.Not pre) ident
+                                                       in H.Or upd unchanged)
                                        (varUpdateTrans (show av) (av,n) t)
+    where ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)

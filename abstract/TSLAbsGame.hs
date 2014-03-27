@@ -7,7 +7,8 @@ module TSLAbsGame(AbsPriv,
                   tslInconsistent,
                   tslUpdateAbs,
                   pdbPred,
-                  varUpdateTrans) where
+                  varUpdateTrans,
+                  tranPrecondition) where
 
 import Data.List
 import qualified Data.Map             as M
