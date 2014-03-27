@@ -58,11 +58,10 @@ mbToStateConstraint spec m pdb mbpos = do
     let ?spec = spec
         ?m    = m
         ?db   = pdb
-    case specLookupMB spec mbpos of
-         Nothing -> do ref bfalse
-                       return bfalse
-         Just (pid, mbloc, _) -> do let cfa = specGetCFA spec (EPIDProc pid)
-                                    compileExpr $ I.conj [mkMagicVar, mkPCEq cfa pid (mkPC pid mbloc)]
+    let mblocs = specLookupMB spec mbpos
+    compileExpr $ I.conj [mkMagicVar, I.disj $ map (\(pid, mbloc, _) -> let cfa = specGetCFA spec (EPIDProc pid) 
+                                                                        in mkPCEq cfa pid (mkPC pid mbloc)) 
+                                               mblocs]
 
 -- Restrict a relation to states inside the MB
 restrictToMB :: Spec -> C.STDdManager s u -> DB s u AbsVar AbsVar -> Pos -> DDNode s u -> ST s (DDNode s u)

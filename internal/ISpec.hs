@@ -23,6 +23,7 @@ module ISpec(Spec(..),
 
 import Data.List
 import Data.Maybe
+import Data.Tuple.Select
 import qualified Data.Map as M
 import qualified Data.Graph.Inductive.Graph as G
 import Text.PrettyPrint
@@ -120,17 +121,21 @@ specAllCFAs :: Spec -> [(EPID, CFA)]
 specAllCFAs Spec{..} = concatMap (\p -> procAllCFAs (PrID (procName p) []) p) specProc  ++
                        [(EPIDCont, specCAct)]
 
-specAllMBs :: Spec -> [(Pos, PrID, Loc)]
-specAllMBs spec = concatMap (\(pid, proc) -> map (\(loc, lab) -> (pos $ locAct lab, pid, loc)) $ filter (isMBLabel . snd) $ G.labNodes $ procCFA proc)
+specAllMBs :: Spec -> [Pos]
+specAllMBs spec = nub
+                  $ map sel1
+                  $ concatMap (\(pid, proc) -> map (\(loc, lab) -> (pos $ locAct lab, pid, loc)) $ filter (isMBLabel . snd) $ G.labNodes $ procCFA proc)
                   $ specAllProcs spec
 
-specLookupMB :: Spec -> Pos -> Maybe (PrID, Loc, F.Scope)
-specLookupMB spec p = listToMaybe
-    $ concatMap (\(pid, proc) -> map (\(loc, lab) -> (pid, loc, fScope $ head $ locStack lab))
-                                 $ (\xs -> if' (length xs > 1) (error "specLookupMB: multiple instantiations of the same MB") xs)
-                                 $ filter ((== p) . pos . locAct . snd)
-                                 $ filter (isMBLabel . snd) 
-                                 $ G.labNodes $ procCFA proc)
+specLookupMB :: Spec -> Pos -> [(PrID, Loc, F.Scope)]
+specLookupMB spec p = 
+    concat
+    $ (\xs -> if' (length xs > 1) (error $ "specLookupMB: MB " ++ show p ++ " is instantiated in multiple processes") xs)
+    $ filter (not . null)
+    $ map (\(pid, proc) -> map (\(loc, lab) -> (pid, loc, fScope $ head $ locStack lab))
+                           $ filter ((== p) . pos . locAct . snd)
+                           $ filter (isMBLabel . snd) 
+                           $ G.labNodes $ procCFA proc)
     $ specAllProcs spec
 
 
