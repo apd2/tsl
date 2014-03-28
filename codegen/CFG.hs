@@ -129,10 +129,10 @@ tagToPath tag = intercalate "." $ (map sname path) ++ [mname]
           (iid, mname) = itreeParseName tag
           Just path = let ?spec = ?inspec in itreeAbsToRelPath scid iid
 
-mkArg :: (?spec::Spec) => [(String, VarAsn)] -> String -> PP.Doc
+mkArg :: (?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> String -> PP.Doc
 mkArg lab argname = mkArg' lab $ I.EVar argname
 
-mkArg' :: (?spec::Spec) => [(String, VarAsn)] -> I.Expr -> PP.Doc
+mkArg' :: (?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> I.Expr -> PP.Doc
 mkArg' lab e =
     case typ e of
          Struct _   -> error "mkArg: Structs are not supported"
@@ -140,7 +140,7 @@ mkArg' lab e =
          VarArray _ -> error "mkArg: VarArrays are not supported"
          _          -> mkScalar lab e
 
-mkScalar :: (?spec::Spec) => [(String, VarAsn)] -> I.Expr -> PP.Doc
+mkScalar :: (?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> I.Expr -> PP.Doc
 mkScalar lab e | masn == Nothing = PP.text "/* any value */"
                | otherwise       = PP.hcat $ PP.punctuate (PP.text " ++ ") es'
     where masn = lookup (show e) lab 
@@ -150,7 +150,7 @@ mkScalar lab e | masn == Nothing = PP.text "/* any value */"
           es' = es ++ (if' (off < typeWidth e) [anyvalue (typeWidth e - off)] [])
           ppAsn w (Left True)  = anyvalue w
           ppAsn w (Left False) = novalue w
-          ppAsn _ (Right x)    = pp x
+          ppAsn _ (Right x)    = exprToTSL2 ?inspec ?pid ?sc x
           anyvalue w = PP.text $ "/*any value*/" ++ show w  ++ "'h0"
           novalue  w = PP.text $ "/*??? (" ++ show w ++ " bits)*/"
 
