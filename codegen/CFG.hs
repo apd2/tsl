@@ -119,8 +119,8 @@ mkITE i t e = ((PP.text "if" PP.<+> PP.parens i) PP.<+> (if' (length t /= 1) (PP
            PP.$$ (if' (length e /= 1) (PP.char '}') PP.empty)
     where eltxt = PP.render $ head e
           nestedif = length e == 1 && isPrefixOf "if (" eltxt
-          elcond = PP.text $ head $ lines eltxt
-          elbody = PP.text $ unlines $ tail $ lines eltxt
+          elcond = PP.text $ head $ lines' eltxt
+          elbody = PP.text $ unlines' $ tail $ lines' eltxt
 
 tagToPath :: (?inspec::F.Spec, ?sc::F.Scope) => String -> String
 tagToPath tag = intercalate "." $ (map sname path) ++ [mname]
