@@ -1,6 +1,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 
 module TSLUtil((<$*>),
+               lines',
+               unlines',
                err,
                assert,
                uniqNames,
@@ -37,6 +39,15 @@ import PP
 import Pos
 import Name
 import Ops
+
+-- Versions of lines/unlines that treat trailing newline as an empty line
+lines' :: String -> [String]
+lines' s = lines s ++ (if (not $ null s) && last s == '\n' then [""] else [])
+
+unlines' :: [String] -> String
+unlines' ss = case unlines ss of
+                   [] -> []
+                   s  -> init s
 
 (<$*>) :: [[a]] -> [[a]]
 (<$*>) as = foldl' (\xs a -> (\bs b -> bs++[b]) <$> xs <*> a) (map (\x->[x]) (head as)) (tail as)
