@@ -170,8 +170,8 @@ derefBranch m (BranchAction i t) = do
     C.deref m t
 derefBranch _ BranchStuck = return ()
 
-gen1Step :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> C.DDNode s u -> Lab s u -> DDNode s u -> DDNode s u -> ST s (Step s u)
-gen1Step spec m refdyn pdb cont lp set strategy = do
+gen1Step :: Spec -> C.STDdManager s u -> RefineDynamic s u -> DB s u AbsVar AbsVar -> C.DDNode s u -> Lab s u -> DDNode s u -> DDNode s u -> DDNode s u -> [DDNode s u] -> ST s (Step s u)
+gen1Step spec m refdyn pdb cont lp set strategy goal regions = do
     traceST "gen1Step"
     let Ops{..} = constructOps m
         DB{_sections=SectionInfo{..}, ..} = pdb
@@ -194,31 +194,38 @@ gen1Step spec m refdyn pdb cont lp set strategy = do
     -- Remove these states from set
     set' <- set .& stepWaitCond
     -- Iterate through what remains
-    stepBranches <- mkBranches strategy set'
+    stepBranches <- mkBranches strategy goal regions set'
     traceST "gen1Step complete"
     return Step{..}
 
 -- consumes input reference
-mkBranches :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) => DDNode s u -> DDNode s u -> ST s (Branch s u)
-mkBranches strategy set = do
+mkBranches :: (?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) => DDNode s u -> DDNode s u -> [DDNode s u] -> DDNode s u -> ST s (Branch s u)
+mkBranches strategy goal regions set = do
     let ops@Ops{..} = constructOps ?m
         DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
         RefineDynamic{..} = ?rd
         sd = SynthData sinfo trans ?cont ?rd ?lp
-    mcond <- ifCondition ops sd strategy set
-    case mcond of
-         Nothing   -> do deref set
-                         return $ BranchStuck 
-         Just cond -> do condset  <- set .& cond
-                         Just act <- pickLabel ops sd strategy condset
-                         deref condset
-                         set'     <- set .& bnot cond
-                         deref set
-                         if set' == bfalse
-                            then do deref set'
-                                    return $ BranchAction cond act
-                            else do branch' <- mkBranches strategy set'
-                                    return $ BranchITE cond act branch'
+
+    --The list of DDNodes is the set of winning regions at each distance from the goal. They are inclusive.
+    --The head of the list is the furthest from the goal. The sets monotonically shrink.
+    --assumes stateSet is not entirely contained within the goal
+    muniqlab <- pickLabel2 ops sd regions goal strategy set
+    case muniqlab of
+         Just l  -> return $ BranchAction set l
+         Nothing -> do mcond <- ifCondition ops sd strategy set
+                       case mcond of
+                            Nothing   -> do deref set
+                                            return $ BranchStuck 
+                            Just cond -> do condset  <- set .& cond
+                                            Just act <- pickLabel ops sd strategy condset
+                                            deref condset
+                                            set'     <- set .& bnot cond
+                                            deref set
+                                            if set' == bfalse
+                                               then do deref set'
+                                                       return $ BranchAction cond act
+                                               else do branch' <- mkBranches strategy goal regions set'
+                                                       return $ BranchITE cond act branch'
 
 -- Decomposes cond into prime implicants and converts it to a boolean expression
 mkCondition :: (?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> ST s I.Expr
