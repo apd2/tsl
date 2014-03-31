@@ -103,7 +103,7 @@ ppAction' ((cond, lab):sol) = if null sol
                     _                                                          -> throwError $ "cannot extract tag from label assignment " ++ show lab
         -- generate method invocation
         if' (tag == mkTagDoNothing) (throwError "unexpected no-op tag") $
-            if' (tag == mkTagExit) (return []) $
+            if' (tag == mkTagExit) (return [PP.text "{}"]) $
             do let mpath = tagToPath tag 
                    -- method in the flat spec
                    meth  = let ?spec = flatspec in snd $ F.getMethod ?sc $ MethodRef nopos [Ident nopos tag]
