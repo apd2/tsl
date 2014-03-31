@@ -221,30 +221,71 @@ mkBranches strategy goal regions set = do
         DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
         RefineDynamic{..} = ?rd
         sd = SynthData sinfo trans ?cont ?rd ?lp
-
     --The list of DDNodes is the set of winning regions at each distance from the goal. They are inclusive.
     --The head of the list is the furthest from the goal. The sets monotonically shrink.
     --assumes stateSet is not entirely contained within the goal
     muniqlab <- pickLabel2 ops sd regions goal strategy set
     case muniqlab of
-         Just l  -> return $ BranchAction set l
-         Nothing -> do mcond <- ifCondition ops sd strategy set
-                       case mcond of
-                            Nothing   -> do $d deref set
-                                            return $ BranchStuck 
-                            Just cond -> do condset  <- $r2 band set cond
-                                            Just act <- pickLabel ops sd strategy condset
-                                            $d deref condset
-                                            set'     <- $r2 band set (bnot cond)
-                                            $d deref set
-                                            if set' == bfalse
-                                               then do $d deref set'
-                                                       return $ BranchAction cond act
-                                               else do branch' <- mkBranches strategy goal regions set'
-                                                       return $ BranchITE cond act branch'
+         Just (l, farthest) -> do itr <- CG.enumerateEquivalentLabels ops sd set l
+                                  mlab' <- pickProgressLabel farthest set itr
+                                  case mlab' of
+                                       Nothing -> mkBranches' strategy goal regions set
+                                       Just l' -> return $ BranchAction set l'
+         Nothing -> mkBranches' strategy goal regions set
+
+pickProgressLabel :: (MonadResource (DDNode s u) (ST s) t, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
+                  => DDNode s u 
+                  -> DDNode s u 
+                  -> CG.IteratorM (t (ST s)) (DDNode s u) 
+                  -> t (ST s) (Maybe (DDNode s u))
+pickProgressLabel _        _   CG.Empty          = return Nothing
+pickProgressLabel farthest set (CG.Item l stitr) = do
+    let ops@Ops{..} = constructOps ?m
+        RefineDynamic{..} = ?rd
+    outerRegion <- $r2 band set farthest
+    trel <- $r $ C.conj ops $ l:(map snd trans)
+    suc <- simulateControllable set trel
+    $d deref trel
+    outerRegion' <- $r2 band suc farthest
+    $d deref suc
+    shrinks <- lift $ leq outerRegion' outerRegion
+    newstates <- $r2 band outerRegion' (bnot outerRegion)
+    $d deref outerRegion
+    $d deref outerRegion'
+    if shrinks && outerRegion' /= outerRegion
+       then return $ Just l
+       else do $d deref l
+               itr <- stitr
+               pickProgressLabel farthest set itr
+   
+
+mkBranches' :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
+            => DDNode s u 
+            -> DDNode s u 
+            -> [DDNode s u] 
+            -> DDNode s u -> t (ST s) (Branch s u) 
+mkBranches' strategy goal regions set = do
+    let ops@Ops{..} = constructOps ?m
+        DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
+        RefineDynamic{..} = ?rd
+        sd = SynthData sinfo trans ?cont ?rd ?lp
+    mcond <- ifCondition ops sd strategy set
+    case mcond of
+         Nothing   -> do $d deref set
+                         return $ BranchStuck 
+         Just cond -> do condset  <- $r2 band set cond
+                         Just act <- pickLabel ops sd strategy condset
+                         $d deref condset
+                         set'     <- $r2 band set (bnot cond)
+                         $d deref set
+                         if set' == bfalse
+                            then do $d deref set'
+                                    return $ BranchAction cond act
+                            else do branch' <- mkBranches strategy goal regions set'
+                                    return $ BranchITE cond act branch'
 
 -- Decomposes cond into prime implicants and converts it to a boolean expression
-mkCondition :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) I.Expr
+mkCondition:: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) I.Expr
 mkCondition cond = do
     let ops@Ops{..} = constructOps ?m
     cubes_ <- lift $ C.primeCover ops cond

@@ -4,6 +4,7 @@ module AbsSim (CompiledMB,
                simulateCFAAbstractToLoc,
                simulateCFAAbstractToCompletion,
                simulateGameAbstract,
+               simulateControllable,
                restrictToMB,
                compileExpr) where
 
