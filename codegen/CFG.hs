@@ -233,6 +233,7 @@ mkBranches strategy goal regions set = do
                                        Just l' -> return $ BranchAction set l'
          Nothing -> mkBranches' strategy goal regions set
 
+-- Iterate through labels returned by pickLabel2 looking for one that guarantees progress
 pickProgressLabel :: (MonadResource (DDNode s u) (ST s) t, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
                   => DDNode s u 
                   -> DDNode s u 
@@ -258,7 +259,8 @@ pickProgressLabel farthest set (CG.Item l stitr) = do
                itr <- stitr
                pickProgressLabel farthest set itr
    
-
+-- Called when none of the labels returned by pickLabel2 are sutable.
+-- Uses ifCondition/pickLabel to split set into subregions.
 mkBranches' :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
             => DDNode s u 
             -> DDNode s u 
