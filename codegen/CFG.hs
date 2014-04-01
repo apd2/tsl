@@ -194,21 +194,25 @@ gen1Step spec m refdyn pdb cont lp set strategy goal regions = do
         ?rd   = refdyn
         ?cont = cont
         ?lp   = lp
-    tagNopCond <- compileExpr (mkTagVar I.=== (I.EConst $ I.EnumVal mkTagDoNothing))
-    -- Use strategy to determine states where $tagnop is a winning action
-    stratinset <- $r2 band set strategy
-    stepWaitCond0 <- $r2 band stratinset tagNopCond
-    $d deref stratinset
-    $d deref tagNopCond
-    stepWaitCond1 <- $r1 (bexists _labelCube) stepWaitCond0
-    $d deref stepWaitCond0
-    stepWaitCond <- (liftM bnot) $ $r1 (bexists _untrackedCube) stepWaitCond1
-    $d deref stepWaitCond1
-    -- Remove these states from set
-    set' <- $r2 band set stepWaitCond
-    -- Iterate through what remains
-    stepBranches <- mkBranches strategy goal regions set'
-    return Step{..}
+    muniqlab <- pickCommonLab strategy goal regions set
+    case muniqlab of
+         Nothing -> do tagNopCond <- compileExpr (mkTagVar I.=== (I.EConst $ I.EnumVal mkTagDoNothing))
+                       -- Use strategy to determine states where $tagnop is a winning action
+                       stratinset <- $r2 band set strategy
+                       stepWaitCond0 <- $r2 band stratinset tagNopCond
+                       $d deref stratinset
+                       $d deref tagNopCond
+                       stepWaitCond1 <- $r1 (bexists _labelCube) stepWaitCond0
+                       $d deref stepWaitCond0
+                       stepWaitCond <- (liftM bnot) $ $r1 (bexists _untrackedCube) stepWaitCond1
+                       $d deref stepWaitCond1
+                       -- Remove these states from set
+                       set' <- $r2 band set stepWaitCond
+                       -- Iterate through what remains
+                       stepBranches <- mkBranches strategy goal regions set'
+                       return Step{..}
+         Just l  -> do $rp ref bfalse
+                       return $ Step btrue (BranchAction set l)
 
 -- consumes input reference
 mkBranches :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
@@ -217,21 +221,32 @@ mkBranches :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManag
            -> [DDNode s u] 
            -> DDNode s u -> t (ST s) (Branch s u)
 mkBranches strategy goal regions set = do
+    let RefineDynamic{..} = ?rd
+    muniqlab <- pickCommonLab strategy goal regions set
+    case muniqlab of
+         Just l  -> return $ BranchAction set l
+         Nothing -> mkBranches' strategy goal regions set
+
+-- consumes input reference
+pickCommonLab :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
+              => DDNode s u 
+              -> DDNode s u 
+              -> [DDNode s u] 
+              -> DDNode s u -> t (ST s) (Maybe (DDNode s u))
+pickCommonLab strategy goal regions set = do
     let ops@Ops{..} = constructOps ?m
         DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
         RefineDynamic{..} = ?rd
         sd = SynthData sinfo trans ?cont ?rd ?lp
-    --The list of DDNodes is the set of winning regions at each distance from the goal. They are inclusive.
-    --The head of the list is the furthest from the goal. The sets monotonically shrink.
-    --assumes stateSet is not entirely contained within the goal
     muniqlab <- pickLabel2 ops sd regions goal strategy set
     case muniqlab of
          Just (l, farthest) -> do itr <- CG.enumerateEquivalentLabels ops sd set l
                                   mlab' <- pickProgressLabel farthest set itr
                                   case mlab' of
-                                       Nothing -> mkBranches' strategy goal regions set
-                                       Just l' -> return $ BranchAction set l'
-         Nothing -> mkBranches' strategy goal regions set
+                                       Nothing -> return Nothing
+                                       Just l' -> return $ Just l'
+         Nothing            -> return Nothing
+
 
 -- Iterate through labels returned by pickLabel2 looking for one that guarantees progress
 pickProgressLabel :: (MonadResource (DDNode s u) (ST s) t, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
@@ -287,7 +302,7 @@ mkBranches' strategy goal regions set = do
                                     return $ BranchITE cond act branch'
 
 -- Decomposes cond into prime implicants and converts it to a boolean expression
-mkCondition:: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) I.Expr
+mkCondition :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) I.Expr
 mkCondition cond = do
     let ops@Ops{..} = constructOps ?m
     cubes_ <- lift $ C.primeCover ops cond
@@ -301,7 +316,8 @@ mkCondCube cub = do
    let DB{_symbolTable = SymbolInfo{..}, ..} = ?db
    let ops@Ops{..} = constructOps ?m
    asns <- cubeToAsns ops cub $ map (mapSnd sel2) $ M.toList _stateVars 
-   return $ I.conj 
+   return $ trace ("mkCondCube " ++ show asns)
+          $ I.conj 
           $ map (\(av, vals) -> I.disj $ map (formToExpr . avarAsnToFormula av) vals) asns
 
     
