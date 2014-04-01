@@ -84,7 +84,7 @@ ppAction :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?flatspec::F.
          => DDNode s u -> t (ST s) [PP.Doc]
 ppAction lab = do
     asns <- mkLabel lab
-    let lvars = nub $ map varName $ concatMap (avarVar . fst) asns
+    let lvars = nub $ map varName $ filter ((==VarTmp) . varCat) $ concatMap (avarVar . fst) asns
     let sol = bvSolve asns lvars
     case sol of
          [] -> return $ [PP.text $ "/* could not concretise label: " ++ show asns ++ " */"]
