@@ -316,9 +316,14 @@ mkCondCube cub = do
    let DB{_symbolTable = SymbolInfo{..}, ..} = ?db
    let ops@Ops{..} = constructOps ?m
    asns <- cubeToAsns ops cub $ map (mapSnd sel2) $ M.toList _stateVars 
-   return $ trace ("mkCondCube " ++ show asns)
-          $ I.conj 
-          $ map (\(av, vals) -> I.disj $ map (formToExpr . avarAsnToFormula av) vals) asns
+   return $ I.conj 
+          $ map (\(av, vals) -> -- Cube may contain ivalid enum values.  Filter them out.
+                                let vals' = case av of 
+                                                 AVarEnum t -> let Enum n = typ t
+                                                                   l = toInteger $ length $ enumEnums $ getEnumeration n
+                                                               in filter (< l) vals
+                                                 _          -> vals
+                                in I.disj $ map (formToExpr . avarAsnToFormula av) vals') asns
 
     
 cubeToAsns :: (MonadResource (DDNode s u) (ST s) t) => Ops s u -> DDNode s u -> [(AbsVar, [Int])] -> t (ST s) [(AbsVar, [Integer])]
