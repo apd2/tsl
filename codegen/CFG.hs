@@ -114,11 +114,11 @@ ppAction' ((cond, lab):sol) = if null sol
                Right a -> a
 
 mkITE :: PP.Doc -> [PP.Doc] -> [PP.Doc] -> PP.Doc
-mkITE i t e = ((PP.text "if" PP.<+> PP.parens i) PP.<+> (if' (length t /= 1) (PP.char '{') PP.empty))
+mkITE i t e = ((PP.text "if" PP.<+> PP.parens i) PP.<+> PP.char '{')
            PP.$$ (nest' $ PP.vcat $ map (PP.<> PP.semi) t)
-           PP.$$ ((if' (length t /= 1) (PP.char '}') PP.empty) PP.<+> (PP.text "else") PP.<+> (if' (length e /= 1) (PP.char '{') $ if' nestedif elcond PP.empty))
+           PP.$$ (PP.char '}' PP.<+> (PP.text "else") PP.<+> if' nestedif elcond (PP.char '{'))
            PP.$$ (if' nestedif elbody $ (nest' $ PP.vcat $ map (PP.<> PP.semi) e))
-           PP.$$ (if' (length e /= 1) (PP.char '}') PP.empty)
+           PP.$$ (if' nestedif PP.empty (PP.char '}'))
     where eltxt = PP.render $ head e
           nestedif = length e == 1 && isPrefixOf "if (" eltxt
           elcond = PP.text $ head $ lines' eltxt
