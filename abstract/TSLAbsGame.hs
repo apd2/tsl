@@ -311,8 +311,8 @@ varUpdateTrans trname (av,nxt) Transition{..} = if any G.isEmpty cfas'
 -- Compute update functions for a list of variables for a location inside
 -- transition CFA. 
 varUpdateLoc :: (?spec::Spec, ?pred::[Predicate]) => String -> [((AbsVar, LogicOp, Expr), f)] -> Loc -> CFA -> TAST f e c
-varUpdateLoc trname vs loc cfa = acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
-                                 $ traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
+varUpdateLoc trname vs loc cfa = {-acfaTraceFile acfa ("acfa_" ++ trname ++ "_" ++ vlst)
+                                 $-} traceFile ("HAST for " ++ vlst ++ ":\n" ++ show ast') (trname ++ "-" ++ vlst ++ ".ast") ast
     where
     acfa = tranCFAToACFA (map fst vs) loc cfa
     avs  = map (\((av,_,_),nxt) -> (av, nxt)) vs
