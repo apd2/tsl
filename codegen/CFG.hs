@@ -64,36 +64,36 @@ ppStep inspec flatspec spec pid m sc pdb Step{..} = do
                then return PP.empty
                else do cond <- ppCond stepWaitCond
                        return $ PP.text "wait" PP.<> PP.parens cond PP.<> PP.char ';'
-    bs <- ppBranch stepBranches
-    return $ wait PP.$+$ (PP.vcat $ PP.punctuate PP.semi bs)
+    bs <- ppBranch stepBranches True
+    return $ wait PP.$+$ (PP.vcat $ PP.punctuate PP.semi bs) 
 
 ppBranch :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
-         => Branch s u -> t (ST s) [PP.Doc]
-ppBranch BranchStuck       = return $ [PP.text "/* stuck */"]
-ppBranch (BranchITE i t e) = do
+         => Branch s u -> Bool -> t (ST s) [PP.Doc]
+ppBranch BranchStuck       _     = return $ [PP.text "/* stuck */"]
+ppBranch (BranchITE i t e) addmb = do
     cond <- ppCond i
-    tact <- ppAction t
-    ebr  <- ppBranch e
-    return $ [mkITE cond tact ebr]
-ppBranch (BranchAction _ a) = ppAction a
+    tact <- ppAction t False
+    ebr  <- ppBranch e False
+    return $ (mkITE cond tact ebr) : if' addmb [PP.text "..."] []
+ppBranch (BranchAction _ a) addmb = ppAction a addmb
 
 ppCond :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) PP.Doc
 ppCond c = (liftM $ exprToTSL2 ?inspec ?pid ?sc) $ mkCondition c
 
 ppAction :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
-         => DDNode s u -> t (ST s) [PP.Doc]
-ppAction lab = do
+         => DDNode s u -> Bool -> t (ST s) [PP.Doc]
+ppAction lab addmb = do
     asns <- mkLabel lab
     let lvars = nub $ map varName $ filter ((==VarTmp) . varCat) $ concatMap (avarVar . fst) asns
     let sol = bvSolve asns lvars
     case sol of
          [] -> return $ [PP.text $ "/* could not concretise label: " ++ show asns ++ " */"]
-         _  -> return $ ppAction' sol
+         _  -> return $ ppAction' sol addmb
 
-ppAction' :: (?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(I.Expr, [(String, VarAsn)])] -> [PP.Doc]
-ppAction' ((cond, lab):sol) = if null sol
-                                 then act
-                                 else [mkITE (exprToTSL2 ?inspec ?pid ?sc cond) act (ppAction' sol)]
+ppAction' :: (?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(I.Expr, [(String, VarAsn)])] -> Bool -> [PP.Doc]
+ppAction' ((cond, lab):sol) addmb = if null sol
+                                       then act
+                                       else [mkITE (exprToTSL2 ?inspec ?pid ?sc cond) act (ppAction' sol addmb)]
     where
     flatspec = ?flatspec
     eact = do 
@@ -108,7 +108,7 @@ ppAction' ((cond, lab):sol) = if null sol
                    -- method in the flat spec
                    meth  = let ?spec = flatspec in snd $ F.getMethod ?sc $ MethodRef nopos [Ident nopos tag]
                    args  = map (mkArg lab . mkArgTmpVarName meth) $ methArg meth
-               return [(PP.text mpath PP.<> (PP.parens $ PP.hsep $ PP.punctuate PP.comma $ args)), PP.text "..."]
+               return $ PP.text mpath PP.<> (PP.parens $ PP.hsep $ PP.punctuate PP.comma $ args) : if' addmb [PP.text "..."] []
     act = case eact of
                Left  e -> [PP.text $ "/* " ++ e ++ " */"]
                Right a -> a
