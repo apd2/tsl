@@ -216,14 +216,9 @@ gen1Step spec m refdyn pdb cont lp set strategy goal regions = do
     let stepWaitCond = (waitCond, set)
     -- Remove these states from set
     set' <- $r2 band set waitCond
-    muniqlab <- pickCommonLab strategy goal regions set'
-    case muniqlab of
-         Nothing -> do -- Iterate through what remains
-                       stepBranches <- mkBranches strategy goal regions set'
-                       return Step{..}
-         Just l  -> do $rp ref set
-                       let stepBranches = BranchAction set l
-                       return $ Step{..}
+    -- Iterate through what remains
+    stepBranches <- mkBranches strategy goal regions set'
+    return Step{..}
 
 -- consumes input reference
 mkBranches :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
