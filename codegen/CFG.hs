@@ -43,7 +43,7 @@ import qualified BddUtil           as C
 
 data Branch s u = BranchITE    (DDNode s u, DDNode s u) (DDNode s u) (Branch s u)
                 | BranchAction (DDNode s u) (DDNode s u)
-                | BranchStuck  
+                | BranchStuck  String
 
 -- A single synthesised step, consisting of a wait condition and
 -- an if-then-else fork.
@@ -69,7 +69,7 @@ ppStep inspec flatspec spec pid m sc pdb Step{..} = do
 
 ppBranch :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
          => Branch s u -> Bool -> t (ST s) [PP.Doc]
-ppBranch BranchStuck       _     = return $ [PP.text "/* stuck */"]
+ppBranch (BranchStuck reason) _     = return $ [PP.text $ "/* stuck: " ++ reason ++ " */"]
 ppBranch (BranchITE i t e) addmb = do
     cond <- ppCond i
     tact <- ppAction t False
@@ -177,7 +177,7 @@ derefBranch ops@Ops{..} (BranchITE (i,care) t e) = do
 derefBranch Ops{..} (BranchAction i t) = do
     $d deref i
     $d deref t
-derefBranch _ BranchStuck = return ()
+derefBranch _ (BranchStuck _)  = return ()
 
 gen1Step :: (MonadResource (DDNode s u) (ST s) t) 
          => Spec 
@@ -227,11 +227,15 @@ mkBranches :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManag
            -> [DDNode s u] 
            -> DDNode s u -> t (ST s) (Branch s u)
 mkBranches strategy goal regions set = do
+    let Ops{..} = constructOps ?m
     let RefineDynamic{..} = ?rd
-    muniqlab <- pickCommonLab strategy goal regions set
-    case muniqlab of
-         Just l  -> return $ BranchAction set l
-         Nothing -> mkBranches' strategy goal regions set
+    winning <- lift $ leq set (head regions)
+    if winning
+       then do muniqlab <- pickCommonLab strategy goal regions set
+               case muniqlab of
+                    Just l  -> return $ BranchAction set l
+                    Nothing -> mkBranches' strategy goal regions set
+       else return $ BranchStuck "state outside of the winning region"
 
 -- consumes input reference
 pickCommonLab :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
@@ -295,7 +299,7 @@ mkBranches' strategy goal regions set = do
     mcond <- ifCondition ops sd strategy set
     case mcond of
          Nothing   -> do $d deref set
-                         return $ BranchStuck 
+                         return $ BranchStuck "no winning move found"
          Just cond -> do condset  <- $r2 band set cond
                          Just act <- pickLabel ops sd strategy condset
                          $d deref condset
