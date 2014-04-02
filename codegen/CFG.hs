@@ -202,8 +202,10 @@ gen1Step spec m refdyn pdb cont lp set strategy goal regions = do
     $d deref tagNopCond
     stepWaitCond1 <- $r1 (bexists _labelCube) stepWaitCond0
     $d deref stepWaitCond0
-    stepWaitCond <- (liftM bnot) $ $r1 (bexists _untrackedCube) stepWaitCond1
+    stepWaitCond2 <- $r1 (bexists _untrackedCube) stepWaitCond1
     $d deref stepWaitCond1
+    stepWaitCond  <- (liftM bnot) $ $r2 liCompact stepWaitCond2 set
+    $d deref stepWaitCond2
     -- Remove these states from set
     set' <- $r2 band set stepWaitCond
     muniqlab <- pickCommonLab strategy goal regions set'
