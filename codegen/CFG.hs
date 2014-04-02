@@ -235,7 +235,8 @@ mkBranches strategy goal regions set = do
                case muniqlab of
                     Just l  -> return $ BranchAction set l
                     Nothing -> mkBranches' strategy goal regions set
-       else return $ BranchStuck "state outside of the winning region"
+       else do $d deref set
+               return $ BranchStuck "state outside of the winning region"
 
 -- consumes input reference
 pickCommonLab :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
