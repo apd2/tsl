@@ -350,6 +350,9 @@ mkLabel lab = do
     let DB{_symbolTable = SymbolInfo{..}, ..} = ?db
     let ops@Ops{..} = constructOps ?m
     lab' <- $r $ C.largePrime ops lab
-    asn <- cubeToAsn ops lab' $ map (mapSnd sel2) $ M.toList _labelVars
+    asn  <- lift $ satCube lab'
+    let enabledvars = filter ((\enidx -> (asn !! enidx) == One)  . sel4 . snd)
+                      $ M.toList _labelVars
+    res <- cubeToAsn ops lab' $ map (mapSnd sel2) enabledvars
     $d deref lab'
-    return asn
+    return res
