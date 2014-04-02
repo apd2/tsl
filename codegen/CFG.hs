@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, RecordWildCards, TemplateHaskell #-}
+{-# LANGUAGE ImplicitParams, RecordWildCards, TemplateHaskell, TupleSections #-}
 
 module CFG (Step(..),
             Branch(..),
@@ -41,13 +41,13 @@ import qualified IExpr             as I
 import qualified CuddExplicitDeref as C
 import qualified BddUtil           as C
 
-data Branch s u = BranchITE    (DDNode s u) (DDNode s u) (Branch s u)
+data Branch s u = BranchITE    (DDNode s u, DDNode s u) (DDNode s u) (Branch s u)
                 | BranchAction (DDNode s u) (DDNode s u)
                 | BranchStuck  
 
 -- A single synthesised step, consisting of a wait condition and
 -- an if-then-else fork.
-data Step s u = Step { stepWaitCond :: DDNode s u -- wait condition
+data Step s u = Step { stepWaitCond :: (DDNode s u, DDNode s u) -- (condition,  care set)
                      , stepBranches :: Branch s u 
                      }
 
@@ -60,7 +60,7 @@ ppStep inspec flatspec spec pid m sc pdb Step{..} = do
         ?m        = m
         ?sc       = sc
         ?db       = pdb
-    wait <- if stepWaitCond == C.bone m
+    wait <- if fst stepWaitCond == C.bone m
                then return PP.empty
                else do cond <- ppCond stepWaitCond
                        return $ PP.text "wait" PP.<> PP.parens cond PP.<> PP.char ';'
@@ -77,8 +77,12 @@ ppBranch (BranchITE i t e) addmb = do
     return $ (mkITE cond tact ebr) : if' addmb [PP.text "..."] []
 ppBranch (BranchAction _ a) addmb = ppAction a addmb
 
-ppCond :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) PP.Doc
-ppCond c = (liftM $ exprToTSL2 ?inspec ?pid ?sc) $ mkCondition c
+ppCond :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
+       => (DDNode s u, DDNode s u) -> t (ST s) PP.Doc
+ppCond cond = do 
+    conds <- (liftM $ map $ exprToTSL2 ?inspec ?pid ?sc) $ mkCondition cond
+    return $ PP.vcat $ PP.punctuate (PP.text "||") conds
+
 
 ppAction :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
          => DDNode s u -> Bool -> t (ST s) [PP.Doc]
@@ -158,14 +162,16 @@ mkScalar lab e | masn == Nothing = PP.text "/* any value */"
 
 
 derefStep :: (MonadResource (DDNode s u) (ST s) t) => C.STDdManager s u -> Step s u -> t (ST s) ()
-derefStep m (Step cond branch) = do
+derefStep m (Step (cond, care) branch) = do
     let ops@Ops{..} = constructOps m
     $d deref cond
+    $d deref care
     derefBranch ops branch
 
 derefBranch :: (MonadResource (DDNode s u) (ST s) t) => Ops s u -> Branch s u -> t (ST s) ()
-derefBranch ops@Ops{..} (BranchITE i t e) = do
+derefBranch ops@Ops{..} (BranchITE (i,care) t e) = do
     $d deref i
+    $d deref care
     $d deref t
     derefBranch ops e
 derefBranch Ops{..} (BranchAction i t) = do
@@ -197,23 +203,25 @@ gen1Step spec m refdyn pdb cont lp set strategy goal regions = do
     tagNopCond <- compileExpr (mkTagVar I.=== (I.EConst $ I.EnumVal mkTagDoNothing))
     -- Use strategy to determine states where $tagnop is a winning action
     stratinset <- $r2 band set strategy
-    stepWaitCond0 <- $r2 band stratinset tagNopCond
+    waitCond0 <- $r2 band stratinset tagNopCond
     $d deref stratinset
     $d deref tagNopCond
-    stepWaitCond1 <- $r1 (bexists _labelCube) stepWaitCond0
-    $d deref stepWaitCond0
-    stepWaitCond2 <- $r1 (bexists _untrackedCube) stepWaitCond1
-    $d deref stepWaitCond1
-    stepWaitCond  <- (liftM bnot) $ $r2 liCompact stepWaitCond2 set
-    $d deref stepWaitCond2
+    waitCond1 <- $r1 (bexists _labelCube) waitCond0
+    $d deref waitCond0
+    waitCond2 <- $r1 (bexists _untrackedCube) waitCond1
+    $d deref waitCond1
+    waitCond  <- (liftM bnot) $ $r2 liCompact waitCond2 set
+    $d deref waitCond2
+    $rp ref set
+    let stepWaitCond = (waitCond, set)
     -- Remove these states from set
-    set' <- $r2 band set stepWaitCond
+    set' <- $r2 band set waitCond
     muniqlab <- pickCommonLab strategy goal regions set'
     case muniqlab of
          Nothing -> do -- Iterate through what remains
                        stepBranches <- mkBranches strategy goal regions set'
                        return Step{..}
-         Just l  -> do $rp ref bfalse
+         Just l  -> do $rp ref set
                        let stepBranches = BranchAction set l
                        return $ Step{..}
 
@@ -297,28 +305,29 @@ mkBranches' strategy goal regions set = do
                          Just act <- pickLabel ops sd strategy condset
                          $d deref condset
                          set'     <- $r2 band set (bnot cond)
-                         $d deref set
                          if set' == bfalse
-                            then do $d deref set'
+                            then do $d deref set 
+                                    $d deref set'
                                     return $ BranchAction cond act
                             else do branch' <- mkBranches strategy goal regions set'
-                                    return $ BranchITE cond act branch'
+                                    return $ BranchITE (cond, set) act branch'
 
 -- Decomposes cond into prime implicants and converts it to a boolean expression
-mkCondition :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) I.Expr
-mkCondition cond = do
+mkCondition :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => (DDNode s u, DDNode s u) -> t (ST s) [I.Expr]
+mkCondition (cond, care) = do
     let ops@Ops{..} = constructOps ?m
     cubes_ <- lift $ C.primeCover ops cond
     cubes <- mapM ($r . return) cubes_
-    res <- (liftM I.disj) $ mapM mkCondCube cubes
+    res <- mapM (mkCondCube care) cubes
     mapM_ ($d deref) cubes
     return res
 
-mkCondCube :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) I.Expr
-mkCondCube cub = do
+mkCondCube :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
+           => DDNode s u -> DDNode s u -> t (ST s) I.Expr
+mkCondCube care cub = do
    let DB{_symbolTable = SymbolInfo{..}, ..} = ?db
    let ops@Ops{..} = constructOps ?m
-   asns <- cubeToAsns ops cub $ map (mapSnd sel2) $ M.toList _stateVars 
+   asns <- cubeToAsns ops care cub $ map (mapSnd sel2) $ M.toList _stateVars 
    return $ I.conj 
           $ map (\(av, vals) -> -- Cube may contain ivalid enum values.  Filter them out.
                                 let vals' = case av of 
@@ -329,13 +338,22 @@ mkCondCube cub = do
                                 in I.disj $ map (formToExpr . avarAsnToFormula av) vals') asns
 
     
-cubeToAsns :: (MonadResource (DDNode s u) (ST s) t) => Ops s u -> DDNode s u -> [(AbsVar, [Int])] -> t (ST s) [(AbsVar, [Integer])]
-cubeToAsns Ops{..} rel vs = do
+cubeToAsns :: (MonadResource (DDNode s u) (ST s) t) => Ops s u -> DDNode s u -> DDNode s u -> [(AbsVar, [Int])] -> t (ST s) [(AbsVar, [Integer])]
+cubeToAsns Ops{..} care rel vs = do
     supp <- lift $ supportIndices rel
     asn  <- lift $ satCube rel
     let supvars = filter (any (\idx -> elem idx supp) . snd) vs
-    return $ map (\(av, is) -> (av, map boolArrToBitsBe $ (<$*>) $ map (C.expand . (asn !!)) is))
-           $ nub supvars
+    mapM (\(av, is) -> (liftM ((av,) . map boolArrToBitsBe))
+                       $ filterM (\bits -> do vcubes <- mapM ($r . ithVar) is
+                                              cond  <- $r $ computeCube vcubes bits
+                                              mapM_ ($d deref) vcubes
+                                              incare <- $r2 band cond care
+                                              $d deref cond
+                                              $d deref incare
+                                              return $ incare /= bfalse)
+                       $ (<$*>) 
+                       $ map (C.expand . (asn !!)) is)
+         $ nub supvars
 
 cubeToAsn :: (MonadResource (DDNode s u) (ST s) t) => Ops s u -> DDNode s u -> [(AbsVar, [Int])] -> t (ST s) [(AbsVar, [Bool])]
 cubeToAsn Ops{..} rel vs = do
