@@ -194,25 +194,26 @@ gen1Step spec m refdyn pdb cont lp set strategy goal regions = do
         ?rd   = refdyn
         ?cont = cont
         ?lp   = lp
-    muniqlab <- pickCommonLab strategy goal regions set
+    tagNopCond <- compileExpr (mkTagVar I.=== (I.EConst $ I.EnumVal mkTagDoNothing))
+    -- Use strategy to determine states where $tagnop is a winning action
+    stratinset <- $r2 band set strategy
+    stepWaitCond0 <- $r2 band stratinset tagNopCond
+    $d deref stratinset
+    $d deref tagNopCond
+    stepWaitCond1 <- $r1 (bexists _labelCube) stepWaitCond0
+    $d deref stepWaitCond0
+    stepWaitCond <- (liftM bnot) $ $r1 (bexists _untrackedCube) stepWaitCond1
+    $d deref stepWaitCond1
+    -- Remove these states from set
+    set' <- $r2 band set stepWaitCond
+    muniqlab <- pickCommonLab strategy goal regions set'
     case muniqlab of
-         Nothing -> do tagNopCond <- compileExpr (mkTagVar I.=== (I.EConst $ I.EnumVal mkTagDoNothing))
-                       -- Use strategy to determine states where $tagnop is a winning action
-                       stratinset <- $r2 band set strategy
-                       stepWaitCond0 <- $r2 band stratinset tagNopCond
-                       $d deref stratinset
-                       $d deref tagNopCond
-                       stepWaitCond1 <- $r1 (bexists _labelCube) stepWaitCond0
-                       $d deref stepWaitCond0
-                       stepWaitCond <- (liftM bnot) $ $r1 (bexists _untrackedCube) stepWaitCond1
-                       $d deref stepWaitCond1
-                       -- Remove these states from set
-                       set' <- $r2 band set stepWaitCond
-                       -- Iterate through what remains
+         Nothing -> do -- Iterate through what remains
                        stepBranches <- mkBranches strategy goal regions set'
                        return Step{..}
          Just l  -> do $rp ref bfalse
-                       return $ Step btrue (BranchAction set l)
+                       let stepBranches = BranchAction set l
+                       return $ Step{..}
 
 -- consumes input reference
 mkBranches :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 

@@ -95,7 +95,7 @@ data VarAsn = AsnScalar [((Int,Int), Either Bool Expr)]
 
 -- Solve a system of equations for a subset of variables.
 bvSolve :: (?spec::Spec) => [(AbsVar,[Bool])] -> [String] -> [(Expr, [(String, VarAsn)])]
-bvSolve asns vs = 
+bvSolve asns vs = trace ("bvSolve " ++ show vs ++ " " ++ show asns) $
     case BV.exTerm qvs atoms of
          Just cas -> let ?vmap = vmap in map (solToVarAsns vmap vs) cas 
          Nothing  -> error $ "bvSolve failed on: " ++ show atoms ++ "\nTest case:\n" ++ test
