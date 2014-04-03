@@ -86,9 +86,10 @@ simulateCFAAbstractToLoc :: (MonadResource (DDNode s u) (ST s) t)
                          -> CFA 
                          -> DDNode s u 
                          -> Loc 
+                         -> DDNode s u
                          -> DbgNotify s u 
                          -> t (ST s) (Maybe (DDNode s u))
-simulateCFAAbstractToLoc spec m refdyn pdb cont lp cfa initset loc cb = do
+simulateCFAAbstractToLoc spec m refdyn pdb cont lp cfa initset loc winregion cb = do
     let ?m    = m
         ?spec = spec
         ?db   = pdb
@@ -96,6 +97,7 @@ simulateCFAAbstractToLoc spec m refdyn pdb cont lp cfa initset loc cb = do
         ?cont = cont
         ?lp   = lp
         ?cb   = cb
+        ?winregion = winregion
     let Ops{..} = constructOps ?m
     annot <- cfaAnnotateReachable cfa initset
     res <- maybe (return Nothing)
@@ -116,9 +118,10 @@ simulateCFAAbstractToCompletion :: (MonadResource (DDNode s u) (ST s) t)
                                 -> Lab s u 
                                 -> CFA 
                                 -> DDNode s u 
+                                -> DDNode s u
                                 -> DbgNotify s u 
                                 -> t (ST s) (DDNode s u)
-simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset cb = do
+simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset winregion cb = do
     let ops@Ops{..} = constructOps m
     let ?m    = m
         ?spec = spec
@@ -127,6 +130,7 @@ simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset cb = do
         ?cont = cont
         ?lp   = lp
         ?cb   = cb
+        ?winregion = winregion
     annot <- cfaAnnotateReachable cfa initset
     let finalsets = mapMaybe (\loc -> M.lookup loc annot) $ cfaFinal cfa
     res <- $r $ disj ops finalsets
@@ -145,10 +149,11 @@ simulateGameAbstract :: (MonadResource (DDNode s u) (ST s) t)
                      -> Lab s u 
                      -> [CompiledMB] 
                      -> DDNode s u 
+                     -> DDNode s u
                      -> DbgNotify s u 
                      -> t (ST s) (DDNode s u)
-simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sections = SectionInfo{..}, ..} cont lp mbs initset' cb = do
-    let Ops{..} = constructOps m
+simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sections = SectionInfo{..}, ..} cont lp mbs initset' winregion cb = do
+    let ops@Ops{..} = constructOps m
     let ?m    = m
         ?spec = spec
         ?rd   = refdyn
@@ -156,6 +161,7 @@ simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sectio
         ?cont = cont
         ?lp   = lp
         ?cb   = cb
+        ?winregion = winregion
     -- Compute the set of initial states
     let initvs = (concatMap sel1 $ M.elems _initVars) \\ (concatMap sel1 $ M.elems _stateVars)
     initcube <- $r $ nodesToCube initvs
@@ -163,6 +169,7 @@ simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sectio
     $d deref initcube
     initset <- $r1 (bexists _untrackedCube) init0
     $d deref init0
+    checkWinRegion ops winregion initset' "simulateGameAbstract: initset' is not a subset of the winning region"
     -- Compute magic block constraints
     mbs' <- mapM (\(p, cfa) -> do cond <- mbToStateConstraint spec m pdb p
                                   return (cond, cfa)) mbs
@@ -176,8 +183,13 @@ simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sectio
 -- Internals
 ----------------------------------------------------------
 
+checkWinRegion :: (MonadResource (DDNode s u) (ST s) t) => Ops s u -> DDNode s u -> DDNode s u -> String -> t (ST s) ()
+checkWinRegion Ops{..} win set txt = do
+    issubset <- lift $ leq set win
+    when (not issubset) $ lift $ traceST txt
+
 -- Simulate the entire game starting from the given set.
-simulateGameAbstractFrom :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?cb::DbgNotify s u) 
+simulateGameAbstractFrom :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u) 
                          => [CompiledMB' s u] 
                          -> DDNode s u 
                          -> t (ST s) (DDNode s u)
@@ -187,9 +199,10 @@ simulateGameAbstractFrom mbs initset = do
         DB{_sections=sinfo@SectionInfo{..}, ..} = ?db
     -- transitive closure of uncontrollable from initset
     reach <- applyUncontrollableTC ops (SynthData sinfo trans ?cont ?rd ?lp) initset
+    checkWinRegion ops ?winregion reach "simulateGameAbstractFrom: reach is not a subset of the winning region"
     -- simulate magic blocks
     deltas <- mapM (\(cond, cfa) -> do bef <- $r2 band cond reach
-                                       aft <- simulateCFAAbstractToCompletion ?spec ?m ?rd ?db ?cont ?lp cfa bef ?cb
+                                       aft <- simulateCFAAbstractToCompletion ?spec ?m ?rd ?db ?cont ?lp cfa bef ?winregion ?cb
                                        $d deref bef
                                        aft' <- clearMagic aft
                                        $d deref aft
@@ -265,7 +278,7 @@ simulateControllable from tr = do
 -- Annotate pause locations with sets of states
 -- initset - set of possible initial states
 -- Assumes that pause locations that represent magic blocks do not have outgoing transitions.
-cfaAnnotateReachable :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?cb::DbgNotify s u) 
+cfaAnnotateReachable :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u) 
                      => CFA 
                      -> DDNode s u 
                      -> t (ST s) (M.Map Loc (DDNode s u))
@@ -286,17 +299,18 @@ cfaAnnotateReachable cfa initset = do
     mapM_ ($d deref . sel3) tupds
     return res
 
-annotate' :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db :: DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u)
+annotate' :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db :: DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u)
           => [(Loc, Loc, DDNode s u)]    -- Compiled transitions
           -> [Loc]                       -- Frontier
           -> M.Map Loc (DDNode s u)      -- Annotations computed so far
           -> t (ST s) (M.Map Loc (DDNode s u))
 annotate' _    []          annot = return annot
 annotate' upds (loc:front) annot = do
-    let Ops{..} = constructOps ?m
+    let ops@Ops{..} = constructOps ?m
     -- transitions from loc
     (front'', annot'') <- foldM (\(front', annot') (_, to, upd) -> do 
                                    nxt <- simulateControllable (annot' M.! loc) upd
+                                   checkWinRegion ops ?winregion nxt $ "annotate': transition from " ++ show loc ++ " to " ++ show to ++ " leaves winning region"
                                    -- If new reachable states have been discovered in to, 
                                    -- annotate to with these states and add it to the frontier
                                    case M.lookup to annot' of
