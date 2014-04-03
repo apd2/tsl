@@ -162,10 +162,12 @@ simulateGameAbstract spec m refdyn pdb@DB{_symbolTable = SymbolInfo{..}, _sectio
         ?lp   = lp
         ?cb   = cb
         ?winregion = winregion
+    initset'' <- $r2 band initset' (bnot $ inconsistentInit ?rd)
     -- Compute the set of initial states
     let initvs = (concatMap sel1 $ M.elems _initVars) \\ (concatMap sel1 $ M.elems _stateVars)
     initcube <- $r $ nodesToCube initvs
-    init0 <- $r2 bexists initcube initset'
+    init0 <- $r2 bexists initcube initset''
+    $d deref initset''
     $d deref initcube
     initset <- $r1 (bexists _untrackedCube) init0
     $d deref init0
