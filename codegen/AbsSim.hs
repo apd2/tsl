@@ -364,7 +364,7 @@ compileTransition t = do
     (upd_, CompileState newvars _) <- lift $ (flip runStateT) (CompileState (NewVars []) ?db) $ do
           p <- pdbPred
           let ?pred = p
-          let pre = tranPrecondition trname t
+          let pre = tranPrecondition True trname t
               ast = H.Conj $ pre : (map (compileTransitionVar t) $ svars)
           H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) ast
     upd <- $r $ return upd_

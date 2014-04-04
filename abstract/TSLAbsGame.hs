@@ -77,7 +77,8 @@ tslGoalAbs spec m ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    lift $ mapM (\g -> do let ast = tranPrecondition ("goal_" ++ (goalName g))  (goalCond g)
+    lift $ mapM (\g -> do let -- TODO: inline wires but not prefixes?
+                              ast = tranPrecondition False ("goal_" ++ (goalName g))  (goalCond g)
                           H.compileBDD m ops (avarGroupTag . bavarAVar) ast)
          $ tsGoal $ specTran spec
 
@@ -97,7 +98,7 @@ tslInitAbs spec m ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    let pre   = tranPrecondition "init" (fst $ tsInit $ specTran spec)
+    let pre   = tranPrecondition False "init" (fst $ tsInit $ specTran spec)
         extra = bexprAbstract (snd $ tsInit $ specTran spec)
         res   = H.And pre extra
     lift $ H.compileBDD m ops (avarGroupTag . bavarAVar) res
@@ -119,7 +120,7 @@ tslConstraint = pre
     -- magic = compileFormula $ ptrFreeBExprToFormula $ mkContLVar ==> mkMagicVar
     -- precondition of at least one transition must hold   
     pre = H.Disj
-          $ mapIdx (\tr i -> tranPrecondition ("pre_" ++ show i) tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
+          $ mapIdx (\tr i -> tranPrecondition True ("pre_" ++ show i) tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
     
 
 tslContAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
@@ -283,8 +284,8 @@ bexprAbstract :: (?spec::Spec, ?pred::[Predicate]) => Expr -> TAST f e c
 bexprAbstract = compileFormula . bexprToFormula
 
 -- Compute precondition of transition without taking prefix blocks and wires into account
-tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => String -> Transition -> TAST f e c
-tranPrecondition trname Transition{..} = varUpdateLoc trname [] tranFrom (cfaLocInlineWirePrefix ?spec tranCFA tranFrom)
+tranPrecondition :: (?spec::Spec, ?pred::[Predicate]) => Bool -> String -> Transition -> TAST f e c
+tranPrecondition inline trname Transition{..} = varUpdateLoc trname [] tranFrom (if' inline (cfaLocInlineWirePrefix ?spec tranCFA tranFrom) tranCFA)
 
 -- Compute update function for an abstract variable wrt to a transition
 -- Returns update function and precondition of the transition.  The precondition
