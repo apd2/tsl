@@ -5,6 +5,7 @@ module Predicate(PVarOps,
                  avarBAVar,
                  AbsVar(..),
                  avarWidth,
+                 avarRange,
                  avarIsPred,
                  avarIsRelPred,
                  avarIsEnum,
@@ -43,6 +44,7 @@ module Predicate(PVarOps,
 
 import Text.PrettyPrint
 import Data.List
+import Data.Bits
 
 import Util
 import TSLUtil
@@ -76,6 +78,13 @@ avarWidth (AVarPred _) = 1
 avarWidth (AVarEnum t) = termWidth t
 avarWidth (AVarBool _) = 1
 avarWidth (AVarInt  t) = termWidth t
+
+avarRange :: (?spec::Spec) => AbsVar -> Int
+avarRange (AVarPred _) = 1
+avarRange (AVarEnum t) = let Enum n = typ t in
+                         (length $ enumEnums $ getEnumeration n) - 1
+avarRange (AVarBool _) = 1
+avarRange (AVarInt  t) = (1 `shiftL` (typeWidth t)) - 1
 
 avarCategory :: (?spec::Spec) => AbsVar -> VarCategory
 avarCategory (AVarPred p) = predCategory p
