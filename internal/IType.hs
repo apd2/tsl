@@ -1,7 +1,6 @@
 module IType(Field(..),
              Type(..),
              Typed(..),
-             typeWidth,
              isSigned,
              isInt,
              isBool,
@@ -46,23 +45,11 @@ instance PP Type where
 instance Show Type where
     show = render . pp
 
-twidth :: Type -> Int
-twidth Bool        = 1
-twidth (SInt w)    = w
-twidth (UInt w)    = w
-twidth (Enum e)    = bitWidth $ length e - 1
-twidth (Array t l) = l * twidth t
-twidth (Struct fs) = sum $ map typeWidth fs
-twidth t           = error $ "twidth " ++ show t ++ " undefined"
-
 class Typed a where
     typ :: a -> Type
 
 instance Typed Type where
     typ = id
-
-typeWidth :: (Typed a) => a -> Int
-typeWidth = twidth . typ
 
 isSigned :: (Typed a) => a -> Bool
 isSigned x = case typ x of

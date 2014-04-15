@@ -19,6 +19,7 @@ module ISpec(Spec(..),
              lookupEnumerator,
              getEnumerator,
              getEnumeration,
+             typeWidth,
              enumToInt) where
 
 import Data.List
@@ -28,6 +29,7 @@ import qualified Data.Map as M
 import qualified Data.Graph.Inductive.Graph as G
 import Text.PrettyPrint
 
+import TSLUtil
 import Pos
 import Util
 import CFA
@@ -67,17 +69,17 @@ specTmpVar :: Spec -> [Var]
 specTmpVar = filter ((==VarTmp) . varCat) . specVar
 
 instance PP Spec where
-    pp Spec{..} = (text $ "/* state variables: " ++ (show $ length sv) ++ "(" ++ show sbits ++ "bits), " ++ 
-                          "label variables: "++ (show $ length lv) ++ "(" ++ show lbits ++ "bits)*/" )
-                  $+$
-                  (vcat $ map (($+$ text "") . pp) specEnum)
-                  $+$
-                  (vcat $ map (($+$ text "") . pp) specVar)
-                  $+$
-                  pp specTran 
-                  where (sv,lv) = partition ((==VarState) . varCat) specVar 
-                        sbits = sum $ map typeWidth sv
-                        lbits = sum $ map typeWidth lv
+    pp spec@Spec{..} = (text $ "/* state variables: " ++ (show $ length sv) ++ "(" ++ show sbits ++ "bits), " ++ 
+                               "label variables: "++ (show $ length lv) ++ "(" ++ show lbits ++ "bits)*/" )
+                       $+$
+                       (vcat $ map (($+$ text "") . pp) specEnum)
+                       $+$
+                       (vcat $ map (($+$ text "") . pp) specVar)
+                       $+$
+                       pp specTran 
+                       where (sv,lv) = partition ((==VarState) . varCat) specVar 
+                             sbits = let ?spec = spec in sum $ map typeWidth sv
+                             lbits = let ?spec = spec in sum $ map typeWidth lv
 
 lookupVar :: (?spec::Spec) => String -> Maybe Var
 lookupVar n = find ((==n) . varName) $ specVar ?spec 
@@ -98,6 +100,20 @@ getEnumeration e = fromJustMsg ("getEnumeration: enumeration " ++ e ++ " not fou
 getRelation :: (?spec::Spec) => String -> Relation
 getRelation r = fromJustMsg ("getRelation: relation " ++ r ++ " not found")
                 $ find ((==r) . relName) $ specRels ?spec
+
+
+twidth :: (?spec::Spec) => Type -> Int
+twidth Bool        = 1
+twidth (SInt w)    = w
+twidth (UInt w)    = w
+twidth (Enum e)    = bitWidth $ length (enumEnums $ getEnumeration e) - 1
+twidth (Array t l) = l * twidth t
+twidth (Struct fs) = sum $ map typeWidth fs
+twidth t           = error $ "twidth " ++ show t ++ " undefined"
+
+typeWidth :: (?spec::Spec, Typed a) => a -> Int
+typeWidth = twidth . typ
+
 
 -- Get sequence number of an enumerator
 enumToInt :: (?spec::Spec) => String -> Int
