@@ -46,7 +46,7 @@ import qualified HAST.BDD          as H
 type CompiledMB      = (Pos, CFA)
 type CompiledMB' s u = (DDNode s u, CFA)
 
-type DbgNotify s u = (String -> DDNode s u -> ST s ())
+type DbgNotify s u = (String -> DDNode s u -> DDNode s u -> DDNode s u -> ST s ())
 
 ----------------------------------------------------------
 -- Interface
@@ -250,7 +250,7 @@ compileExpr e = do
 -- Simulate a controllable transition tr from "from" followed by a transitive 
 -- closure of uncontrollable transitions.
 -- Assumes that label variables and don't cares in tr.
-simulateControllable :: (MonadResource (DDNode s u) (ST s) t, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u) 
+simulateControllable :: (MonadResource (DDNode s u) (ST s) t, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u) 
                      => DDNode s u 
                      -> DDNode s u 
                      -> t (ST s) (DDNode s u)
@@ -272,6 +272,11 @@ simulateControllable from tr = do
     $d deref trfromc3
     to <- $r1 mapVars to'
     $d deref to'
+    checkWinRegion ops ?winregion to $ "simulateControllable: controllable transition leaves winning region"
+
+--    issubset <- lift $ leq to ?winregion
+--    when (not issubset) $ lift $ ?cb "simulateControllable" from tr to
+
     totc <- applyUncontrollableTC ops (SynthData sinfo trans ?cont ?rd ?lp) to
     $d deref to
     return totc
@@ -294,14 +299,13 @@ cfaAnnotateReachable cfa initset = do
     tupds <- mapM (\(to, tcfa) -> do let from = head $ cfaSource tcfa
                                          sink = head $ cfaSink   tcfa
                                      upd <- compileTransition (Transition from sink tcfa)
-                                     lift $ ?cb ("from" ++ show from ++ "to" ++ show to) upd
                                      return (from, to, upd))
                   tcfas
     res <- annotate' tupds [cfaInitLoc] (M.singleton cfaInitLoc initset) 
     mapM_ ($d deref . sel3) tupds
     return res
 
-annotate' :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db :: DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u)
+annotate' :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db :: DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u)
           => [(Loc, Loc, DDNode s u)]    -- Compiled transitions
           -> [Loc]                       -- Frontier
           -> M.Map Loc (DDNode s u)      -- Annotations computed so far
@@ -378,16 +382,17 @@ compileTransition t = do
     return upd'
     
 
-allocTmpUntracked :: (Ord sp) => Ops s u -> sp -> Int -> Maybe String -> StateT (CompileState s u sp lp) (ST s) [DDNode s u]
+allocTmpUntracked :: (Ord sp, Show sp) => Ops s u -> sp -> Int -> Maybe String -> StateT (CompileState s u sp lp) (ST s) [DDNode s u]
 allocTmpUntracked ops var size grp = do
     CompileState{..} <- get
     case lookup var $ _allocatedStateVars _cnv of
          Just nodes -> return nodes
-         Nothing    -> do (nodes, _) <- liftToCompileState $ allocN ops size grp
+         Nothing    -> do lift $ traceST $ "allocating new untracked variable " ++ show var
+                          (nodes, _) <- liftToCompileState $ allocN ops size grp
                           put $ CompileState (NewVars $ (var, nodes) : _allocatedStateVars _cnv) _cdb
                           return nodes
 
-compileOps :: (Ord sp, Ord lp, Show lp) => Ops s u -> VarOps (CompileState s u sp lp) (BAVar sp lp) s u
+compileOps :: (Ord sp, Ord lp, Show lp, Show sp) => Ops s u -> VarOps (CompileState s u sp lp) (BAVar sp lp) s u
 compileOps ops = VarOps {withTmp = withTmpCompile' ops, allVars = liftToCompileState allVars', ..}
     where
     getVar (StateVar var size) grp = do

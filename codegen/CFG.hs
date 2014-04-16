@@ -271,7 +271,9 @@ pickProgressLabel farthest set (CG.Item l stitr) = do
         RefineDynamic{..} = ?rd
     outerRegion <- $r2 band set farthest
     trel <- $r $ C.conj ops $ l:(map snd trans)
-    suc <- simulateControllable set trel
+    suc <- let ?winregion = btrue
+               ?cb = (\_ _ _ _ -> return ())
+           in simulateControllable set trel
     $d deref trel
     outerRegion' <- $r2 band suc farthest
     $d deref suc
