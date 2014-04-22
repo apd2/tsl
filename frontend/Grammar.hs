@@ -47,7 +47,7 @@ statementParser   = removeTabs *> statement
 statementsParser  = removeTabs *> statements
 statements1Parser = removeTabs *> ((optional whiteSpace) *> statements1)
 
-reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", "==>", "<==", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@", "?", "#", "##"]
+reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", "==>", "<==", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@", "#", "##", "_"]
 reservedNames = ["after",
                  "apply",
                  "prefix",
@@ -109,7 +109,7 @@ lexer = T.makeTokenParser (emptyDef {T.commentStart      = "/*"
                                     ,T.identLetter       = alphaNum <|> char '_'
                                     ,T.reservedOpNames   = reservedOpNames
                                     ,T.reservedNames     = reservedNames
-                                    ,T.opLetter          = oneOf ":!#$%&*+./<=>\\^|-~"
+                                    ,T.opLetter          = oneOf ":!#$%&*+./<=>\\^|-~_"
                                     ,T.caseSensitive     = True})
 
 reservedOp = T.reservedOp lexer
@@ -427,7 +427,7 @@ spause   = SPause   nopos Nothing <$ reserved "pause"
 swait    = SWait    nopos Nothing <$ reserved "wait" <*> (parens detexpr)
 sstop    = SStop    nopos Nothing <$ reserved "stop"
 sbreak   = SBreak   nopos Nothing <$ reserved "break"
-sinvoke  = SInvoke  nopos Nothing <$ isinvoke <*> methname <*> (parens $ commaSep $ Just <$> expr)
+sinvoke  = SInvoke  nopos Nothing <$ isinvoke <*> methname <*> (parens $ commaSep $ choice [Nothing <$ reservedOp "_", Just <$> expr])
     where isinvoke = try $ lookAhead $ methname *> symbol "("
 sassert  = SAssert  nopos Nothing <$ reserved "assert" <*> (parens detexpr)
 sassume  = SAssume  nopos Nothing <$ reserved "assume" <*> (parens detexpr)
@@ -493,7 +493,7 @@ estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
           anonfields = commaSep1 (expr' det)
           namedfields = commaSep1 $ ((,) <$ reservedOp "." <*> ident <* reservedOp "=" <*> (expr' det))
-eapply  det = EApply nopos <$ isapply <*> methname <*> (parens $ commaSep (Just <$> expr' det))
+eapply  det = EApply nopos <$ isapply <*> methname <*> (parens $ commaSep (choice [Nothing <$ reservedOp "_", Just <$> expr' det]))
     where isapply = try $ lookAhead $ methname *> symbol "("
 eterm   det = ETerm nopos <$> staticsym
 ebool   det = EBool nopos <$> boolParser

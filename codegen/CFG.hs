@@ -111,7 +111,9 @@ ppAction' ((cond, lab):sol) addmb = if null sol
             do let mpath = tagToPath tag 
                    -- method in the flat spec
                    meth  = let ?spec = flatspec in snd $ F.getMethod ?sc $ MethodRef nopos [Ident nopos tag]
-                   args  = map (mkArg lab . mkArgTmpVarName meth) $ methArg meth
+                   args  = map (\a -> case argDir a of
+                                           ArgIn  -> mkArg lab $ mkArgTmpVarName meth a
+                                           ArgOut -> PP.char '_') $ methArg meth
                return $ PP.text mpath PP.<> (PP.parens $ PP.hsep $ PP.punctuate PP.comma $ args) : if' addmb [PP.text "..."] []
     act = case eact of
                Left  e -> [PP.text $ "/* " ++ e ++ " */"]
