@@ -162,7 +162,7 @@ mkArg' lab t e =
          _          -> mkScalar lab e
 
 mkScalar :: (?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> I.Expr -> PP.Doc
-mkScalar lab e | masn == Nothing = PP.text "/* any value */"
+mkScalar lab e | masn == Nothing = PP.text "/* any value */" PP.<> (exprToTSL2 ?inspec ?pid ?sc $ I.EConst $ I.valDefault e)
                | otherwise       = PP.hcat $ PP.punctuate (PP.text " ++ ") es'
     where masn = lookup (show e) lab 
           Just (AsnScalar asns) = masn
