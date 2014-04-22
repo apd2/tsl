@@ -37,6 +37,9 @@ import Method
 import Expr
 import qualified NS                as F
 import qualified Spec              as F
+import qualified Type              as F
+import qualified TypeOps           as F
+import qualified MethodOps         as F
 import qualified IExpr             as I
 import qualified CuddExplicitDeref as C
 import qualified BddUtil           as C
@@ -112,7 +115,10 @@ ppAction' ((cond, lab):sol) addmb = if null sol
                    -- method in the flat spec
                    meth  = let ?spec = flatspec in snd $ F.getMethod ?sc $ MethodRef nopos [Ident nopos tag]
                    args  = map (\a -> case argDir a of
-                                           ArgIn  -> mkArg lab $ mkArgTmpVarName meth a
+                                           ArgIn  -> let t = let ?spec = ?flatspec 
+                                                                 ?scope = ?sc
+                                                             in F.typ a
+                                                     in mkArg lab t $ mkArgTmpVarName meth a
                                            ArgOut -> PP.char '_') $ methArg meth
                return $ PP.text mpath PP.<> (PP.parens $ PP.hsep $ PP.punctuate PP.comma $ args) : if' addmb [PP.text "..."] []
     act = case eact of
@@ -137,15 +143,22 @@ tagToPath tag = intercalate "." $ (map sname path) ++ [mname]
           (iid, mname) = itreeParseName tag
           Just path = let ?spec = ?inspec in itreeAbsToRelPath scid iid
 
-mkArg :: (?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> String -> PP.Doc
-mkArg lab argname = mkArg' lab $ I.EVar argname
+mkArg :: (?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> F.Type -> String -> PP.Doc
+mkArg lab t argname = mkArg' lab t $ I.EVar argname
 
-mkArg' :: (?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> I.Expr -> PP.Doc
-mkArg' lab e =
+mkArg' :: (?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> F.Type -> I.Expr -> PP.Doc
+mkArg' lab t e =
     case typ e of
-         Struct _   -> error "mkArg: Structs are not supported"
-         Array _ _  -> error "mkArg: Arrays are not supported"
-         VarArray _ -> error "mkArg: VarArrays are not supported"
+         Struct fs  -> let F.Type sc (F.StructSpec _ fs') = let ?spec = ?flatspec 
+                                                                ?scope = ?sc 
+                                                            in F.typ' t
+                       in (let ?spec = ?flatspec in pp t) PP.<> 
+                          (PP.braces $ PP.hcat $ PP.punctuate PP.comma $ map (\(Field n _,f) -> let t' = let ?spec = ?flatspec 
+                                                                                                             ?scope = sc 
+                                                                                                          in F.typ f
+                                                                                                in mkArg' lab t' (I.EField e n)) $ zip fs fs')
+         Array _ _  -> error $ "mkArg " ++ show e ++ ": Arrays are not supported"
+         VarArray _ -> error $ "mkArg " ++ show e ++ ": VarArrays are not supported"
          _          -> mkScalar lab e
 
 mkScalar :: (?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> I.Expr -> PP.Doc
