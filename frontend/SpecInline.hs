@@ -54,7 +54,7 @@ spec2Internal s =
                             $ filter ((/= EPIDCont) . fst) cfas
         -- built-in enums used in translating choice{} statements
         nctasks = length $ filter ((== Task Controllable) . methCat) $ tmMethod tmMain
-        choiceenum = map mkChoiceEnumDecl [0..(max 9 nctasks)]
+        choiceenum = map mkChoiceEnumDecl [0..(max 31 nctasks)]
         senum = mapMaybe (\d -> case tspec d of
                                      EnumSpec _ es -> Just $ I.Enumeration (sname d) (map sname es)
                                      _             -> Nothing) (specType ?spec)                                                     
