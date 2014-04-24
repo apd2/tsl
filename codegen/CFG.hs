@@ -148,6 +148,7 @@ mkArg lab t argname = mkArg' lab t $ I.EVar argname
 
 mkArg' :: (?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> F.Type -> I.Expr -> PP.Doc
 mkArg' lab t e =
+    -- trace ("mkArg' " ++ show lab ++ " " ++ (show $ F.tspec t) ++ "" ++ show e) $
     case typ e of
          Struct fs  -> let F.Type sc (F.StructSpec _ fs') = let ?spec = ?flatspec 
                                                                 ?scope = ?sc 
@@ -164,7 +165,7 @@ mkArg' lab t e =
 mkScalar :: (?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> I.Expr -> PP.Doc
 mkScalar lab e | masn == Nothing = PP.text "/* any value */" PP.<> (exprToTSL2 ?inspec ?pid ?sc $ I.EConst $ I.valDefault e)
                | otherwise       = PP.hcat $ PP.punctuate (PP.text " ++ ") es'
-    where masn = lookup (show e) lab 
+    where masn = lookupAsn e lab 
           Just (AsnScalar asns) = masn
           (off, es) = foldl' (\(o, exps) ((l,h), v) -> ((h+1), exps ++ (if' (l > o) [anyvalue (l-o)] []) ++ [ppAsn (h-l) v]))
                              (0, []) asns
@@ -174,7 +175,8 @@ mkScalar lab e | masn == Nothing = PP.text "/* any value */" PP.<> (exprToTSL2 ?
           ppAsn _ (Right x)    = exprToTSL2 ?inspec ?pid ?sc x
           anyvalue w = PP.text $ "/*any value*/" ++ show w  ++ "'h0"
           novalue  w = PP.text $ "/*??? (" ++ show w ++ " bits)*/"
-
+          lookupAsn (I.EField ex n) asn = maybe Nothing (\(AsnStruct a) -> lookup n a) $ lookupAsn ex asn
+          lookupAsn (I.EVar n)      asn = lookup n asn
 
 derefStep :: (MonadResource (DDNode s u) (ST s) t) => C.STDdManager s u -> Step s u -> t (ST s) ()
 derefStep m (Step (cond, care) branch) = do
