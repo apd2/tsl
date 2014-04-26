@@ -295,7 +295,6 @@ pickProgressLabel farthest set (CG.Item l stitr) = do
     outerRegion' <- $r2 band suc farthest
     $d deref suc
     shrinks <- lift $ leq outerRegion' outerRegion
-    newstates <- $r2 band outerRegion' (bnot outerRegion)
     $d deref outerRegion
     $d deref outerRegion'
     if shrinks && outerRegion' /= outerRegion
