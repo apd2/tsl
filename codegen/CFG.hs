@@ -269,7 +269,9 @@ pickCommonLab strategy goal regions set = do
     muniqlab <- pickLabel2 ops sd regions goal strategy set
     case muniqlab of
          Just (l, farthest) -> do itr <- CG.enumerateEquivalentLabels ops sd set l
+                                  $d deref l
                                   mlab' <- pickProgressLabel farthest set itr
+                                  $d deref farthest
                                   case mlab' of
                                        Nothing -> return Nothing
                                        Just l' -> return $ Just l'
