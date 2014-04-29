@@ -167,7 +167,7 @@ mkScalar lab e | masn == Nothing = PP.text "/* any value */" PP.<> (exprToTSL2 ?
                | otherwise       = PP.hcat $ PP.punctuate (PP.text " ++ ") es'
     where masn = lookupAsn e lab 
           Just (AsnScalar asns) = masn
-          (off, es) = foldl' (\(o, exps) ((l,h), v) -> ((h+1), exps ++ (if' (l > o) [anyvalue (l-o)] []) ++ [ppAsn (h-l) v]))
+          (off, es) = foldl' (\(o, exps) ((l,h), v) -> ((h+1), exps ++ (if' (l > o) [anyvalue (l-o)] []) ++ [ppAsn (h-l+1) v]))
                              (0, []) asns
           es' = es ++ (if' (off < typeWidth e) [anyvalue (typeWidth e - off)] [])
           ppAsn w (Left True)  = anyvalue w
