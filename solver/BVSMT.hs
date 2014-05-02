@@ -20,7 +20,7 @@ import Util hiding (trace)
 import qualified BV.Types    as BV
 import qualified BV.Canonize as BV
 import qualified BV.Util     as BV
-import qualified CuddExplicitDeref as C
+import qualified Cudd.Imperative as C
 import SMTSolver
 import Predicate
 import BFormula

@@ -34,7 +34,7 @@ import CG
 import Inline
 import BFormula
 import qualified IExpr             as I
-import qualified CuddExplicitDeref as C
+import qualified Cudd.Imperative   as C
 import qualified HAST.HAST         as H
 import qualified HAST.BDD          as H
 

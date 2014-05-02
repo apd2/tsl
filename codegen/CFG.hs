@@ -41,7 +41,7 @@ import qualified Type              as F
 import qualified TypeOps           as F
 import qualified MethodOps         as F
 import qualified IExpr             as I
-import qualified CuddExplicitDeref as C
+import qualified Cudd.Imperative   as C
 import qualified BddUtil           as C
 
 data Branch s u = BranchITE    (DDNode s u, DDNode s u) (DDNode s u) (Branch s u)

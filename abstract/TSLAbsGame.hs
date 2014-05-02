@@ -24,7 +24,7 @@ import Control.Monad.ST
 import Ops
 import TSLUtil
 import Util hiding (trace)
-import qualified CuddExplicitDeref as C
+import qualified Cudd.Imperative as C
 import ISpec
 import TranSpec
 import IExpr
