@@ -30,6 +30,7 @@ import qualified Text.PrettyPrint as PP
 import Numeric
 
 import System.IO.Unsafe
+import System.Directory
 import Data.Bits
 import System.Process
 import Data.String.Utils
@@ -142,7 +143,8 @@ graphTraceFile g title x = unsafePerformIO $ do
 graphTraceFileMany :: (Show b, Show c) => [Gr b c] -> String -> a -> a
 graphTraceFileMany gs title x = unsafePerformIO $ do
     fnames <- mapM (\(g,n) -> graphSave g (title++show n) True) $ zip gs ([1..]::[Int])
-    _ <- readProcess "pdftk" (fnames ++ ["cat", "output", (sanitize title) ++ ".pdf"]) ""
+    createDirectoryIfMissing False "tmp"
+    _ <- readProcess "pdftk" (fnames ++ ["cat", "output", "tmp/" ++ (sanitize title) ++ ".pdf"]) ""
     return x
 
 graphShow :: (Show b, Show c) => Gr b c -> String -> IO ()
@@ -155,9 +157,10 @@ graphSave :: (Show b, Show c) => Gr b c -> String -> Bool -> IO String
 graphSave g title tmp = do
     let -- Convert graph to dot format
         title' = sanitize title
-        fname = (if tmp then "/tmp/" else "") ++ title' ++ ".pdf"
+        fname = (if tmp then "/tmp/" else "tmp/") ++ title' ++ ".pdf"
         graphstr = graphToDot g title'
     writeFile (fname++".dot") graphstr
+    createDirectoryIfMissing False "tmp"
     _ <- readProcess "dot" ["-Tpdf", "-o" ++ fname] graphstr 
     return fname
 
@@ -174,7 +177,7 @@ graphToDot g title = graphviz g' title (6.0, 11.0) (1,1) Portrait
 
 traceFile :: String -> FilePath -> a -> a
 traceFile str fname x = unsafePerformIO $ do
-    writeFile (sanitize fname) str
+    writeFile ("tmp/" ++ sanitize fname) str
     return x
 
 ppInt :: Int -> Bool -> Radix -> Integer -> PP.Doc

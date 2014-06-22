@@ -307,7 +307,7 @@ mkCond descr s extra = do
 
 -- generate CFA that represents all possible controllable transitions
 mkCTran :: (?spec::Spec) => (I.CFA, [I.Var])
-mkCTran = {- I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $-} (ctxCFA ctx', ctxVar ctx')
+mkCTran =  I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
     where sc   = ScopeTemplate tmMain
           ctasks = filter ((== Task Controllable) . methCat) $ tmMethod tmMain
           stats = SMagExit nopos Nothing : 

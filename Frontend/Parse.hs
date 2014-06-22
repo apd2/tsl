@@ -38,7 +38,8 @@ parseTSL' modules f dirs = do
     spec <- case parse grammar f tsl of
                  Left e   -> fail $ show e
                  Right st -> return st
-    writeFile (f ++ ".out") (P.render $ pp spec)
+    createDirectoryIfMissing False "tmp"
+    writeFile ("tmp/" ++ f ++ ".out") (P.render $ pp spec)
     -- Parse imports
     foldM (\mods imp -> do imp' <- findImport imp dirs
                            if M.member imp' mods
