@@ -13,6 +13,7 @@ import Data.Functor
 import Data.Tuple.Select
 import qualified Data.Map as M
 import Control.Applicative
+import Control.Monad.State
 
 import Util hiding (trace)
 import TSLUtil
@@ -95,11 +96,19 @@ pruneCFAVar es cfa = cfa2
     cfa2 = foldl' (\g e -> if' (elem e keepedges) g (G.delLEdge e g)) cfa1 (G.labEdges cfa)
 
 exprRecomputedLoc :: (?spec::Spec, ?pred::[Predicate], ?cfa::CFA) => Loc -> Expr -> Loc
-exprRecomputedLoc l e | null (G.pre ?cfa l)                                  = l
-                      | any (isExprRecomputedByTran e . snd) (G.lpre ?cfa l) = l
-                      | all (== pre0) pres                                   = pre0
-                      | otherwise                                            = l
-    where (pre0:pres) = map (\l' -> exprRecomputedLoc l' e) $ G.pre ?cfa l
+exprRecomputedLoc l e = evalState (exprRecomputedLocM l e) M.empty
+
+exprRecomputedLocM :: (?spec::Spec, ?pred::[Predicate], ?cfa::CFA) => Loc -> Expr -> State (M.Map Loc Loc) Loc
+exprRecomputedLocM l e = do
+    m <- get
+    case M.lookup l m of
+         Nothing -> do res <- if' (null $ G.pre ?cfa l)                                  (return l) $
+                              if' (any (isExprRecomputedByTran e . snd) (G.lpre ?cfa l)) (return l) $
+                              do (pre0:pres) <- mapM (\l' -> exprRecomputedLocM l' e) $ G.pre ?cfa l
+                                 if' (all (== pre0) pres) (return pre0) (return l)
+                       modify (\m' -> M.insert l res m')
+                       return res
+         Just l' -> return l'
 
 isExprRecomputedByTran :: (?spec::Spec, ?pred::[Predicate]) => Expr -> TranLabel -> Bool
 isExprRecomputedByTran e tr = case exprUpdateTran tr e of
