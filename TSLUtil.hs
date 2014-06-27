@@ -50,9 +50,6 @@ unlines' ss = case unlines ss of
                    [] -> []
                    s  -> init s
 
-(<$*>) :: [[a]] -> [[a]]
-(<$*>) as = foldl' (\xs a -> (\bs b -> bs++[b]) <$> xs <*> a) (map (\x->[x]) (head as)) (tail as)
-
 err :: (MonadError String me) => Pos -> String -> me a
 err p e = throwError $ spos p ++ ": " ++ e
 
