@@ -1,7 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module TSLUtil((<$*>),
-               lines',
+module TSLUtil(lines',
                unlines',
                err,
                assert,
