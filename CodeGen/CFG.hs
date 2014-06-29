@@ -371,7 +371,7 @@ cubeToAsns Ops{..} care rel vs = do
                                               $d deref cond
                                               $d deref incare
                                               return $ incare /= bfalse)
-                       $ (<$*>) 
+                       $ sequence 
                        $ map (C.expand . (asn !!)) is)
          $ nub supvars
 
