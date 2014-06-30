@@ -301,10 +301,12 @@ varUpdateTrans trname (av,nxt) Transition{..} = if any G.isEmpty cfas'
                         AVarPred p@PRel{..} -> snd $ instantiateRelation (getRelation pRel) pArgs
                         _                   -> [])
           (upds, pres, cfas') = unzip3
-                                $ map (\(op, e) -> let cfa' = pruneCFAVar [e] tranCFA
-                                                       cfa  = cfaLocInlineWirePrefix ?spec cfa' tranFrom
-                                                       pre  = varUpdateLoc (trname ++ "_pre") [] tranFrom cfa
-                                                       upd  = varUpdateLoc trname [((av, op, e), nxt)] tranFrom cfa
+                                $ map (\(op, e) -> let cfa  = cfaLocInlineWirePrefix ?spec tranCFA tranFrom
+                                                       cfa' = pruneCFAVar [e] cfa
+                                                       pre  = {-cfaTraceFile tranCFA ("cfa_" ++ trname)
+                                                              $ cfaTraceFile cfa' ("cfa_" ++ trname ++ show av)
+                                                              $ -} varUpdateLoc (trname ++ "_pre") [] tranFrom cfa'
+                                                       upd  = varUpdateLoc trname [((av, op, e), nxt)] tranFrom cfa'
                                                    in (upd, pre, cfa'))
                                   vexps
 
