@@ -159,7 +159,7 @@ validateExpr' (ECase p e cs md) = do
     _ <- mapM (\(e1,_) -> assert (typeComparable e e1) (pos e1) $ 
                           "Expression " ++ show e1 ++ " has type "  ++ (show $ tspec e1) ++ 
                           ", which does not match the type " ++ (show $ tspec e) ++ " of the key expression " ++ show e) cs
-    let e1 = fst $ head cs
+    let e1 = snd $ head cs
     _ <- mapM (\(_,e2) -> assert (typeMatch e1 e2) (pos e2) $ 
                                  "Clauses of a case expression return values of incompatible types:\n  " ++ 
                                  show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ tspec e1) ++ "\n  " ++
