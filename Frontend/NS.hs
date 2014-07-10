@@ -255,7 +255,7 @@ objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c,e]
           c = fmap (ObjConst    s)   $ find ((== n) . name) (specConst ?spec)
           t = fmap ObjTemplate       $ find ((== n) . name) (specTemplate ?spec)
           e = fmap (uncurry ObjEnum) $ find ((== n) . name . snd) (concatMap (\d' -> case tspec d' of
-                                                                                          EnumSpec _ es -> map (Type s (tspec d'),) es
+                                                                                          EnumSpec _ es -> map (Type s (UserTypeSpec (pos d') $ [name d']),) es
                                                                                           _             -> []) $ 
                                                                              specType ?spec)
 
@@ -272,7 +272,7 @@ objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,w,i,pr,m,d,c,r,e,g,
           c  = fmap (ObjConst    s) $ find ((== n) . name) (tmConst t)
           r  = fmap (ObjRelation t) $ find ((== n) . name) (tmRelation t)
           e  = fmap (uncurry ObjEnum) $ find ((== n) . name . snd) (concatMap (\d' -> case tspec d' of
-                                                                                           EnumSpec _ es -> map (Type s (tspec d'),) es
+                                                                                           EnumSpec _ es -> map (Type s (UserTypeSpec (pos d') $ [name t, name d']),) es
                                                                                            _             -> []) $ 
                                                                               tmTypeDecl t)
           g = fmap (ObjGoal      t) $ find ((== n) . name) (tmGoal t)
@@ -482,5 +482,5 @@ specNamespace = map ObjTemplate (specTemplate ?spec) ++
                 map (ObjTypeDecl ScopeTop) (specType ?spec) ++ 
                 map (ObjConst    ScopeTop) (specConst ?spec) ++ 
                 (concatMap (\d -> case tspec d of
-                                       EnumSpec _ es -> map (ObjEnum (Type ScopeTop $ tspec d)) es
+                                       EnumSpec _ es -> map (ObjEnum (Type ScopeTop $ UserTypeSpec (pos d) $ [name d])) es
                                        _             -> []) (specType ?spec))
