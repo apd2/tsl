@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Frontend.Relation (RArg(RArg,rargType),
+module Frontend.Relation (RArg(RArg,rargTSpec),
                  Rule(Rule,ruleOp,ruleExpr),
                  Relation(Relation, relName, relArg, relRule),
                  Apply(Apply, applyRel, applyArg)) where
@@ -14,12 +14,12 @@ import PP
 import Frontend.Type
 import Ops
 
-data RArg = RArg { apos     :: Pos
-                 , rargType :: TypeSpec
-                 , aname    :: Ident}
+data RArg = RArg { apos      :: Pos
+                 , rargTSpec :: TypeSpec
+                 , aname     :: Ident}
 
 instance PP RArg where
-    pp RArg{..} = pp rargType <+> pp aname
+    pp RArg{..} = pp rargTSpec <+> pp aname
 
 instance Show RArg where
     show = render . pp
@@ -32,7 +32,7 @@ instance WithPos RArg where
     atPos a p = a{apos = p}
 
 instance WithTypeSpec RArg where 
-    tspec = rargType
+    tspec = rargTSpec
 
 
 data Rule = Rule { rlpos    :: Pos

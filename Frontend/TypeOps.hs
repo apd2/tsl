@@ -1,16 +1,17 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts #-}
 
 module Frontend.TypeOps(mapTSpec,
-               tspecMapExpr,
-               typ', 
-               typeIso,
-               typeMatch,
-               checkTypeMatch,
-               typeComparable,
-               typeWidth,
-               typeSigned,
-               isInt, isBool, isPtr, isArray, isStruct,
-               tdeclGraph) where
+                        fieldType,
+                        tspecMapExpr,
+                        typ', 
+                        typeIso,
+                        typeMatch,
+                        checkTypeMatch,
+                        typeComparable,
+                        typeWidth,
+                        typeSigned,
+                        isInt, isBool, isPtr, isArray, isStruct,
+                        tdeclGraph) where
 
 import Control.Monad.Error
 import Data.List
@@ -29,8 +30,9 @@ import Frontend.NS
 import Frontend.Expr
 import {-# SOURCE #-} Frontend.ExprOps
 
-instance (?spec::Spec, ?scope::Scope) => WithType Field where
-    typ = Type ?scope . tspec
+
+fieldType :: (?spec::Spec, ?scope::Scope) => Field -> Type
+fieldType = Type ?scope . tspec
 
 -- Map function over TypeSpec
 mapTSpec :: (?spec::Spec) => (Scope -> TypeSpec -> TypeSpec) -> Scope -> TypeSpec -> TypeSpec
@@ -130,14 +132,14 @@ typeMatch x y =
             (_                  , _)                  -> False
 
 
-checkTypeMatch :: (?spec::Spec, WithType a, WithType b, WithPos b, Show b, MonadError String me) => a -> b -> me ()
-checkTypeMatch x y = do
-    assert (typeMatch x y) (pos y) $
-           "Type mismatch: expected type: " ++ (show $ typ x) ++ ", actual type " ++ (show $ typ y) ++ " in " ++ show y
+checkTypeMatch :: (?spec::Spec, WithPos a, Show a, WithType b, WithType c, MonadError String me) => a -> b -> c -> me ()
+checkTypeMatch y tx ty = do
+    assert (typeMatch tx ty) (pos y) $
+           "Type mismatch: expected type: " ++ (showType $ typ tx) ++ ", actual type " ++ (showType $ typ ty) ++ " in " ++ show y
 
 
 -- Objects of these types can be compared using == and !=
-typeComparable :: (?spec::Spec, WithType a, WithType b, Show a, Show b) => a -> b -> Bool
+typeComparable :: (?spec::Spec, WithType a, WithType b) => a -> b -> Bool
 typeComparable x y =     
     let Type sx tx = typ' x
         Type sy ty = typ' y

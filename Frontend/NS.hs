@@ -6,6 +6,8 @@ module Frontend.NS(Scope(..),
           isTemplateScope,
           Type(Type),
           WithType(..),
+          ppType,
+          showType,
           lookupGlobal,
           lookupTemplate, checkTemplate, getTemplate, 
           lookupTypeDecl, checkTypeDecl, getTypeDecl,
@@ -14,7 +16,7 @@ module Frontend.NS(Scope(..),
           lookupGoal    , checkGoal    , getGoal,
           lookupWire    , checkWire    , getWire,
           lookupRelation, checkRelation, getRelation,
-          Obj(..), objLookup, objGet, isObjMutable,
+          Obj(..), objType, objLookup, objGet, isObjMutable,
           specNamespace) where
 
 import Control.Monad.Error
@@ -106,21 +108,21 @@ instance Show Scope where
 instance WithTypeSpec Type where
     tspec (Type _ t) = t
 
-instance (?spec::Spec) => PP Type where
-    pp t = case tspec t of
+ppType :: (?spec::Spec) => Type -> Doc
+ppType t = case tspec t of
                 UserTypeSpec _ n    -> let (d,s) = getTypeDecl (scope t) n
                                        in case s of
                                                ScopeTop         -> text $ sname d
                                                ScopeTemplate tm -> text (sname tm) <> text "::" <> text (sname d)
                 StructSpec _   fs   -> text "struct" <+> 
-                                       (braces $ nest' $ vcat $ map ((<> semi) . (\f -> pp (Type (scope t) (tspec f)) <+> pp (name f))) fs)
-                PtrSpec _      pt   -> pp (Type (scope t) pt) <> char '*'
-                ArraySpec _    at l -> pp (Type (scope t) at) <> (brackets $ pp l)
-                VarArraySpec _ at   -> pp (Type (scope t) at) <> (brackets $ empty)
+                                       (braces $ nest' $ vcat $ map ((<> semi) . (\f -> ppType (Type (scope t) (tspec f)) <+> pp (name f))) fs)
+                PtrSpec _      pt   -> ppType (Type (scope t) pt) <> char '*'
+                ArraySpec _    at l -> ppType (Type (scope t) at) <> (brackets $ pp l)
+                VarArraySpec _ at   -> ppType (Type (scope t) at) <> (brackets $ empty)
                 _                   -> pp $ tspec t
 
-instance (?spec::Spec) => Show Type where
-    show = render . pp
+showType :: (?spec::Spec) => Type -> String
+showType = render . ppType
 
 class WithType a where
     typ :: a -> Type
@@ -207,26 +209,26 @@ instance WithName Obj where
     name (ObjGoal     _ g) = name g
     name (ObjRelation _ r) = name r
 
-instance (?spec::Spec) => WithType Obj where
-    typ (ObjTemplate   _) = error $ "requesting type of ObjTemplate"
-    typ (ObjPort     _ p) = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ portTemplate p) $ portTemplate p
-    typ (ObjInstance _ i) = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ instTemplate i) $ instTemplate i
-    typ (ObjProcess  _ _) = error $ "requesting type of ObjProcess"
-    typ (ObjMethod   _ _) = error $ "requesting type of ObjMethod"
-    typ (ObjVar      s v) = Type s $ tspec v
-    typ (ObjGVar     t v) = Type (ScopeTemplate t) (tspec v)
-    typ (ObjWire     t w) = Type (ScopeTemplate t) (tspec w)
-    typ (ObjArg      s a) = Type s $ tspec a
-    typ (ObjRArg     s a) = Type s $ tspec a
-    typ (ObjType       t) = t
-    typ (ObjTypeDecl _ _) = error $ "requesting type of ObjTypeDecl"
-    typ (ObjConst    s c) = Type s $ tspec c
-    typ (ObjEnum     t _) = t
-    typ (ObjGoal     _ _) = error $ "requesting type of ObjGoal"
-    typ (ObjRelation _ _) = error $ "requesting type of ObjRelation"
+objType :: (?spec::Spec) => Obj -> Type
+objType (ObjTemplate   _) = error $ "requesting objTypee of ObjTemplate"
+objType (ObjPort     _ p) = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ portTemplate p) $ portTemplate p
+objType (ObjInstance _ i) = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ instTemplate i) $ instTemplate i
+objType (ObjProcess  _ _) = error $ "requesting objTypee of ObjProcess"
+objType (ObjMethod   _ _) = error $ "requesting objTypee of ObjMethod"
+objType (ObjVar      s v) = Type s $ tspec v
+objType (ObjGVar     t v) = Type (ScopeTemplate t) (tspec v)
+objType (ObjWire     t w) = Type (ScopeTemplate t) (tspec w)
+objType (ObjArg      s a) = Type s $ tspec a
+objType (ObjRArg     s a) = Type s $ tspec a
+objType (ObjType       t) = t
+objType (ObjTypeDecl _ _) = error $ "requesting objTypee of ObjTypeDecl"
+objType (ObjConst    s c) = Type s $ tspec c
+objType (ObjEnum     t _) = t
+objType (ObjGoal     _ _) = error $ "requesting objTypee of ObjGoal"
+objType (ObjRelation _ _) = error $ "requesting objTypee of ObjRelation"
 
-instance (?spec::Spec) => WithTypeSpec Obj where
-    tspec = tspec . typ
+objTypeSpec :: (?spec::Spec) => Obj -> TypeSpec
+objTypeSpec = tspec . objType
 
 -- True if the value of the object can change at run time
 isObjMutable :: Obj -> Bool

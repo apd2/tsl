@@ -8,6 +8,8 @@ module Internal.IExpr(LVal(..),
              valSlice,
              valDefault,
              parseVal,
+             exprType,
+             exprWidth,
              exprSlice,
              exprScalars,
              exprVars,
@@ -65,11 +67,11 @@ lvalToExpr (LVar n)     = EVar n
 lvalToExpr (LField s f) = EField (lvalToExpr s) f
 lvalToExpr (LIndex a i) = EIndex (lvalToExpr a) (EConst $ UIntVal 32 i)
 
-instance (?spec::Spec) => Typed LVal where
-    typ (LVar n)     = typ $ getVar n
-    typ (LField s n) = let Struct fs = typ s
-                       in typ $ fromJust $ find (\(Field f _) -> n == f) fs 
-    typ (LIndex a _) = t where Array t _ = typ a
+lvalType :: (?spec::Spec) => LVal -> Type
+lvalType (LVar n)     = typ $ getVar n
+lvalType (LField s n) = let Struct fs = lvalType s
+                        in typ $ fromJust $ find (\(Field f _) -> n == f) fs 
+lvalType (LIndex a _) = t where Array t _ = lvalType a
 
 instance PP LVal where
     pp (LVar n)     = pp n
@@ -89,13 +91,13 @@ ivalIsSigned :: Val -> Bool
 ivalIsSigned (SIntVal _ _) = True
 ivalIsSigned (UIntVal _ _) = False
 
-instance (?spec::Spec) => Typed Val where
-    typ (BoolVal _)   = Bool
-    typ (SIntVal w _) = SInt w
-    typ (UIntVal w _) = UInt w
-    typ (EnumVal n)   = Enum $ enumName $ getEnumerator n
-    typ (PtrVal a)    = Ptr $ typ a
-    typ (NullVal t)   = t
+valType :: (?spec::Spec) => Val -> Type
+valType (BoolVal _)   = Bool
+valType (SIntVal w _) = SInt w
+valType (UIntVal w _) = UInt w
+valType (EnumVal n)   = Enum $ enumName $ getEnumerator n
+valType (PtrVal a)    = Ptr $ lvalType a
+valType (NullVal t)   = t
 
 instance PP Val where
     pp (BoolVal True)  = text "true"
@@ -185,45 +187,48 @@ instance (PP v) => PP (GExpr v) where
 
 instance Show Expr where
     show = render . pp
+    
+exprType :: (?spec::Spec) => Expr -> Type
+exprType (EVar n)                               = typ $ getVar n
+exprType (EConst v)                             = valType v
+exprType (EField s f)                           = let Struct fs = exprType s
+                                                  in typ $ fromJust $ find (\(Field n _) -> n == f) fs 
+exprType (EIndex a _)                           = case exprType a of
+                                                       Array t _  -> t
+                                                       VarArray t -> t
+exprType (ERange a _)                           = case exprType a of
+                                                       Array t _  -> VarArray t
+                                                       VarArray t -> VarArray t
+exprType (ELength _)                            = UInt arrLengthBits
+exprType (EUnOp op e) | isArithUOp op           = if s 
+                                                     then SInt w
+                                                     else UInt w
+                                                  where (s,w) = arithUOpType op (isSigned $ exprType e, exprWidth e)
+exprType (EUnOp Not _)                          = Bool
+exprType (EUnOp Deref e)                        = t where Ptr t = exprType e
+exprType (EUnOp AddrOf e)                       = Ptr $ exprType e
+exprType (EBinOp op e1 e2) | isRelBOp op        = Bool
+                           | isBoolBOp op       = Bool
+                           | isBitWiseBOp op    = exprType e1
+                           | isArithBOp op      = if s 
+                                                     then SInt w
+                                                     else UInt w
+                                                  where (s,w) = arithBOpType op (s1,w1) (s2,w2)
+                                                        (s1,w1) = (isSigned $ exprType e1, exprWidth e1)
+                                                        (s2,w2) = (isSigned $ exprType e1, exprWidth e2)
+exprType (ESlice _ (l,h))                       = UInt $ h - l + 1
+exprType (ERel _ _)                             = Bool
 
-instance (?spec::Spec) => Typed Expr where
-    typ (EVar n)                               = typ $ getVar n
-    typ (EConst v)                             = typ v
-    typ (EField s f)                           = let Struct fs = typ s
-                                                 in typ $ fromJust $ find (\(Field n _) -> n == f) fs 
-    typ (EIndex a _)                           = case typ a of
-                                                      Array t _  -> t
-                                                      VarArray t -> t
-    typ (ERange a _)                           = case typ a of
-                                                      Array t _  -> VarArray t
-                                                      VarArray t -> VarArray t
-    typ (ELength _)                            = UInt arrLengthBits
-    typ (EUnOp op e) | isArithUOp op           = if s 
-                                                    then SInt w
-                                                    else UInt w
-                                                 where (s,w) = arithUOpType op (isSigned e, typeWidth e)
-    typ (EUnOp Not _)                          = Bool
-    typ (EUnOp Deref e)                        = t where Ptr t = typ e
-    typ (EUnOp AddrOf e)                       = Ptr $ typ e
-    typ (EBinOp op e1 e2) | isRelBOp op        = Bool
-                          | isBoolBOp op       = Bool
-                          | isBitWiseBOp op    = typ e1
-                          | isArithBOp op      = if s 
-                                                    then SInt w
-                                                    else UInt w
-                                                 where (s,w) = arithBOpType op (s1,w1) (s2,w2)
-                                                       (s1,w1) = (isSigned e1, typeWidth e1)
-                                                       (s2,w2) = (isSigned e1, typeWidth e2)
-    typ (ESlice _ (l,h))                       = UInt $ h - l + 1
-    typ (ERel _ _)                             = Bool
+exprWidth :: (?spec::Spec) => Expr -> Int
+exprWidth = typeWidth . exprType
 
 -- TODO: optimise slicing of concatenations
 exprSlice :: (?spec::Spec) => Expr -> Slice -> Expr
-exprSlice e                      (l,h) | l == 0 && h == typeWidth e - 1 = e
+exprSlice e                      (l,h) | l == 0 && h == exprWidth e - 1 = e
 exprSlice (ESlice e (l',_))      (l,h)                                  = exprSlice e (l'+l,l'+h)
-exprSlice (EBinOp BConcat e1 e2) (l,h) | l > typeWidth e1 - 1           = exprSlice e2 (l - typeWidth e1, h - typeWidth e1)
-                                       | h <= typeWidth e1 - 1          = exprSlice e1 (l,h)
-                                       | otherwise                      = econcat [exprSlice e1 (l,typeWidth e1-1), exprSlice e2 (0, h - typeWidth e1)]
+exprSlice (EBinOp BConcat e1 e2) (l,h) | l > exprWidth e1 - 1           = exprSlice e2 (l - exprWidth e1, h - exprWidth e1)
+                                       | h <= exprWidth e1 - 1          = exprSlice e1 (l,h)
+                                       | otherwise                      = econcat [exprSlice e1 (l,exprWidth e1-1), exprSlice e2 (0, h - exprWidth e1)]
 exprSlice e                      s                                      = ESlice e s
 
 -- Extract all scalars from expression
@@ -289,14 +294,14 @@ plus (e:es) = EBinOp Plus e $ plus es
 (.%) e1 e2 = EBinOp Mod e1 e2
 
 -- extend arguments to fit array index and sum them modulo array length
-plusmod :: (?spec::Spec, Typed a, Show a) => a -> [Expr] -> Expr
+plusmod :: (?spec::Spec) => Expr -> [Expr] -> Expr
 plusmod ar es = (plus $ map (exprPad w) es) .% EConst (UIntVal (bitWidth l) $ fromIntegral l)
-    where Array _ l = typ ar
+    where Array _ l = exprType ar
           w = bitWidth (l-1)
 
 exprPad :: (?spec::Spec) => Int -> Expr -> Expr
-exprPad w e | typeWidth e >= w = e
-            | otherwise        = econcat [e, EConst $ UIntVal (w - typeWidth e) 0]
+exprPad w e | exprWidth e >= w = e
+            | otherwise        = econcat [e, EConst $ UIntVal (w - exprWidth e) 0]
 
 -- TODO: merge adjacent expressions
 econcat :: [Expr] -> Expr

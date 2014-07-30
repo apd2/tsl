@@ -25,7 +25,13 @@ import Data.List
 import Data.Maybe
 import Data.Char
 import Data.Graph.Inductive
-import qualified Text.PrettyPrint as PP
+import qualified Data.Text.Lazy                    as T
+import qualified Data.GraphViz                     as GV
+import qualified Data.GraphViz.Attributes.Complete as GV
+import qualified Data.GraphViz.Types               as GV
+import qualified Data.GraphViz.Types.Graph         as GV
+import qualified Data.GraphViz.Printing            as GV
+import qualified Text.PrettyPrint                  as PP
 import Numeric
 
 import System.IO.Unsafe
@@ -161,9 +167,11 @@ graphSave g title tmp = do
     return fname
 
 graphToDot :: (Show b, Show c) => Gr b c -> String -> String
-graphToDot g title = graphviz g' title (6.0, 11.0) (1,1) Portrait
-    where g' = emap (eformat . show)
-               $ gmap (\(inb, n, l, outb) -> (inb, n, show n ++ ": " ++ (nformat $ show l), outb)) g
+graphToDot g title = T.unpack $ GV.printIt g' -- graphviz g' title (6.0, 11.0) (1,1) Portrait
+    where g' = GV.mkGraph (map (\(n, l)    -> GV.DotNode n   [GV.Label $ GV.StrLabel $ T.pack $ nformat $ show l]) $ labNodes g)
+                          (map (\(f, t, e) -> GV.DotEdge f t [GV.Label $ GV.StrLabel $ T.pack $ eformat $ show e]) $ labEdges g)
+--          g' = emap (eformat . show)
+--               $ gmap (\(inb, n, l, outb) -> (inb, n, show n ++ ": " ++ (nformat $ show l), outb)) g
           maxLabel = 64
           nformat :: String -> String
           nformat s = if' (length s <= maxLabel) s ((take maxLabel s) ++ "...") 

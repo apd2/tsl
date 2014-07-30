@@ -41,7 +41,7 @@ validateStat' _ (SReturn p _ me) = do
                                    Nothing -> assert (isNothing me) p "cannot return value from method with void return type"
                                    Just t  -> do assert (isJust me) p "return value not specified"
                                                  validateExpr' (fromJust me)
-                                                 checkTypeMatch (Type ?scope t) (fromJust me)
+                                                 checkTypeMatch (fromJust me) (Type ?scope t) (exprType $ fromJust me)
          ScopeProcess _ pr -> assert (isNothing me) p "cannot return value from a process"
          ScopeTemplate _   -> err p "return statement inside always-block"
 
@@ -66,17 +66,17 @@ validateStat' _ (SForever _ _ b) = do
 
 validateStat' _ (SDo _ _ b c) = do
     validateExpr' c
-    assert (isBool c) (pos c) "loop condition is not of boolean type"
+    assert (isBool $ exprType c) (pos c) "loop condition is not of boolean type"
     checkLoopBody b
 
 validateStat' _ (SWhile _ _ c b) = do
     validateExpr' c
-    assert (isBool c) (pos c) "loop condition is not of boolean type"
+    assert (isBool $ exprType c) (pos c) "loop condition is not of boolean type"
     checkLoopBody b
 
 validateStat' _ (SFor _ _ (mi, c, s) b) = do
     validateExpr' c
-    assert (isBool c) (pos c) "loop condition is not of boolean type"
+    assert (isBool $ exprType c) (pos c) "loop condition is not of boolean type"
     case mi of
          Just i  -> validateStat' False i
          Nothing -> return ()
@@ -117,7 +117,7 @@ validateStat' _ (SStop p _) = do
 
 validateStat' _ (SWait p _ e) = do
     validateExpr' e
-    assert (isBool e) (pos e) "wait condition is not of boolean type"
+    assert (isBool $ exprType e) (pos e) "wait condition is not of boolean type"
     -- because we do not handle them correctly during inlining
     assert (null $ exprCallees ?scope e) (pos e) $ "Method invocations not allowed inside wait conditions"
     assert (not $ any (\o -> case o of
@@ -136,21 +136,21 @@ validateStat' l (SBreak p _) = assert l p "break outside a loop"
 validateStat' _ (SInvoke p _ m as) = validateCall p m as
 validateStat' _ (SAssert _ _ e) = do
     validateExpr' e
-    assert (isBool e) (pos e) "Assertion must be a boolean expression"
+    assert (isBool $ exprType e) (pos e) "Assertion must be a boolean expression"
     assert (exprNoSideEffects e) (pos e) "Assertion must be side-effect free"
     assert (not $ isFunctionScope ?scope) (pos e) "Assertions not allowed inside functions"
     assert (not $ isTemplateScope ?scope) (pos e) "Assertions not allowed inside always-blocks"
 
 validateStat' _ (SAssume _ _ e) = do
     validateExpr' e
-    assert (isBool e) (pos e) "Assumption must be a boolean expression"
+    assert (isBool $ exprType e) (pos e) "Assumption must be a boolean expression"
     assert (exprNoSideEffects e) (pos e) "Assumption must be side-effect free"
 
 validateStat' _ (SAssign _ _ lhs rhs) = do
     validateExpr' lhs
     validateExpr' rhs
     assert (isLExpr lhs) (pos lhs) $ "Left-hand side of assignment is not an L-value"
-    checkTypeMatch lhs rhs
+    checkTypeMatch rhs (exprType lhs) (exprType rhs)
     -- No modifications to global variables in a function
     if isFunctionScope ?scope 
        then assert (isLocalLHS lhs) (pos lhs) "Global state modification inside a function"
@@ -158,7 +158,7 @@ validateStat' _ (SAssign _ _ lhs rhs) = do
 
 validateStat' l (SITE _ _ i t e) = do
     validateExpr' i
-    assert (isBool i) (pos i) "Condition of an if-statement must be a boolean expression"
+    assert (isBool $ exprType i) (pos i) "Condition of an if-statement must be a boolean expression"
     validateStat' l t
     case e of 
          Just s  -> validateStat' l s
@@ -173,7 +173,7 @@ validateStat' l (SCase p _ c cs md) = do
     case md of
          Just d  -> validateStat' l d
          Nothing -> return ()
-    mapM (\(e1,_) -> checkTypeMatch c e1) cs
+    mapM (\(e1,_) -> checkTypeMatch e1 (exprType c) (exprType e1)) cs
     return ()
 
 validateStat' l (SMagic p _) = do

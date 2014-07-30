@@ -23,6 +23,7 @@ module Abstract.Predicate(PVarOps,
                  Term(..),
                  PTerm(..),
                  ptermTerm,
+                 termType,
                  termWidth,
                  termCategory,
                  termVar,
@@ -81,10 +82,10 @@ avarWidth (AVarInt  t) = termWidth t
 
 avarRange :: (?spec::Spec) => AbsVar -> Int
 avarRange (AVarPred _) = 1
-avarRange (AVarEnum t) = let Enum n = typ t in
+avarRange (AVarEnum t) = let Enum n = termType t in
                          (length $ enumEnums $ getEnumeration n) - 1
 avarRange (AVarBool _) = 1
-avarRange (AVarInt  t) = (1 `shiftL` (typeWidth t)) - 1
+avarRange (AVarInt  t) = (1 `shiftL` (termWidth t)) - 1
 
 avarCategory :: (?spec::Spec) => AbsVar -> VarCategory
 avarCategory (AVarPred p) = predCategory p
@@ -126,7 +127,7 @@ avarToExpr (AVarBool t) = termToExpr t
 avarToExpr (AVarInt  t) = termToExpr t
 
 avarValToConst :: (?spec::Spec) => AbsVar -> Int -> Val
-avarValToConst av i = case typ $ avarToExpr av of
+avarValToConst av i = case exprType $ avarToExpr av of
                            Bool   -> if' (i==0) (BoolVal False) (BoolVal True)
                            UInt w -> UIntVal w (fromIntegral i)
                            SInt w -> SIntVal w (fromIntegral i)
@@ -200,8 +201,8 @@ data Term = TVar    String
           | TSlice  Term (Int,Int)
           deriving (Eq,Ord)
 
-instance (?spec::Spec) => Typed Term where
-    typ = typ . termToExpr
+termType :: (?spec::Spec) => Term -> Type
+termType = exprType . termToExpr
 
 instance PP Term where
     pp = pp . termToExpr
@@ -226,12 +227,15 @@ termCategory t = if any ((==VarTmp) . varCat) $ termVar t
                     else VarState
 
 termWidth :: (?spec::Spec) => Term -> Int
-termWidth t = case typ t of
-                   Ptr _    -> 64
-                   Bool     -> 1
-                   Enum n   -> bitWidth $ (length $ enumEnums $ getEnumeration n) - 1
-                   (UInt w) -> w
-                   (SInt w) -> w
+termWidth = typeWidth . termType
+
+--termWidth :: (?spec::Spec) => Term -> Int
+--termWidth t = case typ t of
+--                   Ptr _    -> 64
+--                   Bool     -> 1
+--                   Enum n   -> bitWidth $ (length $ enumEnums $ getEnumeration n) - 1
+--                   (UInt w) -> w
+--                   (SInt w) -> w
 
 -- Subset of terms that can be used in a predicate: int's, and pointers
 -- (no structs, arrays, or bools)
@@ -243,8 +247,8 @@ ptermTerm :: PTerm -> Term
 ptermTerm (PTInt t) = t
 ptermTerm (PTPtr t) = t
 
-instance (?spec::Spec) => Typed PTerm where
-    typ = typ . ptermTerm
+ptermType :: (?spec::Spec) => PTerm -> Type
+ptermType = termType . ptermTerm
 
 instance PP PTerm where
     pp = pp . ptermTerm

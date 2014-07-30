@@ -23,6 +23,7 @@ module Frontend.TemplateOps(tmMapExpr,
                    tmLocalDecls,
                    tmLocalAndParentDecls,
                    tmScopes,
+                   wireType,
                    callees,
                    tmMergeParents) where
 
@@ -60,7 +61,7 @@ tmMapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Template -> Template
 tmMapExpr f tm = tm { tmConst    = map (\c -> c{constVal = mapExpr f s (constVal c)})                                 (tmConst tm)
                     , tmTypeDecl = map (\t -> TypeDecl (pos t) (tspecMapExpr f s $ tspec t) (name t))                 (tmTypeDecl tm)
                     , tmVar      = map (\v -> v{gvarVar = varMapExpr f s (gvarVar v)})                                (tmVar tm)
-                    , tmWire     = map (\w -> w{wireType = tspecMapExpr f s (wireType w), 
+                    , tmWire     = map (\w -> w{wireTSpec = tspecMapExpr f s (wireTSpec w), 
                                                 wireRHS  = fmap (mapExpr f s) (wireRHS w)})                           (tmWire tm)
                     , tmInit     = map (\i -> i{initBody = mapExpr f s (initBody i)})                                 (tmInit tm)
                     , tmPrefix   = map (\a -> a{prefBody = statMapExpr f s (prefBody a)})                             (tmPrefix tm)
@@ -70,7 +71,7 @@ tmMapExpr f tm = tm { tmConst    = map (\c -> c{constVal = mapExpr f s (constVal
                     , tmApply    = map (\a -> a{applyArg = map (mapExpr f s) (applyArg a)})                           (tmApply tm)
                     , tmMethod   = map (\m -> let sm = ScopeMethod tm m in
                                               m{methRettyp = fmap (tspecMapExpr f s) (methRettyp m),
-                                                methArg    = map (\a -> a{argType = tspecMapExpr f s (argType a)}) (methArg m),
+                                                methArg    = map (\a -> a{argTSpec = tspecMapExpr f s (argTSpec a)})  (methArg m),
                                                 methBody   = case methBody m of
                                                                   Left (mb,ma) -> Left  $ (fmap (statMapExpr f sm) mb, fmap (statMapExpr f sm) ma)
                                                                   Right b      -> Right $ statMapExpr f sm b})        (tmMethod tm)
@@ -81,14 +82,14 @@ tmMapExpr f tm = tm { tmConst    = map (\c -> c{constVal = mapExpr f s (constVal
 tmMapTSpec :: (?spec::Spec) => (Scope -> TypeSpec -> TypeSpec) -> Template -> Template
 tmMapTSpec f tm = tm { tmConst    = map (\c -> Const (pos c) (mapTSpec f s $ tspec c) (name c) (constVal c))               (tmConst tm)
                      , tmTypeDecl = map (\t -> TypeDecl (pos t) (mapTSpec f s $ tspec t) (name t))                         (tmTypeDecl tm)
-                     , tmVar      = map (\v -> v{gvarVar  = (gvarVar v){varType = mapTSpec f s $ tspec v}})                (tmVar tm)
-                     , tmWire     = map (\w -> w{wireType = mapTSpec f s (wireType w)})                                    (tmWire tm)
+                     , tmVar      = map (\v -> v{gvarVar  = (gvarVar v){varTSpec = mapTSpec f s $ tspec v}})               (tmVar tm)
+                     , tmWire     = map (\w -> w{wireTSpec = mapTSpec f s (wireTSpec w)})                                  (tmWire tm)
                      , tmPrefix   = map (\a -> a{prefBody = statMapTSpec f s (prefBody a)})                                (tmPrefix tm)
                      , tmProcess  = map (\p -> p{procStatement = statMapTSpec f s (procStatement p)})                      (tmProcess tm)
-                     , tmRelation = map (\r -> r{relArg = map (\a -> a{rargType = mapTSpec f s (rargType a)}) (relArg r)}) (tmRelation tm)
+                     , tmRelation = map (\r -> r{relArg = map (\a -> a{rargTSpec = mapTSpec f s (rargTSpec a)}) (relArg r)}) (tmRelation tm)
                      , tmMethod   = map (\m -> let sm = ScopeMethod tm m in
                                                m{methRettyp = fmap (mapTSpec f s) (methRettyp m),
-                                                 methArg    = map (\a -> a{argType = mapTSpec f s (argType a)}) (methArg m),
+                                                 methArg    = map (\a -> a{argTSpec = mapTSpec f s (argTSpec a)}) (methArg m),
                                                  methBody   = case methBody m of
                                                                    Left (mb,ma) -> Left  $ (fmap (statMapTSpec f sm) mb, fmap (statMapTSpec f s) ma)
                                                                    Right b      -> Right $ statMapTSpec f sm b})           (tmMethod tm)}
@@ -165,8 +166,8 @@ callGraph =
 -- Wires
 -------------------------------------------------------------------
 
-instance (?spec::Spec, ?scope::Scope) => WithType Wire where
-    typ = Type ?scope . tspec
+wireType :: (?spec::Spec, ?scope::Scope) => Wire -> Type
+wireType = Type ?scope . tspec
 
 -------------------------------------------------------------------
 -- Namespace-related stuff

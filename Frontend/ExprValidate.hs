@@ -49,7 +49,7 @@ validateExpr' (EApply p mref as) = do
 --   visible template variable, port or instance
 validateExpr' (EField _ e f) = do
     validateExpr' e
-    case tspec $ typ' e of
+    case tspec $ typ' $ exprType e of
          StructSpec _ fs      -> assert (any ((==f) . name) fs) (pos f) $ "Unknown field name " ++ show f
          TemplateTypeSpec _ t -> case objLookup (ObjTemplate (getTemplate t)) f of
                                       Nothing                -> err (pos f) $ "Unknown identifier " ++ show f
@@ -64,7 +64,7 @@ validateExpr' (EField _ e f) = do
 
 validateExpr' (EPField _ e f) = do
     validateExpr' e
-    case typ' e of
+    case typ' $ exprType e of
          (Type s (PtrSpec _ t)) -> case tspec $ typ' $ Type s t of
                                         StructSpec _ fs -> assert (any ((==f) . name) fs) (pos f) $ "Unknown field name " ++ show f
                                         _               -> err (pos f) $ "Expression " ++ show e ++ " is not a struct pointer"
@@ -76,37 +76,37 @@ validateExpr' (EPField _ e f) = do
 validateExpr' (EIndex _ a i) = do
     validateExpr' a
     validateExpr' i
-    assert (isInt i) (pos i) $ show i ++ " is not of integral type"
-    assert (isArray a) (pos i) $ show a ++ " is not an array"
+    assert (isInt $ exprType i) (pos i) $ show i ++ " is not of integral type"
+    assert (isArray $ exprType a) (pos i) $ show a ++ " is not an array"
 
 validateExpr' (ERange _ a (fi,l)) = do
     validateExpr' a
     validateExpr' fi
     validateExpr' l
-    assert (isInt fi)  (pos fi) $ show fi ++ " is not of integral type"
-    assert (isInt l)   (pos l)  $ show l  ++ " is not of integral type"
-    assert (isArray a) (pos a)  $ show a  ++ " is not an array"
+    assert (isInt $ exprType fi)  (pos fi) $ show fi ++ " is not of integral type"
+    assert (isInt $ exprType l)   (pos l)  $ show l  ++ " is not of integral type"
+    assert (isArray $ exprType a) (pos a)  $ show a  ++ " is not an array"
 
 validateExpr' (ELength _ a) = do
     validateExpr' a
-    assert (isArray a) (pos a) $ show a ++ " is not an array"
+    assert (isArray $ exprType a) (pos a) $ show a ++ " is not an array"
 
 validateExpr' (EUnOp p UMinus e) = do
     validateExpr' e
-    assert (isInt e) p $ "Unary minus applied to expression " ++ show e ++ " of non-integral type"
+    assert (isInt $ exprType e) p $ "Unary minus applied to expression " ++ show e ++ " of non-integral type"
 
 validateExpr' (EUnOp p Not e) = do
     validateExpr' e
-    assert (isBool e) p $ "Logical negation applied to expression " ++ show e ++ " of non-boolean type"
+    assert (isBool $ exprType e) p $ "Logical negation applied to expression " ++ show e ++ " of non-boolean type"
 
 validateExpr' (EUnOp p BNeg e) = do
     validateExpr' e
-    assert (isInt e) p $ "Bit-wise negation applied to expression " ++ show e ++ " of non-integral type"
+    assert (isInt $ exprType e) p $ "Bit-wise negation applied to expression " ++ show e ++ " of non-integral type"
 
 validateExpr' (EUnOp p Deref e) = do
     assert (not $ isTemplateScope ?scope) p "Pointer dereference inside always-block"
     validateExpr' e
-    assert (isPtr e) p $ "Cannot dereference non-pointer expression " ++ show e
+    assert (isPtr $ exprType e) p $ "Cannot dereference non-pointer expression " ++ show e
 
 validateExpr' (EUnOp p AddrOf e) = do
     validateExpr' e
@@ -116,32 +116,32 @@ validateExpr' (EBinOp p op e1 e2) = do
     validateExpr' e1
     validateExpr' e2
     if elem op [Eq,Neq]
-      then assert (typeComparable e1 e2) p $ "Operator " ++ show op ++ " applied to expressions " ++ show e1 ++ 
-                                             " and " ++ show e2 ++ " that have uncomparable types " ++ show (typ e1) ++ " and " ++ show (typ e2)
+      then assert (typeComparable (exprType e1) (exprType e2)) p $ "Operator " ++ show op ++ " applied to expressions " ++ show e1 ++ 
+                                                                   " and " ++ show e2 ++ " that have uncomparable types " ++ (showType $ exprType e1) ++ " and " ++ (showType $ exprType e2)
       else return () 
     if elem op [Lt,Gt,Lte,Gte,BinMinus,BAnd,BOr,BXor,BConcat,Mod,Mul]
-       then do assert (isInt e1) p $ "First operand " ++ show e1 ++ " of " ++ show op ++ " is of non-integral type"
-               assert (isInt e2) p $ "Second operand " ++ show e2 ++ " of " ++ show op ++ " is of non-integral type"
+       then do assert (isInt $ exprType e1) p $ "First operand " ++ show e1 ++ " of " ++ show op ++ " is of non-integral type"
+               assert (isInt $ exprType e2) p $ "Second operand " ++ show e2 ++ " of " ++ show op ++ " is of non-integral type"
        else return ()
     if elem op [And,Or,Imp]
-       then do assert (isBool e1) p $ "First operand " ++ show e1 ++ " of " ++ show op ++ " is of non-boolean type"
-               assert (isBool e2) p $ "Second operand " ++ show e2 ++ " of " ++ show op ++ " is of non-boolean type"
+       then do assert (isBool $ exprType e1) p $ "First operand " ++ show e1 ++ " of " ++ show op ++ " is of non-boolean type"
+               assert (isBool $ exprType e2) p $ "Second operand " ++ show e2 ++ " of " ++ show op ++ " is of non-boolean type"
        else return ()
     if elem op [BAnd, BOr, BXor]
-       then assert (typeWidth e1 == typeWidth e2) p $ 
+       then assert (exprWidth e1 == exprWidth e2) p $ 
                    "Binary bitwise operator " ++ show op ++ " applied to arguments of different width: " ++
-                   show e1 ++ " has width " ++ (show $ typeWidth e1) ++ ", " ++ 
-                   show e2 ++ " has width " ++ (show $ typeWidth e2)
+                   show e1 ++ " has width " ++ (show $ exprWidth e1) ++ ", " ++ 
+                   show e2 ++ " has width " ++ (show $ exprWidth e2)
        else return ()
 
 validateExpr' (ETernOp p e1 e2 e3) = do
     validateExpr' e1
     validateExpr' e2
     validateExpr' e3
-    assert (isBool e1) (pos e1) $ "if condition " ++ show e1 ++ " is of non-boolean type"
-    assert (typeMatch e2 e3) p $ "Arguments of ternary operator have incompatible types: " ++
-                                 show e1 ++ " has type " ++ show (tspec e1) ++ ", " ++
-                                 show e2 ++ " has type " ++ show (tspec e2)
+    assert (isBool $ exprType e1) (pos e1) $ "if condition " ++ show e1 ++ " is of non-boolean type"
+    assert (typeMatch (exprType e2) (exprType e3)) p $ "Arguments of ternary operator have incompatible types: " ++
+                                                       show e1 ++ " has type " ++ show (exprTypeSpec e1) ++ ", " ++
+                                                       show e2 ++ " has type " ++ show (exprTypeSpec e2)
 
 -- * case: 
 --    - case conditions must type-match the case expression (should they be statically computable?)
@@ -156,14 +156,14 @@ validateExpr' (ECase p e cs md) = do
     case md of
          Just d  -> validateExpr' d
          Nothing -> return ()
-    _ <- mapM (\(e1,_) -> assert (typeComparable e e1) (pos e1) $ 
-                          "Expression " ++ show e1 ++ " has type "  ++ (show $ tspec e1) ++ 
-                          ", which does not match the type " ++ (show $ tspec e) ++ " of the key expression " ++ show e) cs
+    _ <- mapM (\(e1,_) -> assert (typeComparable (exprType e) (exprType e1)) (pos e1) $ 
+                          "Expression " ++ show e1 ++ " has type "  ++ (show $ exprTypeSpec e1) ++ 
+                          ", which does not match the type " ++ (show $ exprTypeSpec e) ++ " of the key expression " ++ show e) cs
     let e1 = snd $ head cs
-    _ <- mapM (\(_,e2) -> assert (typeMatch e1 e2) (pos e2) $ 
+    _ <- mapM (\(_,e2) -> assert (typeMatch (exprType e1) (exprType e2)) (pos e2) $ 
                                  "Clauses of a case expression return values of incompatible types:\n  " ++ 
-                                 show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ tspec e1) ++ "\n  " ++
-                                 show e2 ++ "(" ++ spos e2 ++ ") has type " ++ (show $ tspec e2))
+                                 show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ exprTypeSpec e1) ++ "\n  " ++
+                                 show e2 ++ "(" ++ spos e2 ++ ") has type " ++ (show $ exprTypeSpec e2))
               ((tail cs) ++ (map (undefined,) $ maybeToList md))
     return ()
                       
@@ -175,16 +175,16 @@ validateExpr' (ECond p cs md) = do
     _ <- mapM (\(e1,e2) -> do validateExpr' e1
                               validateExpr' e2
                               assert (exprNoSideEffects e1) (pos e1) "Condition must be side-effect free"
-                              assert (isBool e1) (pos e1) $ "Expression " ++ show e1 ++ " is of non-boolean type")
+                              assert (isBool $ exprType e1) (pos e1) $ "Expression " ++ show e1 ++ " is of non-boolean type")
          cs
     case md of
          Just d  -> validateExpr' d
          Nothing -> return ()
     let e1 = snd $ head cs
-    _ <- mapM (\(_,e2) -> assert (typeMatch e1 e2) (pos e2) $ 
+    _ <- mapM (\(_,e2) -> assert (typeMatch (exprType e1) (exprType e2)) (pos e2) $ 
                                  "Clauses of a conditional expression return values of incompatible types:\n  " ++ 
-                                 show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ tspec e1) ++ "\n  " ++
-                                 show e2 ++ "(" ++ spos e2 ++ ") has type " ++ (show $ tspec e2))
+                                 show e1 ++ "(" ++ spos e1 ++ ") has type " ++ (show $ exprTypeSpec e1) ++ "\n  " ++
+                                 show e2 ++ "(" ++ spos e2 ++ ") has type " ++ (show $ exprTypeSpec e2))
               ((tail cs) ++ (map (undefined,) $ maybeToList md))
     return ()
     
@@ -196,13 +196,13 @@ validateExpr' (ESlice _ e (l,h)) = do
     validateExpr' e
     validateExpr' l
     validateExpr' h
-    assert (isInt e) (pos e)                $ "Cannot compute slice of a non-integer expression " ++ show e
+    assert (isInt $ exprType e) (pos e)     $ "Cannot compute slice of a non-integer expression " ++ show e
     assert (isConstExpr l) (pos l)          $ "Lower bound " ++ show l ++ " of a slice is a non-constant expression"
     assert (isConstExpr h) (pos h)          $ "Upper bound " ++ show h ++ " of a slice is a non-constant expression"
     assert (0 <= evalInt l) (pos l)         $ "Lower bound " ++ show l ++ " of a slice has negative value " ++ (show $ evalInt l)
     assert (evalInt l <= evalInt h) (pos l) $ "Lower bound " ++ show l ++ "=" ++ (show $ evalInt l) ++ " of a slice is greater than " ++
                                               "upper bound " ++ show h ++ "=" ++ (show $ evalInt h) 
-    let w = typeWidth e
+    let w = exprWidth e
     assert (evalInt h < fromIntegral w) (pos h) $ "Upper bound " ++ show h ++ "=" ++ (show $ evalInt h) ++ " of a slice " ++
                                                   "exceeds argument width (" ++ show w ++ ") bits"
 
@@ -222,12 +222,12 @@ validateExpr' (EStruct p tn mes) = do
               Left  es -> mapIdxM (\((n,e),f) i -> do assert (n == name f) (pos n) $ 
                                                           "Incorrect field name: field " ++ show i ++ " of struct " ++ sname d ++ " has name " ++ show n
                                                       validateExpr' e
-                                                      assert (typeComparable e $ Type s $ tspec f) (pos e) $ 
-                                                           "Could not match expected type " ++ (show $ tspec f) ++ " with actual type " ++ (show $ tspec e) ++ " in expression " ++ show e)
+                                                      assert (typeComparable (exprType e) (Type s $ tspec f)) (pos e) $ 
+                                                           "Could not match expected type " ++ (show $ tspec f) ++ " with actual type " ++ (show $ exprTypeSpec e) ++ " in expression " ++ show e)
                                   $ zip es fs
               Right es -> mapM (\(e,f) -> do validateExpr' e
-                                             assert (typeComparable e $ Type s $ tspec f) (pos e) $ 
-                                                 "Could not match expected type " ++ (show $ tspec f) ++ " with actual type " ++ (show $ tspec e) ++ " in expression " ++ show e)
+                                             assert (typeComparable (exprType e) $ Type s $ tspec f) (pos e) $ 
+                                                 "Could not match expected type " ++ (show $ tspec f) ++ " with actual type " ++ (show $ exprTypeSpec e) ++ " in expression " ++ show e)
                                   $ zip es fs
     return ()
 
@@ -261,7 +261,7 @@ validateCall p mref as = do
     _ <- mapM (\(marg,ma) -> case ma of
                                   Nothing -> assert (argDir marg == ArgOut) p $ "Input argument " ++ sname marg ++ " is not specified in invocation of method " ++ sname m
                                   Just a  -> do validateExpr' a
-                                                checkTypeMatch (ObjArg (ScopeMethod t m) marg) a
+                                                checkTypeMatch a (objType $ ObjArg (ScopeMethod t m) marg) (exprType a)
                                                 assert ((not isfunc) || exprNoSideEffects a) (pos a) $ "Expression " ++ show a ++ " has side effects"
                                                 when (argDir marg == ArgOut) $
                                                     do assert (isLExpr a) (pos a) $ "Expression " ++ show a ++ " is not an L-value"
@@ -282,7 +282,7 @@ validateApply sc rel args = trace ("validateApply " ++ show sc ++ " " ++ show re
     -- * of matching types
     _ <- mapM (\(aa, ra) -> do validateExpr sc aa
                                let ?scope = sc
-                               checkTypeMatch aa ra)
+                               checkTypeMatch ra (exprType aa) (rargType ra))
          $ zip args relArg
     return ()
 

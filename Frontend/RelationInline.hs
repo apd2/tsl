@@ -22,7 +22,7 @@ import qualified Internal.CFA       as I
 
 relToIRel :: (?spec::Spec) => Relation -> I.Relation 
 relToIRel rel = 
-    let relArgs = let ?scope = ScopeTemplate tmMain in map (\a -> (sname a, mkType $ typ a)) $ relArg rel
+    let relArgs = let ?scope = ScopeTemplate tmMain in map (\a -> (sname a, mkType $ rargType a)) $ relArg rel
         -- Variable map used to compile rules.  One var per argument.
         lmap = M.fromList $ map (\a -> (name a, I.EVar $ sname a)) $ relArg rel
         ruleExprToIExpr :: Expr -> I.Expr

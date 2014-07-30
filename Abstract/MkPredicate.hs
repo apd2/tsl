@@ -23,7 +23,7 @@ exprNormalise :: (?spec::Spec) => Expr -> Expr
 exprNormalise = mapExpr exprNormalise'
 
 exprNormalise' :: (?spec::Spec) => Expr -> Expr
-exprNormalise' e = case typ e of
+exprNormalise' e = case exprType e of
                         UInt _ -> e'
                         SInt _ -> e'
                         _      -> e

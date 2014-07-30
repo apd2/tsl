@@ -1,12 +1,12 @@
 {-# LANGUAGE ImplicitParams #-}
-module Frontend.RelationOps () where
+module Frontend.RelationOps (rargType) where
 
 import Frontend.Relation
 import Frontend.NS
 import Frontend.Type
 import Frontend.Spec
 
-instance (?spec::Spec, ?scope::Scope) => WithType RArg where
-    typ = Type ?scope . tspec
+rargType :: (?spec::Spec, ?scope::Scope) => RArg -> Type
+rargType = Type ?scope . tspec
 
 

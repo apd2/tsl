@@ -16,8 +16,8 @@ import Frontend.Const
 import Frontend.Spec
 import Frontend.NS
 
-instance (?spec::Spec,?scope::Scope) => WithType Const where
-    typ = Type ?scope . tspec
+constType :: (?spec::Spec,?scope::Scope) => Const -> Type
+constType = Type ?scope . tspec
 
 -- First pass: validate types
 validateConst :: (?spec::Spec, MonadError String me) => Scope -> Const -> me ()
@@ -31,5 +31,5 @@ validateConst2 s c = do
     let v = constVal c
     validateTypeSpec2 s (tspec c)
     validateExpr' v
-    checkTypeMatch c v
+    checkTypeMatch v (constType c) (exprType v)
     assert (isConstExpr v) (pos v) $ "Non-constant expression in constant declaration"

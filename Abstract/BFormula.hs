@@ -92,15 +92,15 @@ fRel REq  e1 e2 | e1 == e2                         = FTrue
 fRel RNeq e1 e2                                    = fnot $ fRel REq e1 e2
 -- pointers
 fRel REq  (EUnOp AddrOf e1) (EUnOp AddrOf e2)      = fRelAddrOf e1 e2
-fRel REq  e1 e2 | isPtr e1                         = bvRelNormalise REq (PTPtr $ scalarExprToTerm e1) (PTPtr $ scalarExprToTerm e2)
+fRel REq  e1 e2 | (isPtr $ exprType e1)            = bvRelNormalise REq (PTPtr $ scalarExprToTerm e1) (PTPtr $ scalarExprToTerm e2)
 -- bools
-fRel REq  e1 e2 | isBool e1                        = FBinOp Equiv (ptrFreeBExprToFormula e1) (ptrFreeBExprToFormula e2)
+fRel REq  e1 e2 | (isBool $ exprType e1)           = FBinOp Equiv (ptrFreeBExprToFormula e1) (ptrFreeBExprToFormula e2)
 -- enums
-fRel REq  e1 e2 | isEnum e1 && isConstExpr e2      = FEqConst (AVarEnum $ scalarExprToTerm e1) (enumToInt en) where EnumVal en = evalConstExpr e2
-fRel REq  e1 e2 | isEnum e1                        = FEq      (AVarEnum $ scalarExprToTerm e1) (AVarEnum $ scalarExprToTerm e2)
+fRel REq  e1 e2 | (isEnum $ exprType e1) && isConstExpr e2 = FEqConst (AVarEnum $ scalarExprToTerm e1) (enumToInt en) where EnumVal en = evalConstExpr e2
+fRel REq  e1 e2 | (isEnum $ exprType e1)           = FEq      (AVarEnum $ scalarExprToTerm e1) (AVarEnum $ scalarExprToTerm e2)
 -- ints
-fRel op   e1 e2 | isInt e1 && op == REq            = fRelIntEq (e1, e2)
-                | isInt e1                         = bvRelNormalise op (PTInt $ scalarExprToTerm e1) (PTInt $ scalarExprToTerm e2)
+fRel op   e1 e2 | (isInt $ exprType e1) && op == REq = fRelIntEq (e1, e2)
+                | (isInt $ exprType e1)            = bvRelNormalise op (PTInt $ scalarExprToTerm e1) (PTInt $ scalarExprToTerm e2)
 
 
 -- Two addrof expressions are equal if they are isomorphic and
@@ -118,7 +118,7 @@ fRelAddrOf _              _                         = FFalse
 -- Slice int expressions into the smallest common ranges.
 fRelIntEq :: (?spec::Spec) => (Expr, Expr) -> Formula
 fRelIntEq (e1,e2) = fRelIntEq' (exprPad w e1, exprPad w e2)
-    where w = max (typeWidth e1) (typeWidth e2)
+    where w = max (exprWidth e1) (exprWidth e2)
 
 fRelIntEq' :: (?spec::Spec) => (Expr, Expr) -> Formula
 fRelIntEq' (e1,e2) = fconj $ (fRelIntEq1 (e1',e2')):(maybe [] (return . fRelIntEq') mrest)
@@ -126,11 +126,11 @@ fRelIntEq' (e1,e2) = fconj $ (fRelIntEq1 (e1',e2')):(maybe [] (return . fRelIntE
 
 shortestPrefix :: (?spec::Spec) => Expr -> Expr -> ((Expr, Expr), Maybe (Expr, Expr))
 shortestPrefix e1 e2 = 
-    if' (typeWidth e1' == typeWidth e2') ((e1', e2'), combSuffix me1' me2') $
-    if' (typeWidth e1' <  typeWidth e2') ((e1', exprSlice e2' (0, typeWidth e1' - 1)), 
-                                          combSuffix me1' (Just $ econcat $ catMaybes [Just $ exprSlice e2' (typeWidth e1', typeWidth e2' - 1), me2'])) $
-    ((exprSlice e1' (0, typeWidth e2' - 1), e2'), 
-     combSuffix (Just $ econcat $ catMaybes [Just $ exprSlice e1' (typeWidth e2', typeWidth e1' - 1), me1']) me2')
+    if' (exprWidth e1' == exprWidth e2') ((e1', e2'), combSuffix me1' me2') $
+    if' (exprWidth e1' <  exprWidth e2') ((e1', exprSlice e2' (0, exprWidth e1' - 1)), 
+                                          combSuffix me1' (Just $ econcat $ catMaybes [Just $ exprSlice e2' (exprWidth e1', exprWidth e2' - 1), me2'])) $
+    ((exprSlice e1' (0, exprWidth e2' - 1), e2'), 
+     combSuffix (Just $ econcat $ catMaybes [Just $ exprSlice e1' (exprWidth e2', exprWidth e1' - 1), me1']) me2')
 
     where 
     (e1', me1') = pref e1
@@ -145,8 +145,8 @@ shortestPrefix e1 e2 =
     combSuffix (Just s1) (Just s2) = Just (s1,s2)
 
 fRelIntEq1 :: (?spec::Spec) => (Expr, Expr) -> Formula
-fRelIntEq1 (e1,e2) | typeWidth e1 == 1 && isConstExpr e2 = FEqConst       (AVarInt $ scalarExprToTerm e1) i where i = fromInteger $ ivalVal $ evalConstExpr e2
-fRelIntEq1 (e1,e2) | typeWidth e1 == 1                   = FEq            (AVarInt $ scalarExprToTerm e1) (AVarInt $ scalarExprToTerm e2)
+fRelIntEq1 (e1,e2) | exprWidth e1 == 1 && isConstExpr e2 = FEqConst       (AVarInt $ scalarExprToTerm e1) i where i = fromInteger $ ivalVal $ evalConstExpr e2
+fRelIntEq1 (e1,e2) | exprWidth e1 == 1                   = FEq            (AVarInt $ scalarExprToTerm e1) (AVarInt $ scalarExprToTerm e2)
                    | otherwise                           = bvRelNormalise REq (PTInt $ scalarExprToTerm e1) (PTInt $ scalarExprToTerm e2)
 
 

@@ -36,7 +36,7 @@ exprFlatten' iid s e@(ETerm p n) = case getTerm s n of
                                        _            -> e
 exprFlatten' iid s (EField p e f) = 
     let ?scope = s
-    in case tspec e of
+    in case exprTypeSpec e of
             TemplateTypeSpec _ tn -> case objGet (ObjTemplate $ getTemplate tn) f of
                                           ObjGVar _ v -> ETerm p [itreeFlattenName (itreeRelToAbsPath iid (epath e)) (name v)]
                                           ObjWire _ w -> ETerm p [itreeFlattenName (itreeRelToAbsPath iid (epath e)) (name w)]

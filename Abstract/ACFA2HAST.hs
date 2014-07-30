@@ -129,13 +129,13 @@ compileFCasLoc (CasLeaf (Just f)) (av, Iff)     = (H.Var av) `H.XNor` compileFor
 compileFCasLoc (CasTree bs)       (av, op)      = disj $ map (\(f,cas) -> compileFormulaLoc f `H.And` compileFCasLoc cas (av, op)) bs
 
 compileTCasLoc :: (?spec::Spec, ?acfa::ACFA, ?emap::EMap f e c, ?loc::Loc) => MTCascade -> TASTVar f e -> TAST f e c
-compileTCasLoc (CasTree bs)                 av            = disj $ map (\(f,cas) -> compileFormulaLoc f `H.And` compileTCasLoc cas av) bs
-compileTCasLoc (CasLeaf Nothing)            av            = H.T
-compileTCasLoc (CasLeaf (Just (TEnum n)))   av            = H.EqConst av (enumToInt n)
-compileTCasLoc (CasLeaf (Just (TUInt _ i))) av            = H.EqConst av (fromInteger i)
-compileTCasLoc (CasLeaf (Just (TSInt _ i))) av            = H.EqConst av (fromInteger i)
-compileTCasLoc (CasLeaf (Just t))           av | isInt  t = H.EqVar   av (getAbsVar $ AVarInt t)
-compileTCasLoc (CasLeaf (Just t))           av | isEnum t = H.EqVar   av (getAbsVar $ AVarEnum t)
+compileTCasLoc (CasTree bs)                 av                         = disj $ map (\(f,cas) -> compileFormulaLoc f `H.And` compileTCasLoc cas av) bs
+compileTCasLoc (CasLeaf Nothing)            av                         = H.T
+compileTCasLoc (CasLeaf (Just (TEnum n)))   av                         = H.EqConst av (enumToInt n)
+compileTCasLoc (CasLeaf (Just (TUInt _ i))) av                         = H.EqConst av (fromInteger i)
+compileTCasLoc (CasLeaf (Just (TSInt _ i))) av                         = H.EqConst av (fromInteger i)
+compileTCasLoc (CasLeaf (Just t))           av | (isInt $ termType t)  = H.EqVar   av (getAbsVar $ AVarInt t)
+compileTCasLoc (CasLeaf (Just t))           av | (isEnum $ termType t) = H.EqVar   av (getAbsVar $ AVarEnum t)
 
 compileFormulaLoc :: (?spec::Spec, ?emap::EMap f e c, ?loc::Loc, ?acfa::ACFA) => Formula -> TAST f e c
 compileFormulaLoc FTrue                = H.T

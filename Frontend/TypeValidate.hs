@@ -46,9 +46,9 @@ validateTypeSpec2 s (ArraySpec _ t l) = do
     let ?scope = s
         ?privoverride = False
     validateExpr' l
-    assert (isConstExpr l) (pos l)  $ "Array length must be a constant expression"
-    assert (isInt l) (pos l)        $ "Array length must be an integer expression"
-    assert (evalInt l >= 0) (pos l) $ "Array length must be non-negative"
+    assert (isConstExpr l) (pos l)      $ "Array length must be a constant expression"
+    assert (isInt $ exprType l) (pos l) $ "Array length must be an integer expression"
+    assert (evalInt l >= 0) (pos l)     $ "Array length must be non-negative"
     validateTypeSpec2 s t
 
 validateTypeSpec2 s (VarArraySpec _ t) = validateTypeSpec2 s t

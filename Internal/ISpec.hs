@@ -104,6 +104,7 @@ getRelation r = fromJustMsg ("getRelation: relation " ++ r ++ " not found")
 
 twidth :: (?spec::Spec) => Type -> Int
 twidth Bool        = 1
+twidth (Ptr _)     = 64
 twidth (SInt w)    = w
 twidth (UInt w)    = w
 twidth (Enum e)    = bitWidth $ length (enumEnums $ getEnumeration e) - 1

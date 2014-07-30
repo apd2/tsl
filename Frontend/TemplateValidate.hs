@@ -177,7 +177,7 @@ validateGoal2 t g = do
         ?privoverride = False
     validateExpr' (goalCond g)
     assert (exprNoSideEffects $ goalCond g) (pos $ goalCond g) "Goal conditions must be side-effect free"
-    assert (isBool $ goalCond g) (pos $ goalCond g) $ "Goal must be a boolean expression"
+    assert (isBool $ exprType $ goalCond g) (pos $ goalCond g) $ "Goal must be a boolean expression"
 
 validateTmGoals2 :: (?spec::Spec, MonadError String me) => Template -> me ()
 validateTmGoals2 t = do {mapM (validateGoal2 t) (tmGoal t); return ()}
@@ -258,7 +258,7 @@ validateWire2 t w = do
         ?privoverride = False
     case wireRHS w of
          Just e  -> do validateExpr' e
-                       checkTypeMatch (Type ?scope $ tspec w) e
+                       checkTypeMatch e (Type ?scope $ tspec w) (exprType e)
                        assert (exprNoSideEffects e) (pos e) "Wire expression must be side-effect free"
          Nothing -> return ()
 

@@ -59,7 +59,7 @@ methCheckOverride t m = do
                                       assert (argDir a1 == argDir a2 && (tspec a1 == tspec a2)) (pos a1) $ 
                                              "Argument " ++ sname a1 ++ " was declared as " ++ show (argDir a1) ++ " " ++ show (tspec a1) ++ " at " ++ spos a1 ++
                                              " but is redefined as " ++ show (argDir a2) ++ " " ++ show (tspec a2) ++ " at " ++ spos a2)
-                 (zip (zip (methArg m') (methArg m)) [1..])
+                 (zip (zip (methArg m') (methArg m)) [(1::Int)..])
             return ()
 
 
@@ -70,8 +70,8 @@ validateMeth t m = do
     validateMethNS t m
     let ?scope = ScopeMethod t m
         ?privoverride = False
-    mapM (\a -> case argType a of
-                     StructSpec _ _ -> err (pos $ argType a) "Inline struct declaration is illegal in method argument" -- because then there is no way to pass such an argument by value
+    mapM (\a -> case tspec a of
+                     StructSpec _ _ -> err (pos $ tspec a) "Inline struct declaration is illegal in method argument" -- because then there is no way to pass such an argument by value
                      _              -> return ())
          $ methArg m
     case methParent t m of

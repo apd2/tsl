@@ -27,8 +27,8 @@ exprObjsRec :: (?spec::Spec, ?scope::Scope) => Expr -> [Obj]
 --validateCall :: (?spec::Spec, ?scope::Scope, MonadError String me) => Pos -> MethodRef -> [Expr] -> me ()
 
 
-instance (?spec::Spec,?scope::Scope) => WithType Expr
-instance (?spec::Spec,?scope::Scope) => WithTypeSpec Expr
+exprType :: (?spec::Spec,?scope::Scope) => Expr -> Type
+exprTypeSpec :: (?spec::Spec,?scope::Scope) => Expr -> TypeSpec
 
 mapExpr :: (?spec::Spec) => (Scope -> Expr -> Expr) -> Scope -> Expr -> Expr
 exprCallees :: (?spec::Spec) => Scope -> Expr -> [(Pos, (Template, Method))]

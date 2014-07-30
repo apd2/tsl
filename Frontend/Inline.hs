@@ -61,8 +61,8 @@ mkVar nsid x = I.EVar $ mkVarName nsid x
 mkVarS :: NSID -> String -> I.Expr
 mkVarS nsid s = I.EVar $ mkVarNameS nsid s
 
-mkVarDecl :: (?spec::Spec, WithName a, WithType a) => Bool -> NSID -> a -> I.Var
-mkVarDecl mem nsid x = I.Var mem I.VarState (mkVarName nsid x) (mkType $ typ x)
+mkVarDecl :: (?spec::Spec, WithName a) => Bool -> NSID -> a -> Type -> I.Var
+mkVarDecl mem nsid n t = I.Var mem I.VarState (mkVarName nsid n) (mkType t)
 
 parseVarName :: String -> (Maybe PrID, Maybe String, String)
 parseVarName n = (mpid, mmeth, vname)

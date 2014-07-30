@@ -5,7 +5,7 @@ module Frontend.Template(Template(Template, tmPort, tmDerive, tmInst, tmVar, tmP
                 Goal(Goal, goalCond, goalName),
                 Init(Init,initBody),
                 Prefix(Prefix,prefBody),
-                Wire(Wire,wireExport,wireRHS,wireType,wireName),
+                Wire(Wire,wireExport,wireRHS,wireTSpec,wireName),
                 Derive(Derive,drvTemplate),
                 mergeTemplate) where
 
@@ -113,7 +113,7 @@ instance WithName Goal where
 -- Wire (variable with continuous assignment)
 data Wire = Wire { wpos       :: Pos
                  , wireExport :: Bool
-                 , wireType   :: TypeSpec
+                 , wireTSpec  :: TypeSpec
                  , wireName   :: Ident
                  , wireRHS    :: Maybe Expr}
 
@@ -130,7 +130,7 @@ instance WithName Wire where
     name      = wireName
 
 instance WithTypeSpec Wire where
-    tspec     = wireType
+    tspec     = wireTSpec
 
 -- Template-global variable
 data GVar = GVar { gvpos      :: Pos

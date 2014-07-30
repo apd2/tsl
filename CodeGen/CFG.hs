@@ -117,7 +117,7 @@ ppAction' ((cond, lab):sol) addmb = if null sol
                    args  = map (\a -> case argDir a of
                                            ArgIn  -> let t = let ?spec = ?flatspec 
                                                                  ?scope = ?sc
-                                                             in F.typ a
+                                                             in F.argType a
                                                      in mkArg lab t $ mkArgTmpVarName meth a
                                            ArgOut -> PP.char '_') $ methArg meth
                return $ PP.text mpath PP.<> (PP.parens $ PP.hsep $ PP.punctuate PP.comma $ args) : if' addmb [PP.text "..."] []
@@ -149,27 +149,27 @@ mkArg lab t argname = mkArg' lab t $ I.EVar argname
 mkArg' :: (?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> F.Type -> I.Expr -> PP.Doc
 mkArg' lab t e =
     -- trace ("mkArg' " ++ show lab ++ " " ++ (show $ F.tspec t) ++ "" ++ show e) $
-    case typ e of
+    case I.exprType e of
          Struct fs  -> let F.Type sc (F.StructSpec _ fs') = let ?spec = ?flatspec 
                                                                 ?scope = ?sc 
                                                             in F.typ' t
-                       in (let ?spec = ?flatspec in pp t) PP.<> 
+                       in (let ?spec = ?flatspec in F.ppType t) PP.<> 
                           (PP.braces $ PP.hcat $ PP.punctuate PP.comma $ map (\(Field n _,f) -> let t' = let ?spec = ?flatspec 
                                                                                                              ?scope = sc 
-                                                                                                          in F.typ f
+                                                                                                          in F.fieldType f
                                                                                                 in mkArg' lab t' (I.EField e n)) $ zip fs fs')
          Array _ _  -> error $ "mkArg " ++ show e ++ ": Arrays are not supported"
          VarArray _ -> error $ "mkArg " ++ show e ++ ": VarArrays are not supported"
          _          -> mkScalar lab e
 
 mkScalar :: (?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> I.Expr -> PP.Doc
-mkScalar lab e | masn == Nothing = PP.text "/* any value */" PP.<> (exprToTSL2 ?inspec ?pid ?sc $ I.EConst $ I.valDefault e)
+mkScalar lab e | masn == Nothing = PP.text "/* any value */" PP.<> (exprToTSL2 ?inspec ?pid ?sc $ I.EConst $ I.valDefault $ I.exprType e)
                | otherwise       = PP.hcat $ PP.punctuate (PP.text " ++ ") es'
     where masn = lookupAsn e lab 
           Just (AsnScalar asns) = masn
           (off, es) = foldl' (\(o, exps) ((l,h), v) -> ((h+1), exps ++ (if' (l > o) [anyvalue (l-o)] []) ++ [ppAsn (h-l+1) v]))
                              (0, []) asns
-          es' = es ++ (if' (off < typeWidth e) [anyvalue (typeWidth e - off)] [])
+          es' = es ++ (if' (off < I.exprWidth e) [anyvalue (I.exprWidth e - off)] [])
           ppAsn w (Left True)  = anyvalue w
           ppAsn w (Left False) = novalue w
           ppAsn _ (Right x)    = exprToTSL2 ?inspec ?pid ?sc x
@@ -351,7 +351,7 @@ mkCondCube care cub = do
    return $ I.conj 
           $ map (\(av, vals) -> -- Cube may contain ivalid enum values.  Filter them out.
                                 let vals' = case av of 
-                                                 AVarEnum t -> let Enum n = typ t
+                                                 AVarEnum t -> let Enum n = termType t
                                                                    l = toInteger $ length $ enumEnums $ getEnumeration n
                                                                in filter (< l) vals
                                                  _          -> vals

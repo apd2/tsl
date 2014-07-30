@@ -118,7 +118,7 @@ statToCFA0 before   (SVarDecl _ _ v) | otherwise = do
                                           let ?scope = sc
                                           let scalars = exprScalars $ ETerm nopos [name v]
                                           foldM (\loc e -> do e' <- exprToIExprDet e
-                                                              let val = case tspec $ typ' e of
+                                                              let val = case tspec $ typ' $ exprType e of
                                                                              BoolSpec _    -> I.BoolVal False
                                                                              UIntSpec _ w  -> I.UIntVal w 0
                                                                              SIntSpec _ w  -> I.SIntVal w 0
@@ -262,9 +262,9 @@ statToCFA' before after (SAssign _ _ lhs e@(EApply _ mref margs)) = do
 statToCFA' before after (SAssign _ _ lhs rhs) = do
     sc <- gets ctxScope
     let ?scope = sc
-    let t = mkType $ typ lhs
+    let t = mkType $ exprType lhs
     lhs' <- exprToIExprDet lhs
-    rhs' <- exprToIExprs rhs (tspec lhs)
+    rhs' <- exprToIExprs rhs (exprTypeSpec lhs)
     ctxInsTransMany before after $ map I.TranStat
                                  $ zipWith I.SAssign (I.exprScalars lhs' t) 
                                                      (concatMap (uncurry I.exprScalars) rhs')
@@ -400,7 +400,7 @@ copyOutArgs loc meth margs = do
 
 statAddNullTypes :: I.Spec -> I.Statement -> I.Statement
 statAddNullTypes spec (I.SAssume (I.EBinOp Eq e (I.EConst (I.NullVal _)))) = let ?spec = spec in
-                                                                             I.SAssume (I.EBinOp Eq e (I.EConst $ I.NullVal $ I.typ e))
+                                                                             I.SAssume (I.EBinOp Eq e (I.EConst $ I.NullVal $ I.exprType e))
 statAddNullTypes _    s = s
 
 ----------------------------------------------------------

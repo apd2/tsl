@@ -1,21 +1,24 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections, ScopedTypeVariables #-}
 
 module Frontend.ExprOps(mapExpr,
-               exprCallees,
-               isLExpr,
-               isMemExpr,
-               isLocalLHS,
-               isConstExpr,
-               isInstExpr,
-               isPureExpr,
-               eval,
-               evalInt,
-               exprNoSideEffects,
-               exprNoSideEffectsWithPtr,
-               applyNoSideEffects,
-               exprObjs,
-               exprObjsRec,
-               exprScalars) where
+                        exprCallees,
+                        isLExpr,
+                        isMemExpr,
+                        isLocalLHS,
+                        isConstExpr,
+                        isInstExpr,
+                        isPureExpr,
+                        eval,
+                        evalInt,
+                        exprNoSideEffects,
+                        exprNoSideEffectsWithPtr,
+                        applyNoSideEffects,
+                        exprType,
+                        exprTypeSpec,
+                        exprWidth,
+                        exprObjs,
+                        exprObjsRec,
+                        exprScalars) where
 
 import Data.Maybe
 import Data.Bits
@@ -88,7 +91,7 @@ exprCallees _ _                         = []
 
 -- Eval constant expression
 eval :: (?spec::Spec,?scope::Scope) => ConstExpr -> TVal
-eval e = let t = typ e
+eval e = let t = exprType e
          in TVal t (eval' e t)
 
 eval' :: (?spec::Spec, ?scope::Scope) => ConstExpr -> Type -> Val
@@ -103,10 +106,10 @@ eval' (EField _ e f) _        = let StructVal v = val $ eval e
 --eval' (EIndex _ a i) _        = let ArrayVal av = val $ eval a
 --                                    iv          = evalInt i
 --                                in val $ av !! (fromInteger iv)
-eval' (ELength _ a) _         = let ArraySpec _ _ l = tspec a
+eval' (ELength _ a) _         = let ArraySpec _ _ l = exprTypeSpec a
                                 in IntVal $ evalInt l
 eval' (EUnOp _ op e) _ | isArithUOp op = let i = evalInt e
-                                         in IntVal $ sel1 $ arithUOp op (i, typeSigned e, typeWidth e)
+                                         in IntVal $ sel1 $ arithUOp op (i, typeSigned $ exprType e, exprWidth e)
 eval' (EUnOp _ Not e) _       = BoolVal $ not $ evalBool e
 eval' (EUnOp _ AddrOf e) _    = PtrVal e
 eval' (EBinOp  _ Eq e1 e2) _  = BoolVal $ eval e1 == eval e2
@@ -125,7 +128,7 @@ eval' (EBinOp  _ op e1 e2) _ | elem op [And,Or,Imp] =
 eval' (EBinOp  _ op e1 e2) _ | isArithBOp op = 
                                 let i1 = evalInt e1
                                     i2 = evalInt e2
-                                in IntVal $ sel1 $ arithBOp op (i1, typeSigned e1, typeWidth e1) (i2, typeSigned e1, typeWidth e2)
+                                in IntVal $ sel1 $ arithBOp op (i1, typeSigned $ exprType e1, exprWidth e1) (i2, typeSigned $ exprType e1, exprWidth e2)
 eval' (ETernOp _ e1 e2 e3) _  = if evalBool e1
                                    then val $ eval e2
                                    else val $ eval e3
@@ -166,7 +169,7 @@ isLExpr (ETerm _ n)           = case getTerm ?scope n of
                                      ObjWire  _ _ -> False
                                      _            -> True
 isLExpr (EField  _       e f) = isLExpr e &&
-                                case objGet (ObjType $ typ e) f of
+                                case objGet (ObjType $ exprType e) f of
                                      ObjWire  _ _ -> False
                                      _            -> True
 isLExpr (EPField _       e _) = True
@@ -187,7 +190,7 @@ isMemExpr (ETerm _ n)           = case getTerm ?scope n of
                                      ObjVar   _ v -> varMem v
                                      _            -> True
 isMemExpr (EField  _       e f) = isMemExpr e &&
-                                  case objGet (ObjType $ typ e) f of
+                                  case objGet (ObjType $ exprType e) f of
                                        ObjWire  _ _ -> False
                                        _            -> True
 isMemExpr (EPField _       e _) = True
@@ -228,7 +231,7 @@ isConstExpr (EField _ s _)           = isConstExpr s
 isConstExpr (EPField _ _ _)          = False
 isConstExpr (EIndex _ a i)           = False --isConstExpr a && isConstExpr i
 isConstExpr (ERange _ a _)           = False
-isConstExpr (ELength _ a)            = case tspec a of 
+isConstExpr (ELength _ a)            = case exprTypeSpec a of 
                                             ArraySpec _ _ _ -> True
                                             _               -> False
 isConstExpr (EUnOp _ _ e)            = isConstExpr e
@@ -357,7 +360,7 @@ exprObjs :: (?spec::Spec, ?scope::Scope) => Expr -> [Obj]
 exprObjs (ETerm   _ s)            = [getTerm ?scope s]
 exprObjs (EApply  _ m mas)        = (let (t,meth) = getMethod ?scope m in ObjMethod t meth):
                                     (concatMap exprObjs $ catMaybes mas)
-exprObjs (EField  _ e f)          = (objGet (ObjType $ typ e) f) : 
+exprObjs (EField  _ e f)          = (objGet (ObjType $ exprType e) f) : 
                                     exprObjs e
 exprObjs (EPField _ e f)          = exprObjs e
 exprObjs (EIndex  _ a i)          = exprObjs a ++ exprObjs i
@@ -402,50 +405,53 @@ maxType2 t1 t2 = let Type s1 t1' = typ' t1
                       _                                -> t1
 
 -- Assumes that expression has been validated first
-instance (?spec::Spec,?scope::Scope) => WithType Expr where
-    typ (ETerm   _ n)           = typ $ getTerm ?scope n
-    typ (ELit    p w True _ _)  = Type ?scope $ SIntSpec p w
-    typ (ELit    p w False _ _) = Type ?scope $ UIntSpec p w
-    typ (EBool   p _)           = Type ?scope $ BoolSpec p
-    typ (EApply  _ mref _)      = Type (ScopeTemplate t) $ fromJust $ methRettyp m where (t,m) = getMethod ?scope mref
-    typ (EField  _ e f)         = typ $ objGet (ObjType $ typ e) f 
-    typ (EPField _ e f)         = typ $ objGet (ObjType $ Type s t) f where Type s (PtrSpec _ t) = typ' e
-    typ (EIndex  _ e i)         = case typ' e of
-                                       Type s (ArraySpec _ t _)  -> Type s t
-                                       Type s (VarArraySpec _ t) -> Type s t
-    typ (ERange  p e _)         = case typ' e of
-                                       Type s (ArraySpec _ t _)  -> Type s $ VarArraySpec p t
-                                       Type s (VarArraySpec _ t) -> Type s $ VarArraySpec p t
-    typ (ELength p e)           = Type ?scope $ UIntSpec p arrLengthBits
-    typ (EUnOp   p op e) | isArithUOp op = case arithUOpType op (s,w) of
+exprType :: (?spec::Spec,?scope::Scope) => Expr -> Type
+exprType (ETerm   _ n)           = objType $ getTerm ?scope n
+exprType (ELit    p w True _ _)  = Type ?scope $ SIntSpec p w
+exprType (ELit    p w False _ _) = Type ?scope $ UIntSpec p w
+exprType (EBool   p _)           = Type ?scope $ BoolSpec p
+exprType (EApply  _ mref _)      = Type (ScopeTemplate t) $ fromJust $ methRettyp m where (t,m) = getMethod ?scope mref
+exprType (EField  _ e f)         = objType $ objGet (ObjType $ exprType e) f 
+exprType (EPField _ e f)         = objType $ objGet (ObjType $ Type s t) f where Type s (PtrSpec _ t) = typ' $ exprType e
+exprType (EIndex  _ e i)         = case typ' $ exprType e of
+                                   Type s (ArraySpec _ t _)  -> Type s t
+                                   Type s (VarArraySpec _ t) -> Type s t
+exprType (ERange  p e _)         = case typ' $ exprType e of
+                                   Type s (ArraySpec _ t _)  -> Type s $ VarArraySpec p t
+                                   Type s (VarArraySpec _ t) -> Type s $ VarArraySpec p t
+exprType (ELength p e)           = Type ?scope $ UIntSpec p arrLengthBits
+exprType (EUnOp   p op e) | isArithUOp op = case arithUOpType op (s,w) of
+                                            (True, w')  -> Type ?scope (SIntSpec p w')
+                                            (False, w') -> Type ?scope (UIntSpec p w')
+                                       where (s,w) = (typeSigned $ exprType e, exprWidth e)
+exprType (EUnOp   _ BNeg e)      = exprType e
+exprType (EUnOp   p Not e)       = Type ?scope $ BoolSpec p
+exprType (EUnOp   _ Deref e)     = Type s t where Type s (PtrSpec _ t) = typ' $ exprType e
+exprType (EUnOp   p AddrOf e)    = Type s (PtrSpec p t) where Type s t = typ' $ exprType e
+exprType (EBinOp  p op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] = Type ?scope $ BoolSpec p
+                         | isArithBOp op = case arithBOpType op (s1,w1) (s2,w2) of
                                                 (True, w')  -> Type ?scope (SIntSpec p w')
                                                 (False, w') -> Type ?scope (UIntSpec p w')
-                                           where (s,w) = (typeSigned e, typeWidth e)
-    typ (EUnOp   _ BNeg e)      = typ e
-    typ (EUnOp   p Not e)       = Type ?scope $ BoolSpec p
-    typ (EUnOp   _ Deref e)     = Type s t where Type s (PtrSpec _ t) = typ' e
-    typ (EUnOp   p AddrOf e)    = Type s (PtrSpec p t) where Type s t = typ' e
-    typ (EBinOp  p op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] = Type ?scope $ BoolSpec p
-                             | isArithBOp op = case arithBOpType op (s1,w1) (s2,w2) of
-                                                    (True, w')  -> Type ?scope (SIntSpec p w')
-                                                    (False, w') -> Type ?scope (UIntSpec p w')
-                                               where (s1,w1) = (typeSigned e1, typeWidth e1)
-                                                     (s2,w2) = (typeSigned e2, typeWidth e2)
-    typ (ETernOp _ _ e2 e3)     = maxType [e2, e3]
-    typ (ECase _ _ cs md)       = maxType $ (map snd cs) ++ maybeToList md
-    typ (ECond _ cs md)         = maxType $ (map snd cs) ++ maybeToList md
-    typ (ESlice p e (l,h))      = Type ?scope $ UIntSpec p (fromInteger (evalInt h - evalInt l + 1))
-    typ (EStruct p tn _)        = Type ?scope $ UserTypeSpec p tn
-    typ (EAtLab p l)            = Type ?scope $ BoolSpec p
-    typ (ERel   p _ _)          = Type ?scope $ BoolSpec p
-    typ (ENonDet p _)           = Type ?scope $ FlexTypeSpec p
+                                           where (s1,w1) = (typeSigned $ exprType e1, exprWidth e1)
+                                                 (s2,w2) = (typeSigned $ exprType e2, exprWidth e2)
+exprType (ETernOp _ _ e2 e3)     = maxType [exprType e2, exprType e3]
+exprType (ECase _ _ cs md)       = maxType $ map exprType $ (map snd cs) ++ maybeToList md
+exprType (ECond _ cs md)         = maxType $ map exprType $ (map snd cs) ++ maybeToList md
+exprType (ESlice p e (l,h))      = Type ?scope $ UIntSpec p (fromInteger (evalInt h - evalInt l + 1))
+exprType (EStruct p tn _)        = Type ?scope $ UserTypeSpec p tn
+exprType (EAtLab p l)            = Type ?scope $ BoolSpec p
+exprType (ERel   p _ _)          = Type ?scope $ BoolSpec p
+exprType (ENonDet p _)           = Type ?scope $ FlexTypeSpec p
 
 
-instance (?spec::Spec,?scope::Scope) => WithTypeSpec Expr where
-    tspec = tspec . typ
+exprTypeSpec :: (?spec::Spec,?scope::Scope) => Expr -> TypeSpec
+exprTypeSpec = tspec . exprType
+
+exprWidth :: (?spec::Spec,?scope::Scope) => Expr -> Int
+exprWidth = typeWidth . exprType
 
 exprScalars :: (?spec::Spec,?scope::Scope) => Expr -> [Expr]
-exprScalars e = exprScalars' e (tspec $ typ' e)
+exprScalars e = exprScalars' e (tspec $ typ' $ exprType e)
 
 exprScalars' :: (?spec::Spec,?scope::Scope) => Expr -> TypeSpec -> [Expr]
 exprScalars' (EStruct _ tn (Right fs)) _                 = concatMap exprScalars         fs

@@ -52,7 +52,7 @@ exprSimplify e = liftM (mapSnd exprFlattenStruct) $ exprSimplify' e
 exprSimplify' :: (?spec::Spec, ?scope::Scope) => Expr -> NameGen ([Statement], Expr)
 exprSimplify' e@(EApply p mref mas)     = do 
     (argss, mas') <- liftM unzip $ mapM (maybe (return ([], Nothing)) (liftM (mapSnd Just) . exprSimplify)) mas
-    var <- tmpVar p False (tspec e)
+    var <- tmpVar p False (exprTypeSpec e)
     let decl = SVarDecl p Nothing var
         asn = SAssign p Nothing (ETerm p [name var]) (EApply p mref mas')
         ss = (concat argss) ++ [decl,asn]
@@ -76,11 +76,11 @@ exprSimplify' (EUnOp p op a)            = do (ss,a') <- exprSimplify a
 exprSimplify' (EBinOp p op a1 a2)       = do (ss1,a1') <- exprSimplify a1
                                              (ss2,a2') <- exprSimplify a2
                                              return ((ss1++ss2), EBinOp p op a1' a2')
-exprSimplify' e@(ETernOp p a1 a2 a3)    = condSimplify p (Left $ tspec e) [(a1,a2)] (Just a3)
+exprSimplify' e@(ETernOp p a1 a2 a3)    = condSimplify p (Left $ exprTypeSpec e) [(a1,a2)] (Just a3)
 exprSimplify' e@(ECase p c cs md)       = do (ss, c') <- exprSimplify c
                                              let cs' = map (mapFst $ (\e' -> EBinOp (pos e') Eq c' e')) cs
-                                             liftM (mapFst (ss++)) $ condSimplify p (Left $ tspec e) cs' md
-exprSimplify' e@(ECond p cs md)         = condSimplify p (Left $ tspec e) cs md
+                                             liftM (mapFst (ss++)) $ condSimplify p (Left $ exprTypeSpec e) cs' md
+exprSimplify' e@(ECond p cs md)         = condSimplify p (Left $ exprTypeSpec e) cs md
 exprSimplify' (ESlice p e (l,h))        = do (ss, e') <- exprSimplify e
                                              (ssl,l') <- exprSimplify l
                                              (ssh,h') <- exprSimplify h
@@ -139,7 +139,7 @@ exprFlattenStruct = mapExpr exprFlattenStruct' ?scope
 exprFlattenStruct' :: (?spec::Spec) => Scope -> Expr -> Expr
 exprFlattenStruct' _ (EField _ (EStruct _ _ (Left fs)) f)    = snd $ fromJust $ find ((==f) . fst) fs
 exprFlattenStruct' s (EField _ e@(EStruct _ _ (Right fs)) f) = fs !! idx
-    where StructSpec _ fs' = let ?scope = s in tspec $ typ' e
+    where StructSpec _ fs' = let ?scope = s in tspec $ typ' $ exprType e
           idx = fromJust $ findIndex ((==f) . name) fs' 
 exprFlattenStruct' _ e                                       = e
 
@@ -163,13 +163,13 @@ exprToIExprs :: (?spec::Spec) => Expr -> TypeSpec -> State CFACtx [(I.Expr,I.Typ
 exprToIExprs e@(EStruct _ _ (Left fs)) _ = do 
     sc <- gets ctxScope
     let ?scope = sc
-    let Type _ (StructSpec _ sfs) = typ' e
+    let Type _ (StructSpec _ sfs) = typ' $ exprType e
     concat <$> mapM (\f -> do let v = snd $ fromJust $ (\n -> find ((==n) . fst) fs) $ name f
                               exprToIExprs v (tspec f)) sfs
 exprToIExprs e@(EStruct _ _ (Right fs)) _ = do 
     sc <- gets ctxScope
     let ?scope = sc
-    let Type _ (StructSpec _ sfs) = typ' e
+    let Type _ (StructSpec _ sfs) = typ' $ exprType e
     concat <$> mapM (\(f,v) -> exprToIExprs v (tspec f)) (zip sfs fs)
 exprToIExprs e t                              = do 
     sc <- gets ctxScope
@@ -177,7 +177,7 @@ exprToIExprs e t                              = do
     e' <- exprToIExpr e t
     let t' = case e of
                   ENonDet _ _ -> mkType $ Type sc t
-                  _           -> mkType $ typ e
+                  _           -> mkType $ exprType e
     return [(e', t')]
 
 exprToIExpr' :: (?spec::Spec) => Expr -> Type -> State CFACtx I.Expr

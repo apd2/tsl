@@ -1,10 +1,11 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
-module Frontend.MethodOps(methLabels,
-                 methFullVar,
-                 methFullBody,
-                 methLocalDecls,
-                 methParent) where
+module Frontend.MethodOps(argType,
+                          methLabels,
+                          methFullVar,
+                          methFullBody,
+                          methLocalDecls,
+                          methParent) where
 
 import Data.Maybe
 import Control.Monad.Error
@@ -25,8 +26,8 @@ import Frontend.StatementOps
 import Frontend.Spec
 import Frontend.TVar
 
-instance (?spec::Spec, ?scope::Scope) => WithType Arg where
-    typ = Type ?scope . tspec
+argType :: (?spec::Spec, ?scope::Scope) => Arg -> Type
+argType = Type ?scope . tspec
 
 methLabels :: (?spec::Spec) => Method -> [Ident]
 methLabels meth = case methBody meth of

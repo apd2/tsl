@@ -28,10 +28,13 @@ import Frontend.StatementInline
 import Frontend.Expr
 import Frontend.ExprInline
 import Frontend.Template
+import Frontend.TemplateOps
 import Frontend.TemplateFlatten
 import Frontend.RelationInline
 import Frontend.TVar
+import Frontend.TVarOps
 import Frontend.Method
+import Frontend.MethodOps
 import Frontend.Process
 import Frontend.Type
 import Frontend.Inline
@@ -70,7 +73,7 @@ spec2Internal s =
                          maggoal   <- mkMagicGoal
                          return (wire, prefix, inittr, maggoal:usergoals))
                      (0,[])
-        extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) (NSID Nothing Nothing) v) extratmvars
+        extraivars = let ?scope = ScopeTemplate tmMain in map (\v -> mkVarDecl (varMem v) (NSID Nothing Nothing) v (varType v)) extratmvars
         (specProc, tmppvs) = unzip $ (map procToCProc $ tmProcess tmMain) 
         specRels           = map relToIRel $ tmRelation tmMain
         specEnum           = choiceenum ++ (tenum : pidenum : (senum ++ pcenums))
@@ -342,11 +345,11 @@ mkVars = mkErrVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires ++ gvars ++ fva
     where
     -- global variables
     gvars = let ?scope = ScopeTemplate tmMain 
-                in map (\v -> mkVarDecl (varMem $ gvarVar v) (NSID Nothing Nothing) (gvarVar v)) $ tmVar tmMain
+                in map (\v -> mkVarDecl (varMem $ gvarVar v) (NSID Nothing Nothing) (gvarVar v) (varType $ gvarVar v)) $ tmVar tmMain
 
     -- wires
     wires = let ?scope = ScopeTemplate tmMain 
-                in map (mkVarDecl False (NSID Nothing Nothing)) $ tmWire tmMain
+                in map (\w -> mkVarDecl False (NSID Nothing Nothing) w (wireType w)) $ tmWire tmMain
 
     -- functions, procedures, and controllable tasks
     fvars = concatMap (methVars Nothing False)
@@ -360,7 +363,7 @@ mkVars = mkErrVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires ++ gvars ++ fva
     -- For each root process:
     -- * local variables
     pvars = concatMap (\p -> map (\v -> let ?scope = ScopeProcess tmMain p 
-                                        in mkVarDecl (varMem v) (NSID (Just $ PrID (sname p) []) Nothing) v) (procVar p)) 
+                                        in mkVarDecl (varMem v) (NSID (Just $ PrID (sname p) []) Nothing) v (varType v)) (procVar p)) 
                       $ tmProcess tmMain
 
     -- For each forked process:
@@ -370,8 +373,8 @@ mkVars = mkErrVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires ++ gvars ++ fva
 
     methVars :: Maybe PrID -> Bool -> Method -> [I.Var]
     methVars mpid ret m = 
-        (let ?scope = ScopeMethod tmMain m in map (\v -> mkVarDecl (varMem v) (NSID mpid (Just m)) v) (methVar m)) ++ 
-        (let ?scope = ScopeMethod tmMain m in map (mkVarDecl False (NSID mpid (Just m))) (methArg m)) ++
+        (let ?scope = ScopeMethod tmMain m in map (\v -> mkVarDecl (varMem v) (NSID mpid (Just m)) v (varType v)) (methVar m)) ++ 
+        (let ?scope = ScopeMethod tmMain m in map (\a -> mkVarDecl False (NSID mpid (Just m)) a (argType a)) (methArg m)) ++
         (if ret then maybeToList (mkRetVarDecl mpid m) else [])
 
 ----------------------------------------------------------------------

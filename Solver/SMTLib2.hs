@@ -54,7 +54,7 @@ newSMTLib2Solver spec config = SMTSolver { smtGetModel       = let ?spec = spec 
 ------------------------------------------------------
 
 class SMTPP a where
-    smtpp :: a -> Doc
+    smtpp :: (?spec::Spec, ?typemap::M.Map Type String) => a -> Doc
 
 mkFormulas :: (?spec::Spec) => [Formula] -> (Doc, [(String, Term)])
 mkFormulas fs = 
@@ -106,7 +106,7 @@ declRel :: (?spec::Spec, ?typemap::M.Map Type String) => (String, [Expr]) -> Doc
 declRel (n, args) = parens $ text "declare-const" <+> vname <+> text "Bool"
     where vname = smtpp (PRel n args)
 
-instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Var where
+instance SMTPP Var where
     smtpp v = parens $  text "declare-const"
                     <+> text (mkIdent $ varName v)
                     <+> text (?typemap M.! (varType v))
@@ -170,7 +170,7 @@ ptrTypeName m t = mkIdent $ "Ptr" ++ (m M.! typ t)
 addrofVarName :: Term -> String
 addrofVarName t = mkIdent $ "addrof-" ++ show t
 
-instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Formula where
+instance SMTPP Formula where
     smtpp FTrue                       = text "true"
     smtpp FFalse                      = text "false"
     smtpp (FBoolAVar (AVarPred p))    = smtpp p
@@ -180,20 +180,20 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Formula where
                                            then trace ("WARNING: smtpp: enum value out of bounds: " ++ n ++ "=" ++ show i) $ text "false"
                                            else parens $ smtpp REq <+> smtpp v <+> 
                                                 (text $ mkIdent $ (enumEnums $ getEnumeration n) !! i)
-                                        where Enum n = typ t
+                                        where Enum n = termType t
     smtpp (FEqConst v@(AVarInt _) i)  = parens $ smtpp REq <+> smtpp v <+> (text $ "(_ bv" ++ show i ++ " " ++ (show $ avarWidth v) ++ ")")
     smtpp (FBinOp op f1 f2)           = parens $ smtpp op <+> smtpp f1 <+> smtpp f2
     smtpp (FNot f)                    = parens $ text "not" <+> smtpp f
 
-instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Predicate where
-    smtpp (PAtom op pt1 pt2) | isInt t1 = parens $ smtpp op <+> (smtpp $ termPad w t1) <+> (smtpp $ termPad w t2)
-                                          where t1 = ptermTerm pt1
-                                                t2 = ptermTerm pt2
-                                                w = max (termWidth t1) (termWidth t2)
-    smtpp (PAtom op pt1 pt2)            = parens $ smtpp op <+> smtpp pt1 <+> smtpp pt2
-    smtpp (PRel n args)                 = text $ mkIdent $ n ++ "(" ++ (intercalate "," $ map show args) ++ ")"
+instance SMTPP Predicate where
+    smtpp (PAtom op pt1 pt2) | (isInt $ termType t1) = parens $ smtpp op <+> (smtpp $ termPad w t1) <+> (smtpp $ termPad w t2)
+                                                       where t1 = ptermTerm pt1
+                                                             t2 = ptermTerm pt2
+                                                             w = max (termWidth t1) (termWidth t2)
+    smtpp (PAtom op pt1 pt2)                         = parens $ smtpp op <+> smtpp pt1 <+> smtpp pt2
+    smtpp (PRel n args)                              = text $ mkIdent $ n ++ "(" ++ (intercalate "," $ map show args) ++ ")"
 
-instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
+instance SMTPP Term where
     smtpp (TVar n)               = text $ mkIdent n
     smtpp (TSInt w v) |v>=0      = text $ "(_ bv" ++ show v ++ " " ++ show w ++ ")"
                       |otherwise = text $ "(bvneg (_ bv" ++ show (-v) ++ " " ++ show w ++ "))"
@@ -201,13 +201,13 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TEnum n)              = text $ mkIdent n
     smtpp TTrue                  = text "true"
     smtpp (TAddr t)              = text $ addrofVarName t
-    smtpp (TField t f)           = parens $ text ((?typemap M.! typ t) ++ f) <+> smtpp t
+    smtpp (TField t f)           = parens $ text ((?typemap M.! termType t) ++ f) <+> smtpp t
     smtpp (TIndex a i)           = parens $ text "select" <+> smtpp a <+> smtpp i
     smtpp (TUnOp op t)           = parens $ smtpp op <+> smtpp t
     -- z3's handling of module division is dodgy, so try to get away with bit slicing instead
     smtpp (TBinOp AMod t1 t2)    | isConstTerm t2 && (isPow2 $ ivalVal $ evalConstTerm t2) 
                                  = smtpp (TSlice t1 (0, (log2 $ ivalVal $ evalConstTerm t2) - 1))
-    smtpp (TBinOp op t1 t2)      | isInt t1 && (elem op [ABAnd, ABOr, ABXor, APlus, ABinMinus, AMod, AMul]) -- bit vector ops only work on arguments of the same width
+    smtpp (TBinOp op t1 t2)      | (isInt $ termType t1) && (elem op [ABAnd, ABOr, ABXor, APlus, ABinMinus, AMod, AMul]) -- bit vector ops only work on arguments of the same width
                                  = parens $ smtpp op <+> smtpp t1' <+> smtpp t2'
                                    where w = max (termWidth t1) (termWidth t2)
                                          t1' = termPad w t1
@@ -215,10 +215,10 @@ instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP Term where
     smtpp (TBinOp op t1 t2)      = parens $ smtpp op <+> smtpp t1 <+> smtpp t2
     smtpp (TSlice t (l,h))       = parens $ (parens $ char '_' <+> text "extract" <+> int h <+> int l) <+> smtpp t
 
-instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP PTerm where
+instance SMTPP PTerm where
     smtpp = smtpp . ptermTerm
 
-instance (?spec::Spec, ?typemap::M.Map Type String) => SMTPP AbsVar where
+instance SMTPP AbsVar where
     smtpp (AVarPred p) = smtpp p
     smtpp (AVarBool t) = smtpp t
     smtpp (AVarInt  t) = smtpp t
@@ -279,7 +279,7 @@ mkPtrConstraints fs =
        $ ((text "and") <+> )
        $ hsep 
        $ concatMap (map (smtpp . ptrEqConstr) . pairs)
-       $ sortAndGroup typ addrterms,
+       $ sortAndGroup termType addrterms,
        map (\t -> (addrofVarName t, t)) addrterms)
     where addrterms = nub $ concatMap faddrofTerms fs
           
@@ -287,7 +287,7 @@ mkPtrConstraints fs =
 mkAddrofVar :: (?spec::Spec, ?typemap::M.Map Type String) => Term -> Doc
 mkAddrofVar t = parens $ text "declare-const" 
                      <+> text (addrofVarName t)
-                     <+> text (ptrTypeName ?typemap t)
+                     <+> text (ptrTypeName ?typemap $ termType t)
 
 faddrofTerms :: (?spec::Spec, ?typemap::M.Map Type String) => Formula -> [Term]
 faddrofTerms = nub . faddrofTerms'

@@ -170,7 +170,7 @@ tslInconsistent spec m ops = do
     let ?spec = spec
     allvars <- Abs.allVars ops
     let enumcond = H.Disj
-                   $ map (\av@(AVarEnum t) -> let Enum tname = typ t
+                   $ map (\av@(AVarEnum t) -> let Enum tname = termType t
                                               in H.Conj 
                                                  $ mapIdx (\_ i -> H.Not $ H.EqConst (H.NVar $ avarBAVar av) i)
                                                  $ enumEnums $ getEnumeration tname)
@@ -180,14 +180,16 @@ tslInconsistent spec m ops = do
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u, C.DDNode s u)
 tslUpdateAbsVar (av, n) = do
-    -- trace ("compiling " ++ show av) 
+    trace ("compiling " ++ show av) $ return () 
     upd <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
+    trace ("upd compiled") $ return () 
     -- include blocked states into inconsistent (to avoid splitting on those states)
-    blocked <- lift $ lift $ do --trace ("compiling " ++ show av) 
+    blocked <- lift $ lift $ trace ("compiling blocked " ++ show av) $ do  
           vcube <- C.nodesToCube ?m n
           pre   <- C.bexists ?m upd vcube
           C.deref ?m vcube
           return $ C.bnot pre
+    trace ("blocked compiled") $ return () 
     return (upd, blocked)
 
 tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
@@ -303,9 +305,9 @@ varUpdateTrans trname (av,nxt) Transition{..} = if any G.isEmpty cfas'
           (upds, pres, cfas') = unzip3
                                 $ map (\(op, e) -> let cfa  = cfaLocInlineWirePrefix ?spec tranCFA tranFrom
                                                        cfa' = pruneCFAVar [e] cfa
-                                                       pre  = {-cfaTraceFile tranCFA ("cfa_" ++ trname)
+                                                       pre  = cfaTraceFile tranCFA ("cfa_" ++ trname)
                                                               $ cfaTraceFile cfa' ("cfa_" ++ trname ++ show av)
-                                                              $ -} varUpdateLoc (trname ++ "_pre") [] tranFrom cfa'
+                                                              $ varUpdateLoc (trname ++ "_pre") [] tranFrom cfa'
                                                        upd  = varUpdateLoc trname [((av, op, e), nxt)] tranFrom cfa'
                                                    in (upd, pre, cfa'))
                                   vexps

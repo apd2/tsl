@@ -183,8 +183,8 @@ instance PP CFA where
              $+$
              (vcat $ map (\(from,to,s) -> pp from <+> text "-->" <+> pp to <> char ':' <+> pp s) $ G.labEdges cfa)
 
-instance Show CFA where
-    show = render . pp
+--instance Show CFA where
+--    show = render . pp
 
 cfaTrace :: CFA -> String -> a -> a
 cfaTrace cfa title x = graphTrace cfa title x

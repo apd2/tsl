@@ -18,13 +18,13 @@ data CGVar = PVar {cgvProc::[(IID, String)]                         , cgvVar::St
            | MVar {cgvProc::[(IID, String)], cgvMethod::(IID,String), cgvVar::String} -- Method-scope variable (argument or local)
            | GVar {cgvInst::IID                                     , cgvVar::String} -- Template-global variable
 
-type CGExpr = GExpr CGVar
+type CGExpr = GExpr String
 
 
-instance (?spec::F.Spec, ?pid::PrID, ?sc::Scope) => PP CGVar where
-    pp v = case cgVarRelName ?spec ?pid ?sc v of
-                Nothing  -> text $ "/*" ++ cgvVar v ++ "*/"
-                Just str -> text str
+ppCGVar :: (?spec::F.Spec, ?pid::PrID, ?sc::Scope) => CGVar -> Doc
+ppCGVar v = case cgVarRelName ?spec ?pid ?sc v of
+                 Nothing  -> text $ "/*" ++ cgvVar v ++ "*/"
+                 Just str -> text str
 
 cgVarRelName :: F.Spec -> PrID -> Scope -> CGVar -> Maybe String
 cgVarRelName spec pid sc cgv =
@@ -41,8 +41,8 @@ cgVarRelName spec pid sc cgv =
           m'              = itreeParseName $ sname m
                         
 
-exprToCGExpr :: Expr -> CGExpr
-exprToCGExpr (EVar n)          = EVar $ varToCGVar n
+exprToCGExpr :: (?spec::F.Spec, ?pid::PrID, ?sc::Scope) => Expr -> CGExpr
+exprToCGExpr (EVar n)          = EVar $ render $ ppCGVar $ varToCGVar n
 exprToCGExpr (EConst c)        = EConst c
 exprToCGExpr (EField e f)      = EField (exprToCGExpr e) f
 exprToCGExpr (EIndex a i)      = EIndex (exprToCGExpr a) (exprToCGExpr i)

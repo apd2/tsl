@@ -43,12 +43,12 @@ mecasAbsVars' (CasTree bs) = concatMap (\(f,cas') -> fAbsVars f ++ mecasAbsVars'
 mecasAbsVars' (CasLeaf me) = maybe [] scalarExprAbsVars me 
 
 scalarExprAbsVars :: (?spec::Spec) => Expr -> [AbsVar]
-scalarExprAbsVars e | isBool e  = fAbsVars $ ptrFreeBExprToFormula e
-                    | otherwise = case scalarExprToTerm e of 
-                                       TEnum _   -> []
-                                       TUInt _ _ -> []
-                                       TSInt _ _ -> []
-                                       t         -> if' (isInt t) [AVarInt t] [AVarEnum t]
+scalarExprAbsVars e | (isBool $ exprType e)  = fAbsVars $ ptrFreeBExprToFormula e
+                    | otherwise              = case scalarExprToTerm e of 
+                                                    TEnum _   -> []
+                                                    TUInt _ _ -> []
+                                                    TSInt _ _ -> []
+                                                    t         -> if' (isInt $ termType t) [AVarInt t] [AVarEnum t]
 
 
 -- Compute ACFA for a list of abstract variables for a location inside
@@ -302,7 +302,7 @@ updateScalAsn' (ESlice e (l,h)) rhs x            =
                         (if h == w - 1 then [] else [exprSlice x (h+1, w - 1)])
                    else x) 
          $ lhsExprEq e x
-    where w = typeWidth e
+    where w = exprWidth e
 updateScalAsn' lhs              rhs x            = 
     fmap (\b -> if b then rhs else x) $ lhsExprEq lhs x
 
@@ -325,8 +325,8 @@ lhsExprEq (EUnOp Deref e1) e2             | t1 == t2 && isMemExpr e2 =
          FTrue  -> CasLeaf True
          FFalse -> CasLeaf False
          f      -> casTree [(f, CasLeaf True), (fnot f, CasLeaf False)]
-    where Ptr t1 = typ e1
-          t2     = typ e2
+    where Ptr t1 = exprType e1
+          t2     = exprType e2
 lhsExprEq _              _                           = CasLeaf False
 
 

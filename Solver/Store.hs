@@ -193,7 +193,7 @@ storeSet' _               e               _      = error $ "storeSet': " ++ show
 
 storeExtendDefault :: (?spec::Spec) => Store -> [Var] -> Store
 storeExtendDefault store vs = foldl' (\st v -> let evar = EVar $ varName v in
-                                               foldl' extendScalar st (exprScalars evar (typ evar)))
+                                               foldl' extendScalar st (exprScalars evar (exprType evar)))
                                      store vs
 
 storeExtendDefaultState :: (?spec::Spec) => Store -> Store
@@ -204,5 +204,5 @@ storeExtendDefaultLabel store = storeExtendDefault store $ filter ((== VarTmp) .
 
 extendScalar :: (?spec::Spec) => Store -> Expr -> Store
 extendScalar store e = case storeTryEval store e of
-                            Nothing -> storeSet store e (Just $ SVal $ valDefault e)
+                            Nothing -> storeSet store e (Just $ SVal $ valDefault $ exprType e)
                             _       -> store

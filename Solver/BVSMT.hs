@@ -117,7 +117,7 @@ solToVarAsns vmap vs (cond, sol) = (conj $ map (catomToExpr vmap) cond, map (\v 
 
 solToVarAsn :: (?spec::Spec, ?vmap::VarMap) => [(BV.SVar, Either Bool BV.CTerm)] -> Expr -> VarAsn
 solToVarAsn sol e = 
-    case typ e of
+    case exprType e of
          Struct fs  -> AsnStruct $ map (\(Field n _) -> (n, solToVarAsn sol $ EField e n)) fs
          Array _ _  -> error "solToVarAsn: Array is not supported"
          VarArray _ -> error "solToVarAsn: VarArray is not supported"
@@ -130,7 +130,7 @@ solToScalarAsn sol e = AsnScalar
     $ filter ((== show e) . BV.vName . fst . fst) sol
     where convert :: Either Bool BV.CTerm -> Either Bool Expr
           convert (Left b)   = Left b
-          convert (Right ct) = Right $ fixupType (typ e) $ termToExpr $ ctermToTerm ct
+          convert (Right ct) = Right $ fixupType (exprType e) $ termToExpr $ ctermToTerm ct
 
 --------------------------------------------------------------------
 -- SMT solver interface
@@ -200,7 +200,7 @@ equant' vs solver rels =
 
 mkVar :: (?spec::Spec) => String -> State VarMap [BV.Var]
 mkVar n = do
-    let scalars = map scalarExprToTerm' $ exprScalars (EVar n) (typ $ EVar n)
+    let scalars = map scalarExprToTerm' $ exprScalars (EVar n) (exprType $ EVar n)
     mapM (\t -> do varMapInsert t
                    return $ BV.Var (show t) (termWidth t)) scalars
 
@@ -230,7 +230,7 @@ avarToRel (AVarBool t               , [True])  = (BV.Eq , t, TTrue)
 avarToRel (AVarBool t               , [False]) = (BV.Neq, t, TTrue) 
 avarToRel (AVarInt  t               , val)     = (BV.Eq , t, TUInt (length val) (boolArrToBitsBe val))
 avarToRel (AVarEnum t               , val)     = (BV.Eq , t, TEnum $ (enumEnums $ getEnumeration n) !! (boolArrToBitsBe val))
-                                                 where Enum n = typ t
+                                                 where Enum n = termType t
 
 -- TODO: Add pair-wise inequality constraints between
 -- AddrOf terms
@@ -386,7 +386,7 @@ bvRelToOp BV.Lte = Lte
 
 -- Change integer constants to enums where appropriate
 fixupTypes :: (?spec::Spec) => Expr -> Expr
-fixupTypes (EBinOp op e1 e2) = EBinOp op (fixupType (typ e2) e1) (fixupType (typ e1) e2)
+fixupTypes (EBinOp op e1 e2) = EBinOp op (fixupType (exprType e2) e1) (fixupType (exprType e1) e2)
 
 fixupType :: (?spec::Spec) => Type -> Expr -> Expr
 fixupType (Enum n) e = if' (isConstExpr e) (EConst $ EnumVal $ (enumEnums $ getEnumeration n) !! fromInteger (ivalVal $ evalConstExpr e)) e
