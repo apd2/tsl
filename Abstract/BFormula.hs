@@ -31,6 +31,18 @@ import Internal.IType
 import {-# SOURCE #-} Solver.BVSMT
 
 
+--------------------------------------------------
+-- Constants
+--------------------------------------------------
+
+-- Don't abstract a variable if it is maxAVarIntWidth wide or less
+maxAVarIntWidth = 1
+
+-- effectively disables predicate abstraction
+--maxAVarIntWidth = 64
+
+
+
 fbinop :: BoolBOp -> Formula -> Formula -> Formula
 fbinop Conj f1 f2 = fconj [f1,f2]
 fbinop Disj f1 f2 = fdisj [f1,f2]
@@ -145,9 +157,9 @@ shortestPrefix e1 e2 =
     combSuffix (Just s1) (Just s2) = Just (s1,s2)
 
 fRelIntEq1 :: (?spec::Spec) => (Expr, Expr) -> Formula
-fRelIntEq1 (e1,e2) | exprWidth e1 == 1 && isConstExpr e2 = FEqConst       (AVarInt $ scalarExprToTerm e1) i where i = fromInteger $ ivalVal $ evalConstExpr e2
-fRelIntEq1 (e1,e2) | exprWidth e1 == 1                   = FEq            (AVarInt $ scalarExprToTerm e1) (AVarInt $ scalarExprToTerm e2)
-                   | otherwise                           = bvRelNormalise REq (PTInt $ scalarExprToTerm e1) (PTInt $ scalarExprToTerm e2)
+fRelIntEq1 (e1,e2) | exprWidth e1 <= maxAVarIntWidth && isConstExpr e2 = FEqConst       (AVarInt $ scalarExprToTerm e1) i where i = fromInteger $ ivalVal $ evalConstExpr e2
+fRelIntEq1 (e1,e2) | exprWidth e1 <= maxAVarIntWidth                   = FEq            (AVarInt $ scalarExprToTerm e1) (AVarInt $ scalarExprToTerm e2)
+                   | otherwise                                         = bvRelNormalise REq (PTInt $ scalarExprToTerm e1) (PTInt $ scalarExprToTerm e2)
 
 
 fVar :: (?spec::Spec) => Formula -> [Var]
