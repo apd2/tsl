@@ -11,6 +11,7 @@ module Abstract.Predicate(PVarOps,
                  avarIsEnum,
                  avarCategory,
                  avarVar,
+                 avarVarBits,
                  avarTerms,
                  avarToExpr,
                  avarValToConst,
@@ -110,6 +111,14 @@ avarVar (AVarPred p) = predVar p
 avarVar (AVarEnum t) = termVar t
 avarVar (AVarBool t) = termVar t
 avarVar (AVarInt  t) = termVar t
+
+avarVarBits :: (?spec::Spec) => AbsVar -> [(String, VarCategory)]
+avarVarBits (AVarPred p) = predVarBits p
+avarVarBits (AVarEnum t) = termVarBits t
+avarVarBits (AVarBool t) = termVarBits t
+avarVarBits (AVarInt  t) = termVarBits t
+
+
 
 avarTerms :: AbsVar -> [Term]
 avarTerms = nub . avarTerms' 
@@ -212,6 +221,9 @@ instance Show Term where
 
 termVar :: (?spec::Spec) => Term -> [Var]
 termVar = exprVars . termToExpr
+
+termVarBits :: (?spec::Spec) => Term -> [(String,VarCategory)]
+termVarBits = exprVarBits . termToExpr
 
 evalConstTerm :: Term -> Val
 evalConstTerm = evalConstExpr . termToExpr
@@ -346,6 +358,10 @@ predVar :: (?spec::Spec) => Predicate -> [Var]
 predVar p@PAtom{..} = nub $ concatMap termVar $ predTerm p
 predVar   PRel{..}  = nub $ concatMap exprVars pArgs
 
+predVarBits :: (?spec::Spec) => Predicate -> [(String, VarCategory)]
+predVarBits p@PAtom{..} = nub $ concatMap termVarBits $ predTerm p
+predVarBits   PRel{..}  = nub $ concatMap exprVarBits pArgs
+
 predCategory :: (?spec::Spec) => Predicate -> VarCategory
 predCategory p = if any ((==VarTmp) . varCat) $ exprVars $ predToExpr p
                     then VarTmp
@@ -376,3 +392,44 @@ predToExpr (PAtom PEq  t1 t2) = EBinOp Eq  (ptermToExpr t1) (ptermToExpr t2)
 predToExpr (PAtom PLt  t1 t2) = EBinOp Lt  (ptermToExpr t1) (ptermToExpr t2)
 predToExpr (PAtom PLte t1 t2) = EBinOp Lte (ptermToExpr t1) (ptermToExpr t2)
 predToExpr (PRel  rel  as)    = ERel rel as
+
+
+-- Assume 
+-- * no pointer dereferencing
+-- * argument expression is a scalar
+exprVarBits :: (?spec::Spec) => Expr -> [(String, VarCategory)]
+exprVarBits = map (mapFst show) . nub . map (mapFst rmInds) . fullSlice
+    where exprVarBits' :: Maybe (Int,Int) -> Expr -> [(Expr, VarCategory)]
+          exprVarBits' Nothing      e@(EVar v)           | (isScalar $ exprType e) = [(e, varCat $ getVar v)]
+                                                         | otherwise          = []
+          exprVarBits' (Just (l,h)) e@(EVar v)           = map (\i -> (ESlice e (i,i), varCat $ getVar v)) [l..h]
+          exprVarBits' _              (EConst _)         = []
+          exprVarBits' Nothing      e@(EField s f)       | (isScalar $ exprType e) = (e, varCat $ rootVar e) : exprVarBits' Nothing s
+                                                         | otherwise               = exprVarBits' Nothing s
+          exprVarBits' (Just (l,h)) e@(EField s f)       = (map (\i -> (ESlice e (i,i), varCat $ rootVar s)) [l..h]) ++ exprVarBits' Nothing s
+          exprVarBits' Nothing      e@(EIndex a i)       | (isScalar $ exprType e) = (e, varCat $ rootVar e) : exprVarBits' Nothing a ++ fullSlice i
+                                                         | otherwise               = exprVarBits' Nothing a ++ fullSlice i 
+          exprVarBits' (Just (l,h)) e@(EIndex a i)       = (map (\b -> (ESlice e (b,b), varCat $ rootVar e)) [l..h]) ++ exprVarBits' Nothing a ++ fullSlice i
+          exprVarBits' _              (ERange a (f,t))   = exprVarBits' Nothing a ++ fullSlice f ++ fullSlice t
+          exprVarBits' _              (ELength _)        = error "exprVarBits ELength not implemented"
+          exprVarBits' sl             (EUnOp BNeg e)     = exprVarBits' sl e
+          exprVarBits' _              (EUnOp _ e)        = fullSlice e
+          exprVarBits' sl             (EBinOp op e1 e2)  | isBitWiseBOp op = exprVarBits' sl e1 ++ exprVarBits' sl e2
+          exprVarBits' _              (EBinOp op e1 e2)  = fullSlice e1 ++ fullSlice e2
+          exprVarBits' (Just (l,h))   (ESlice e (l',h')) = exprVarBits' (Just (l' + l, l' + h)) e
+          exprVarBits' _              (ERel _ as)        = concatMap fullSlice as
+
+          fullSlice e | (isInt $ exprType e) = exprVarBits' (Just (0, exprWidth e - 1)) e
+                      | otherwise            = exprVarBits' Nothing e
+
+          rmInds :: Expr -> Expr
+          rmInds (EField s f)  = EField (rmInds s) f
+          rmInds (EIndex a i)  = a
+          rmInds (ESlice e sl) = ESlice (rmInds e) sl
+          rmInds e             = e
+
+          rootVar :: Expr -> Var
+          rootVar (EVar v)     = getVar v
+          rootVar (EField s _) = rootVar s
+          rootVar (EIndex a _) = rootVar a
+          rootVar (ERange a _) = rootVar a

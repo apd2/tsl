@@ -57,7 +57,7 @@ type PDB pdb s u = StateT AbsPriv (StateT pdb (ST s))
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar AbsPriv
+tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar String -> Abs.Abstractor s u AbsVar AbsVar AbsPriv
 tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = []
                                       , Abs.goalAbs                 = tslGoalAbs                 spec m
                                       , Abs.fairAbs                 = tslFairAbs                 spec m
@@ -132,7 +132,7 @@ tslContAbs spec m ops = do
         ?pred = p
     lift $ H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContLVar === true
 
-tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
+tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar String -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
 tslUpdateAbs spec m _ avars ops = do
     trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops    = ops
@@ -259,7 +259,7 @@ pdbPred = do
 -- Precomputing inconsistent combinations of abstract variables
 ----------------------------------------------------------------------------
 
-absVarInconsistent :: (?spec::Spec, ?m::C.STDdManager s u) => TheorySolver s u AbsVar AbsVar Var -> (AbsVar, [AbsVar]) -> TAST f e c
+absVarInconsistent :: (?spec::Spec, ?m::C.STDdManager s u) => TheorySolver s u AbsVar AbsVar String -> (AbsVar, [AbsVar]) -> TAST f e c
 absVarInconsistent ts (AVarPred p, avs) = 
     case predVar p of
          [v] -> -- consider pair-wise combinations with all predicates involving only this variable;
