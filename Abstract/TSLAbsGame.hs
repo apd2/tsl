@@ -182,14 +182,12 @@ tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?
 tslUpdateAbsVar (av, n) = do
     trace ("compiling " ++ show av) $ return () 
     upd <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
-    trace ("upd compiled") $ return () 
     -- include blocked states into inconsistent (to avoid splitting on those states)
-    blocked <- lift $ lift $ trace ("compiling blocked " ++ show av) $ do  
+    blocked <- lift $ lift $ do  
           vcube <- C.nodesToCube ?m n
           pre   <- C.bexists ?m upd vcube
           C.deref ?m vcube
           return $ C.bnot pre
-    trace ("blocked compiled") $ return () 
     return (upd, blocked)
 
 tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
