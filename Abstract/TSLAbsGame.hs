@@ -134,7 +134,7 @@ tslContAbs spec m ops = do
 
 tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar String -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
 tslUpdateAbs spec m _ avars ops = do
-    trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
+    --trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops    = ops
     p <- lift pdbPred
     let ?spec   = spec
@@ -180,7 +180,7 @@ tslInconsistent spec m ops = do
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u, C.DDNode s u)
 tslUpdateAbsVar (av, n) = do
-    trace ("compiling " ++ show av) $ return () 
+    --trace ("compiling " ++ show av) $ return () 
     upd <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
     -- include blocked states into inconsistent (to avoid splitting on those states)
     blocked <- lift $ lift $ do  
