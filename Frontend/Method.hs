@@ -26,7 +26,7 @@ data TaskCat = Controllable
 instance PP TaskCat where
     pp Controllable   = text "controllable"
     pp Uncontrollable = text "uncontrollable"
-    pp Invisible      = text "invisible"
+    pp Invisible      = empty
 
 data MethodCat = Function
                | Procedure

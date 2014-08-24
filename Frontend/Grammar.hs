@@ -75,12 +75,10 @@ reservedNames = ["after",
                  "if", 
                  "import",
                  "init",
-                 "invisible", 
                  "mem",
                  "out",
                  "pause",
                  "break",
-                 "post", 
                  "procedure", 
                  "process",
                  "relation",
@@ -95,7 +93,6 @@ reservedNames = ["after",
                  "typedef",
                  "uint",
                  "uncontrollable", 
-                 "using", 
                  "void",
                  "while",
                  "wire",
@@ -364,8 +361,7 @@ tapp         = withPos $ Apply nopos <$  reserved "apply"
 methCateg =  (Function <$ reserved "function")
          <|> (Procedure <$ reserved "procedure")
          <|> (Task <$ reserved "task" <*> option Invisible (  Controllable <$ reserved "controllable" 
-                                                          <|> Uncontrollable <$ reserved "uncontrollable" 
-                                                          <|> Invisible <$ reserved "invisible"))
+                                                          <|> Uncontrollable <$ reserved "uncontrollable"))
    
 arg = withPos $ Arg nopos <$> (option ArgIn (ArgOut <$ reserved "out")) 
                               <*> typeSpec False
