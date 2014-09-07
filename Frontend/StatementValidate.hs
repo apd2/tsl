@@ -17,6 +17,7 @@ import Frontend.Spec
 import Frontend.NS
 import Frontend.Statement
 import Frontend.TypeOps
+import Frontend.Type
 import Frontend.TVarValidate
 import Frontend.Method
 
@@ -158,7 +159,7 @@ validateStat' _ (SAssign _ _ lhs rhs) = do
 
 validateStat' l (SITE _ _ i t e) = do
     validateExpr' i
-    assert (isBool $ exprType i) (pos i) "Condition of an if-statement must be a boolean expression"
+    checkTypeMatch i (Type ?scope $ BoolSpec nopos) (exprType i)
     validateStat' l t
     case e of 
          Just s  -> validateStat' l s

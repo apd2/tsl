@@ -270,7 +270,7 @@ statToCFA' before after (SAssign _ _ lhs rhs) = do
                                                      (concatMap (uncurry I.exprScalars) rhs')
 
 statToCFA' before after (SITE _ _ cond sthen mselse) = do
-    cond' <- exprToIExprDet cond
+    cond' <- exprToIExpr cond (BoolSpec nopos)
     befthen <- ctxInsTrans' before (I.TranStat $ I.SAssume cond')
     aftthen <- statToCFA befthen sthen
     ctxInsTrans aftthen after I.TranNop
