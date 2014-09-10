@@ -136,11 +136,11 @@ solToScalarAsn sol e = AsnScalar
 -- SMT solver interface
 --------------------------------------------------------------------
 
-bvSolver :: Spec -> SMTSolver -> C.STDdManager s u  -> TheorySolver s u AbsVar AbsVar String
+bvSolver :: Spec -> SMTSolver -> C.STDdManager s u  -> TheorySolver s u AbsVar AbsVar Var
 bvSolver spec solver m = TheorySolver { unsatCoreState      = bvUnsatCore           spec solver
                                       , unsatCoreStateLabel = bvUnsatCoreStateLabel spec solver
                                       , eQuant              = bvEquantTmp           spec solver m
-                                      , getVarsLabel        = let ?spec = spec in (\av -> map fst $ filter ((==VarTmp) . snd) $ avarVarBits av)
+                                      , getVarsLabel        = let ?spec = spec in (\av -> filter ((==VarTmp) . varCat) $ avarVar av)
                                       }
 
 bvUnsatCore :: Spec -> SMTSolver -> [(AbsVar,[Bool])] -> Maybe [(AbsVar,[Bool])]
