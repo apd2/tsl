@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, RecordWildCards, TemplateHaskell, TupleSections #-}
+{-# LANGUAGE ImplicitParams, RecordWildCards, TemplateHaskell, TupleSections, ConstraintKinds #-}
 
 module CodeGen.CFG (Step(..),
             Branch(..),
@@ -21,6 +21,7 @@ import Name
 import Synthesis.Interface
 import Synthesis.TermiteGame
 import Synthesis.BddRecord
+import Synthesis.RefineCommon
 import Abstract.Predicate
 import Abstract.BFormula
 import CodeGen.AbsSim
@@ -54,7 +55,7 @@ data Step s u = Step { stepWaitCond :: (DDNode s u, DDNode s u) -- (condition,  
                      , stepBranches :: Branch s u 
                      }
 
-ppStep :: (MonadResource (DDNode s u) (ST s) t) => F.Spec -> F.Spec -> Spec -> PrID -> C.STDdManager s u -> F.Scope -> DB s u AbsVar AbsVar -> Step s u -> t (ST s) PP.Doc
+ppStep :: (RM s u t) => F.Spec -> F.Spec -> Spec -> PrID -> C.STDdManager s u -> F.Scope -> DB s u AbsVar AbsVar -> Step s u -> t (ST s) PP.Doc
 ppStep inspec flatspec spec pid m sc pdb Step{..} = do
     let ?inspec   = inspec
         ?flatspec = flatspec
@@ -70,7 +71,7 @@ ppStep inspec flatspec spec pid m sc pdb Step{..} = do
     bs <- ppBranch stepBranches True
     return $ wait PP.$+$ (PP.vcat $ PP.punctuate PP.semi bs) 
 
-ppBranch :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
+ppBranch :: (RM s u t, ?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
          => Branch s u -> Bool -> t (ST s) [PP.Doc]
 ppBranch (BranchStuck reason) _     = return $ [PP.text $ "/* stuck: " ++ reason ++ " */"]
 ppBranch (BranchITE i t e) addmb = do
@@ -80,14 +81,14 @@ ppBranch (BranchITE i t e) addmb = do
     return $ (mkITE cond tact ebr) : if' addmb [PP.text "..."] []
 ppBranch (BranchAction _ a) addmb = ppAction a addmb
 
-ppCond :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
+ppCond :: (RM s u t, ?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
        => (DDNode s u, DDNode s u) -> t (ST s) PP.Doc
 ppCond cond = do 
     conds <- (liftM $ map $ exprToTSL2 ?inspec ?pid ?sc) $ mkCondition cond
     return $ PP.vcat $ PP.punctuate (PP.text "||") conds
 
 
-ppAction :: (MonadResource (DDNode s u) (ST s) t, ?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
+ppAction :: (RM s u t, ?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
          => DDNode s u -> Bool -> t (ST s) [PP.Doc]
 ppAction lab addmb = do
     asns <- mkLabel lab
@@ -178,14 +179,14 @@ mkScalar lab e | masn == Nothing = PP.text "/* any value */" PP.<> (exprToTSL2 ?
           lookupAsn (I.EField ex n) asn = maybe Nothing (\(AsnStruct a) -> lookup n a) $ lookupAsn ex asn
           lookupAsn (I.EVar n)      asn = lookup n asn
 
-derefStep :: (MonadResource (DDNode s u) (ST s) t) => C.STDdManager s u -> Step s u -> t (ST s) ()
+derefStep :: (RM s u t) => C.STDdManager s u -> Step s u -> t (ST s) ()
 derefStep m (Step (cond, care) branch) = do
     let ops@Ops{..} = constructOps m
     $d deref cond
     $d deref care
     derefBranch ops branch
 
-derefBranch :: (MonadResource (DDNode s u) (ST s) t) => Ops s u -> Branch s u -> t (ST s) ()
+derefBranch :: (RM s u t) => Ops s u -> Branch s u -> t (ST s) ()
 derefBranch ops@Ops{..} (BranchITE (i,care) t e) = do
     $d deref i
     $d deref care
@@ -196,7 +197,7 @@ derefBranch Ops{..} (BranchAction i t) = do
     $d deref t
 derefBranch _ (BranchStuck _)  = return ()
 
-gen1Step :: (MonadResource (DDNode s u) (ST s) t) 
+gen1Step :: (RM s u t) 
          => Spec 
          -> C.STDdManager s u 
          -> RefineDynamic s u 
@@ -238,7 +239,7 @@ gen1Step spec m refdyn pdb cont lp set strategy goal regions = do
     return Step{..}
 
 -- consumes input reference
-mkBranches :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
+mkBranches :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
            => DDNode s u 
            -> DDNode s u 
            -> [DDNode s u] 
@@ -256,7 +257,7 @@ mkBranches strategy goal regions set = do
                return $ BranchStuck "state outside of the winning region"
 
 -- consumes input reference
-pickCommonLab :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
+pickCommonLab :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
               => DDNode s u 
               -> DDNode s u 
               -> [DDNode s u] 
@@ -279,7 +280,7 @@ pickCommonLab strategy goal regions set = do
 
 
 -- Iterate through labels returned by pickLabel2 looking for one that guarantees progress
-pickProgressLabel :: (MonadResource (DDNode s u) (ST s) t, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
+pickProgressLabel :: (RM s u t, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
                   => DDNode s u 
                   -> DDNode s u 
                   -> CG.IteratorM (t (ST s)) (DDNode s u) 
@@ -307,7 +308,7 @@ pickProgressLabel farthest set (CG.Item l stitr) = do
    
 -- Called when none of the labels returned by pickLabel2 are sutable.
 -- Uses ifCondition/pickLabel to split set into subregions.
-mkBranches' :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
+mkBranches' :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::C.DDNode s u, ?lp::Lab s u) 
             => DDNode s u 
             -> DDNode s u 
             -> [DDNode s u] 
@@ -333,7 +334,7 @@ mkBranches' strategy goal regions set = do
                                     return $ BranchITE (cond, set) act branch'
 
 -- Decomposes cond into prime implicants and converts it to a boolean expression
-mkCondition :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => (DDNode s u, DDNode s u) -> t (ST s) [I.Expr]
+mkCondition :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => (DDNode s u, DDNode s u) -> t (ST s) [I.Expr]
 mkCondition (cond, care) = do
     let ops@Ops{..} = constructOps ?m
     cubes_ <- lift $ C.primeCover ops cond
@@ -342,7 +343,7 @@ mkCondition (cond, care) = do
     mapM_ ($d deref) cubes
     return res
 
-mkCondCube :: (MonadResource (DDNode s u) (ST s) t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
+mkCondCube :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) 
            => DDNode s u -> DDNode s u -> t (ST s) I.Expr
 mkCondCube care cub = do
    let DB{_symbolTable = SymbolInfo{..}, ..} = ?db
@@ -358,7 +359,7 @@ mkCondCube care cub = do
                                 in I.disj $ map (formToExpr . avarAsnToFormula av) vals') asns
 
     
-cubeToAsns :: (MonadResource (DDNode s u) (ST s) t) => Ops s u -> DDNode s u -> DDNode s u -> [(AbsVar, [Int])] -> t (ST s) [(AbsVar, [Integer])]
+cubeToAsns :: (RM s u t) => Ops s u -> DDNode s u -> DDNode s u -> [(AbsVar, [Int])] -> t (ST s) [(AbsVar, [Integer])]
 cubeToAsns Ops{..} care rel vs = do
     supp <- lift $ supportIndices rel
     asn  <- lift $ satCube rel
@@ -375,7 +376,7 @@ cubeToAsns Ops{..} care rel vs = do
                        $ map (C.expand . (asn !!)) is)
          $ nub supvars
 
-cubeToAsn :: (MonadResource (DDNode s u) (ST s) t) => Ops s u -> DDNode s u -> [(AbsVar, [Int])] -> t (ST s) [(AbsVar, [Bool])]
+cubeToAsn :: (RM s u t) => Ops s u -> DDNode s u -> [(AbsVar, [Int])] -> t (ST s) [(AbsVar, [Bool])]
 cubeToAsn Ops{..} rel vs = do
     supp <- lift $ supportIndices rel
     asn  <- lift $ satCube rel
@@ -386,7 +387,7 @@ cubeToAsn Ops{..} rel vs = do
           satBitToBool One   = True
           satBitToBool _     = False
 
-mkLabel :: (MonadResource (DDNode s u) (ST s) t, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) [(AbsVar, [Bool])]
+mkLabel :: (RM s u t, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) [(AbsVar, [Bool])]
 mkLabel lab = do
     let DB{_symbolTable = SymbolInfo{..}, ..} = ?db
     let ops@Ops{..} = constructOps ?m
