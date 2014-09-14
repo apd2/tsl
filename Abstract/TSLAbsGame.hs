@@ -79,7 +79,7 @@ tslGoalAbs spec m ops = do
         ?pred = p
     lift $ mapM (\g -> do let -- TODO: inline wires but not prefixes?
                               ast = tranPrecondition False ("goal_" ++ (goalName g))  (goalCond g)
-                          H.compileBDD m ops (avarGroupTag . bavarAVar) ast)
+                          H.compileBDD' m ops (avarGroupTag . bavarAVar) ast)
          $ tsGoal $ specTran spec
 
 tslFairAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
@@ -89,7 +89,7 @@ tslFairAbs spec m ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    lift $ mapM (H.compileBDD m ops (avarGroupTag . bavarAVar) . bexprAbstract . fairCond) $ tsFair $ specTran spec
+    lift $ mapM (H.compileBDD' m ops (avarGroupTag . bavarAVar) . bexprAbstract . fairCond) $ tsFair $ specTran spec
 
 tslInitAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
 tslInitAbs spec m ops = do 
@@ -101,7 +101,7 @@ tslInitAbs spec m ops = do
     let pre   = tranPrecondition False "init" (fst $ tsInit $ specTran spec)
         extra = bexprAbstract (snd $ tsInit $ specTran spec)
         res   = H.And pre extra
-    lift $ H.compileBDD m ops (avarGroupTag . bavarAVar) res
+    lift $ H.compileBDD' m ops (avarGroupTag . bavarAVar) res
 
 -- TODO: where should this go?
 
@@ -112,7 +112,7 @@ tslStateLabelConstraintAbs spec m ops = do
     let ?spec   = spec
         ?m      = m
         ?pred   = p
-    H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) tslConstraint
+    H.compileBDD' ?m ?ops (avarGroupTag . bavarAVar) tslConstraint
 
 tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
 tslConstraint = pre
@@ -130,7 +130,7 @@ tslContAbs spec m ops = do
     let ?spec = spec
         ?m    = m
         ?pred = p
-    lift $ H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContLVar === true
+    lift $ H.compileBDD' m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContLVar === true
 
 tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
 tslUpdateAbs spec m _ avars ops = do
@@ -176,12 +176,12 @@ tslInconsistent spec m ops = do
                                                  $ enumEnums $ getEnumeration tname)
                    $ filter avarIsEnum $ map bavarAVar allvars
         contcond = compileFormula $ ptrFreeBExprToFormula $ conj [mkContLVar, neg mkMagicVar]
-    H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond {-, contcond-}]
+    H.compileBDD' m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond {-, contcond-}]
 
 tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u, C.DDNode s u)
 tslUpdateAbsVar (av, n) = do
     --trace ("compiling " ++ show av) $ return () 
-    upd <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
+    upd <- lift $ H.compileBDD' ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
     -- include blocked states into inconsistent (to avoid splitting on those states)
     blocked <- lift $ lift $ do  
           vcube <- C.nodesToCube ?m n
