@@ -58,7 +58,7 @@ type PDB rm pdb s u = StateT AbsPriv (StateT pdb (rm (ST s)))
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: (RM s u rm) => Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar rm AbsPriv
+tslAbsGame :: (RM s u rm) => Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var rm -> Abs.Abstractor s u AbsVar AbsVar rm AbsPriv
 tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = []
                                       , Abs.goalAbs                 = tslGoalAbs                 spec m
                                       , Abs.fairAbs                 = tslFairAbs                 spec m
@@ -133,7 +133,7 @@ tslContAbs spec m ops = do
         ?pred = p
     lift $ H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContLVar === true
 
-tslUpdateAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB rm pdb s u ([C.DDNode s u], C.DDNode s u)
+tslUpdateAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var rm -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB rm pdb s u ([C.DDNode s u], C.DDNode s u)
 tslUpdateAbs spec m _ avars ops = do
     --trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops    = ops
@@ -258,7 +258,7 @@ pdbPred = do
 -- Precomputing inconsistent combinations of abstract variables
 ----------------------------------------------------------------------------
 
-absVarInconsistent :: (?spec::Spec, ?m::C.STDdManager s u) => TheorySolver s u AbsVar AbsVar Var -> (AbsVar, [AbsVar]) -> TAST f e c
+absVarInconsistent :: (?spec::Spec, ?m::C.STDdManager s u) => TheorySolver s u AbsVar AbsVar Var rm -> (AbsVar, [AbsVar]) -> TAST f e c
 absVarInconsistent ts (AVarPred p, avs) = 
     case predVar p of
          [v] -> -- consider pair-wise combinations with all predicates involving only this variable;

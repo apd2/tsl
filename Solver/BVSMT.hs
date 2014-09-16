@@ -1,7 +1,7 @@
 -- Theory solver that uses bitvector library for existential quantification
 -- and SMTLib2 for satisfiability checking and unsat cores
 
-{-# LANGUAGE ImplicitParams, RecordWildCards #-}
+{-# LANGUAGE ImplicitParams, RecordWildCards, ConstraintKinds #-}
 
 module Solver.BVSMT(VarAsn(..),
              bvSolver,
@@ -136,7 +136,7 @@ solToScalarAsn sol e = AsnScalar
 -- SMT solver interface
 --------------------------------------------------------------------
 
-bvSolver :: Spec -> SMTSolver -> C.STDdManager s u  -> TheorySolver s u AbsVar AbsVar Var
+bvSolver :: RM s u rm => Spec -> SMTSolver -> C.STDdManager s u  -> TheorySolver s u AbsVar AbsVar Var rm
 bvSolver spec solver m = TheorySolver { unsatCoreState      = bvUnsatCore           spec solver
                                       , unsatCoreStateLabel = bvUnsatCoreStateLabel spec solver
                                       , eQuant              = bvEquantTmp           spec solver m
@@ -156,7 +156,7 @@ bvUnsatCoreStateLabel spec solver sps lps =
          Just core -> let ?spec = spec in Just $ partition ((==VarState) . avarCategory . fst) core
          _         -> Nothing
 
-bvEquantTmp :: Spec -> SMTSolver -> C.STDdManager s u -> [(AbsVar,[Bool])] -> PVarOps pdb s u -> StateT pdb (ST s) (C.DDNode s u)
+bvEquantTmp :: RM s u rm => Spec -> SMTSolver -> C.STDdManager s u -> [(AbsVar,[Bool])] -> PVarOps pdb s u -> StateT pdb (rm (ST s)) (C.DDNode s u)
 bvEquantTmp spec solver m avs ops = 
     let ?spec = spec
     in bvEquant spec solver m ops avs
@@ -165,7 +165,7 @@ bvEquantTmp spec solver m avs ops =
        $ filter ((== VarTmp) . varCat) 
        $ concatMap (avarVar . fst) avs
 
-bvEquant :: Spec -> SMTSolver -> C.STDdManager s u -> PVarOps pdb s u -> [(AbsVar,[Bool])] -> [String] -> StateT pdb (ST s) (C.DDNode s u)
+bvEquant :: RM s u rm => Spec -> SMTSolver -> C.STDdManager s u -> PVarOps pdb s u -> [(AbsVar,[Bool])] -> [String] -> StateT pdb (rm (ST s)) (C.DDNode s u)
 bvEquant spec solver m ops avs vs = do
     let ?spec = spec
     let -- Deal with arrays and pointers. 
@@ -177,7 +177,7 @@ bvEquant spec solver m ops avs vs = do
                       $ map avarToRel avs
         f  = fdisj $ map (equant' vs solver) dnf
         f' = if' (smtCheckSAT solver [fnot f] == Just False) FTrue f
-    H.compileBDD' m ops (avarGroupTag . bavarAVar) $ compileFormula {-$ trace ("bvEquant " ++ show vs ++ ". "++ show avs ++ " = " ++ show f') $-} f'
+    H.compileBDD m ops (avarGroupTag . bavarAVar) $ compileFormula {-$ trace ("bvEquant " ++ show vs ++ ". "++ show avs ++ " = " ++ show f') $-} f'
 
 equant' :: (?spec::Spec) => [String] -> SMTSolver -> [(BV.Rel, Term, Term)] -> Formula
 equant' vs solver rels = 
