@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, ScopedTypeVariables, RecordWildCards, TupleSections #-}
+{-# LANGUAGE ImplicitParams, ScopedTypeVariables, RecordWildCards, TupleSections, ConstraintKinds #-}
 
 module Abstract.TSLAbsGame(AbsPriv,
                   tslAbsGame, 
@@ -20,6 +20,7 @@ import qualified Data.Graph.Inductive as G
 import Control.Monad.Trans.Class
 import Control.Monad.State.Lazy
 import Control.Monad.ST
+import Control.Monad.Morph
 
 import Ops
 import TSLUtil
@@ -48,7 +49,7 @@ import Abstract.GroupTag
 import Abstract.MkPredicate
 
 type AbsPriv = [[AbsVar]]
-type PDB pdb s u = StateT AbsPriv (StateT pdb (ST s))
+type PDB rm pdb s u = StateT AbsPriv (StateT pdb (rm (ST s)))
 
 --showRelDB :: AbsPriv -> String
 --showRelDB = intercalate "\n" . map (\((r,_),b) -> show (r,b)) . fst
@@ -57,7 +58,7 @@ type PDB pdb s u = StateT AbsPriv (StateT pdb (ST s))
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar AbsPriv
+tslAbsGame :: (RM s u rm) => Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> Abs.Abstractor s u AbsVar AbsVar rm AbsPriv
 tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = []
                                       , Abs.goalAbs                 = tslGoalAbs                 spec m
                                       , Abs.fairAbs                 = tslFairAbs                 spec m
@@ -70,38 +71,38 @@ tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = []
                                       --, Abs.filterPromoCandidates   = tslFilterCandidates        spec m
                                       }
 
-tslGoalAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
+tslGoalAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB rm pdb s u [C.DDNode s u]
 tslGoalAbs spec m ops = do
     let ?ops  = ops
-    p <- lift pdbPred
+    p <- lift $ hoist lift pdbPred
     let ?spec = spec
         ?m    = m
         ?pred = p
     lift $ mapM (\g -> do let -- TODO: inline wires but not prefixes?
                               ast = tranPrecondition False ("goal_" ++ (goalName g))  (goalCond g)
-                          H.compileBDD' m ops (avarGroupTag . bavarAVar) ast)
+                          H.compileBDD m ops (avarGroupTag . bavarAVar) ast)
          $ tsGoal $ specTran spec
 
-tslFairAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u [C.DDNode s u]
+tslFairAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB rm pdb s u [C.DDNode s u]
 tslFairAbs spec m ops = do
     let ?ops  = ops
-    p <- lift pdbPred
+    p <- lift $ hoist lift pdbPred
     let ?spec = spec
         ?m    = m
         ?pred = p
-    lift $ mapM (H.compileBDD' m ops (avarGroupTag . bavarAVar) . bexprAbstract . fairCond) $ tsFair $ specTran spec
+    lift $ mapM (H.compileBDD m ops (avarGroupTag . bavarAVar) . bexprAbstract . fairCond) $ tsFair $ specTran spec
 
-tslInitAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslInitAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB rm pdb s u (C.DDNode s u)
 tslInitAbs spec m ops = do 
     let ?ops  = ops
-    p <- lift pdbPred
+    p <- lift $ hoist lift pdbPred
     let ?spec = spec
         ?m    = m
         ?pred = p
     let pre   = tranPrecondition False "init" (fst $ tsInit $ specTran spec)
         extra = bexprAbstract (snd $ tsInit $ specTran spec)
         res   = H.And pre extra
-    lift $ H.compileBDD' m ops (avarGroupTag . bavarAVar) res
+    lift $ H.compileBDD m ops (avarGroupTag . bavarAVar) res
 
 -- TODO: where should this go?
 
@@ -123,20 +124,20 @@ tslConstraint = pre
           $ mapIdx (\tr i -> tranPrecondition True ("pre_" ++ show i) tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
     
 
-tslContAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB pdb s u (C.DDNode s u)
+tslContAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB rm pdb s u (C.DDNode s u)
 tslContAbs spec m ops = do 
     let ?ops  = ops
-    p <- lift pdbPred
+    p <- lift $ hoist lift pdbPred
     let ?spec = spec
         ?m    = m
         ?pred = p
-    lift $ H.compileBDD' m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContLVar === true
+    lift $ H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContLVar === true
 
-tslUpdateAbs :: Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB pdb s u ([C.DDNode s u], C.DDNode s u)
+tslUpdateAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB rm pdb s u ([C.DDNode s u], C.DDNode s u)
 tslUpdateAbs spec m _ avars ops = do
     --trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops    = ops
-    p <- lift pdbPred
+    p <- lift $ hoist lift pdbPred
     let ?spec   = spec
         ?m      = m
         ?pred   = p
@@ -151,7 +152,7 @@ tslUpdateAbs spec m _ avars ops = do
             C.deref ?m acc
             C.deref ?m x
             disjunct acc' xs
-    inconsistent' <- lift $ lift $ disjunct inconsistent blocked
+    inconsistent' <- lift $ lift $ lift $ disjunct inconsistent blocked
 
 --    inconsistent <- case avarnew of
 --                         [] -> return $ C.bzero m
@@ -165,10 +166,10 @@ tslUpdateAbs spec m _ avars ops = do
 --    let upd' = init upd ++ [updwithinc]
     return (upd, inconsistent')
 
-tslInconsistent :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> StateT pdb (ST s) (C.DDNode s u)
+tslInconsistent :: (RM s u rm) => Spec -> C.STDdManager s u -> PVarOps pdb s u -> StateT pdb (rm (ST s)) (C.DDNode s u)
 tslInconsistent spec m ops = do
     let ?spec = spec
-    allvars <- Abs.allVars ops
+    allvars <- hoist lift $ Abs.allVars ops
     let enumcond = H.Disj
                    $ map (\av@(AVarEnum t) -> let Enum tname = termType t
                                               in H.Conj 
@@ -176,14 +177,14 @@ tslInconsistent spec m ops = do
                                                  $ enumEnums $ getEnumeration tname)
                    $ filter avarIsEnum $ map bavarAVar allvars
         contcond = compileFormula $ ptrFreeBExprToFormula $ conj [mkContLVar, neg mkMagicVar]
-    H.compileBDD' m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond {-, contcond-}]
+    H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond {-, contcond-}]
 
-tslUpdateAbsVar :: (?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB pdb s u (C.DDNode s u, C.DDNode s u)
+tslUpdateAbsVar :: (RM s u rm, ?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB rm pdb s u (C.DDNode s u, C.DDNode s u)
 tslUpdateAbsVar (av, n) = do
     --trace ("compiling " ++ show av) $ return () 
-    upd <- lift $ H.compileBDD' ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
+    upd <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
     -- include blocked states into inconsistent (to avoid splitting on those states)
-    blocked <- lift $ lift $ do  
+    blocked <- lift $ lift $ lift $ do  
           vcube <- C.nodesToCube ?m n
           pre   <- C.bexists ?m upd vcube
           C.deref ?m vcube
@@ -211,7 +212,7 @@ tslUpdateAbsVarAST (av, n)                                       = H.Disj (uncha
     ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
     unchanged = H.And (H.Conj $ map H.Not pres) ident
 
-tslFilterCandidates :: Spec -> C.STDdManager s u -> [AbsVar] -> PDB pdb s u ([AbsVar], [AbsVar])
+tslFilterCandidates :: (RM s u rm) => Spec -> C.STDdManager s u -> [AbsVar] -> PDB rm pdb s u ([AbsVar], [AbsVar])
 tslFilterCandidates _ _ avs = do
    cands <- get
    let (relavs, neutral) = partition avarIsRelPred avs
