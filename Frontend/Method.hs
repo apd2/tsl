@@ -6,7 +6,8 @@ module Frontend.Method(TaskCat(..),
               Arg(Arg,argDir,argTSpec), 
               Method(Method,methExport, methCat, methArg, methRettyp, methName),
               methVar,
-              methBody) where
+              methBody,
+              methIsVirtual) where
 
 import Text.PrettyPrint
 import Data.Maybe
@@ -112,3 +113,9 @@ instance WithPos Method where
 
 instance Show Method where
     show      = render . pp
+
+methIsVirtual :: Method -> Bool
+methIsVirtual m = case methBody m of
+                       Left _  -> False
+                       Right _ -> True
+

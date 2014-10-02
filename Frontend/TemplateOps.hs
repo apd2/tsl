@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, ImplicitParams, TupleSections #-}
+{-# LANGUAGE FlexibleContexts, ImplicitParams, TupleSections, RecordWildCards #-}
 
 module Frontend.TemplateOps(tmMapExpr,
                    tmMapTSpec,
@@ -8,6 +8,7 @@ module Frontend.TemplateOps(tmMapExpr,
                    instGraph,
                    callGraph,
                    isDescendant,
+                   tmPathTo,
                    tmParents,
                    tmParentsRec,
                    tmLabels,
@@ -173,7 +174,19 @@ wireType = Type ?scope . tspec
 -- Namespace-related stuff
 -------------------------------------------------------------------
 
+-- Path to object through class hierarchy 
+tmPathTo :: (?spec::Spec) => Template -> Ident -> [Ident]
+tmPathTo t n = fromJust $ tmPathTo' t n
 
+tmPathTo' :: (?spec::Spec) => Template -> Ident -> Maybe [Ident] 
+tmPathTo' t@Template{..} n = 
+    -- search parents first to find the earliest declaration
+    case parpath of 
+         Nothing -> localpath
+         Just p  -> Just p
+    where parpath = listToMaybe $ mapMaybe (\d -> tmPathTo' (getTemplate $ drvTemplate d) n) tmDerive
+          localpath = fmap (\_ -> []) $ find ((==n) . name) $ tmLocalDecls t
+                          
 tmLocalDecls :: (?spec::Spec) => Template -> [Obj]
 tmLocalDecls t = (map (ObjPort t)                     (tmPort t))     ++
                  (map (ObjConst (ScopeTemplate t))    (tmConst t))    ++
