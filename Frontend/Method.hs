@@ -116,6 +116,6 @@ instance Show Method where
 
 methIsVirtual :: Method -> Bool
 methIsVirtual m = case methBody m of
-                       Left _  -> False
-                       Right _ -> True
+                       Left _  -> True
+                       Right _ -> False
 

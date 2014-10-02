@@ -333,7 +333,7 @@ genMRef ref@(MethodRef _ path) =
        else (cMember parpath (cname m) ptr, if' ptr parpath (cUnary CAdrOp parpath))
     where (tm', m) = getMethod ?scope ref
           tm = scopeTm ?scope
-          instpath = foldl' (\e n -> cMember e (cname n) True) this path
+          instpath = foldl' (\e n -> cMember e (cname n) True) this (init path)
           (parpath, ptr) = foldl' (\(e,isptr) n -> (cMember e (cident $ parentName n) isptr, False)) (instpath, True) $ tmPathTo tm' (TSL.name m)
 
 genPath :: CExpr -> [TSL.Ident] -> TSL.Ident -> CExpr
@@ -344,7 +344,7 @@ genMeth m@Method{..} = cFunDef [cdeclspec] (cDeclr (Just $ cname m) (args:derdec
     where ScopeTemplate tm = ?scope
           -- is function declared in a parent template?
           path = tmPathTo tm $ TSL.name m
-          isDerived = null path
+          isDerived = not $ null path
           declaredIn = if' isDerived (getTemplate $ last path) tm
           pdeclaredIn = "p" ++ TSL.sname declaredIn
           pathToContainer :: Template -> [TSL.Ident] -> CExpr
