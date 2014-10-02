@@ -178,13 +178,13 @@ wireType = Type ?scope . tspec
 tmPathTo :: (?spec::Spec) => Template -> Ident -> [Ident]
 tmPathTo t n = fromJust $ tmPathTo' t n
 
-tmPathTo' :: (?spec::Spec) => Template -> Ident -> Maybe [Ident] 
+tmPathTo' :: (?spec::Spec) => Template -> Ident -> Maybe [Ident]
 tmPathTo' t@Template{..} n = 
     -- search parents first to find the earliest declaration
     case parpath of 
          Nothing -> localpath
          Just p  -> Just p
-    where parpath = listToMaybe $ mapMaybe (\d -> tmPathTo' (getTemplate $ drvTemplate d) n) tmDerive
+    where parpath = listToMaybe $ mapMaybe (\d -> fmap (drvTemplate d :) $ tmPathTo' (getTemplate $ drvTemplate d) n) tmDerive
           localpath = fmap (\_ -> []) $ find ((==n) . name) $ tmLocalDecls t
                           
 tmLocalDecls :: (?spec::Spec) => Template -> [Obj]

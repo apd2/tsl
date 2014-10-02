@@ -58,8 +58,8 @@ cMemberDesig n = CMemberDesig n undefNode
 cVoidType :: CTypeSpec
 cVoidType = CVoidType undefNode
 
-cBoolType :: CTypeSpec
-cBoolType = CBoolType undefNode
+cIntType :: CTypeSpec
+cIntType = CIntType undefNode
 
 cFunDef :: [CDeclSpec] -> CDeclr -> CStat -> CFunDef
 cFunDef dspecs declr body = CFunDef dspecs declr [] body undefNode
@@ -180,7 +180,7 @@ this :: CExpr
 this = cVar "this"
 
 parentName :: TSL.Ident -> String
-parentName n = "p" ++ TSL.sname n
+parentName n = TSL.sname n
 
 constructorName :: (TSL.WithName a) => a -> String
 constructorName t = "init_" ++ TSL.sname t 
@@ -191,7 +191,7 @@ genDecl cdeclspecs declname typespec initval =
     where (cdeclspec, derdecls) = genDecl' typespec
 
 genDecl' :: (?spec::Spec, ?scope::Scope) => TypeSpec -> (CDeclSpec, [CDerivedDeclr])
-genDecl' (BoolSpec _)           = (CTypeSpec cBoolType, [])
+genDecl' (BoolSpec _)           = (CTypeSpec cIntType, [])
 genDecl' (SIntSpec p w)         = (CTypeSpec $ genInt p True w, [])
 genDecl' (UIntSpec p w)         = (CTypeSpec $ genInt p False w, [])
 genDecl' (StructSpec _ fs)      = (CTypeSpec $ genStruct fs, [])
@@ -315,7 +315,7 @@ genConcat :: (?spec::Spec, ?scope::Scope) => Expr -> Expr -> CExpr
 genConcat e1 e2 = cBinary COrOp (genExpr e1) (cBinary CShlOp (genExpr e2) $ CConst $ cIntConst (fromIntegral $ exprWidth e1) DecRepr noFlags)
 
 genCall :: (?spec::Spec, ?scope::Scope) => Pos -> MethodRef -> [Maybe Expr] -> CExpr
-genCall p ref as = cCall mexpr (tmexpr:mapIdx (\ma i -> maybe (err p "missing argument in method call") (genArgExpr i) ma) as)
+genCall p ref as = cCall mexpr (tmexpr:mapIdx (\ma i -> maybe (cVar "NULL") (genArgExpr i) ma) as)
     where (mexpr,tmexpr) = genMRef ref
           (_,meth) = getMethod ?scope ref
           genArgExpr :: Int -> Expr -> CExpr
@@ -354,8 +354,8 @@ genMeth m@Method{..} = cFunDef [cdeclspec] (cDeclr (Just $ cname m) (args:derdec
           args = cFunDeclr $ (genDecl [] (if' isDerived pdeclaredIn "this") (PtrSpec nopos $ TemplateTypeSpec nopos $ TSL.name declaredIn) Nothing) :
                              map (\a -> genDecl [] (TSL.sname a) (if' (argDir a == ArgIn) (tspec a) (PtrSpec nopos (tspec a))) Nothing) methArg
           asnthis = if isDerived
-                       then []
-                       else [CBlockDecl $ genDecl [] "this" (PtrSpec nopos $ TemplateTypeSpec nopos $ TSL.name tm) (Just $ cInitExpr $ pathToContainer tm path)]
+                       then [CBlockDecl $ genDecl [] "this" (PtrSpec nopos $ TemplateTypeSpec nopos $ TSL.name tm) (Just $ cInitExpr $ pathToContainer tm path)]
+                       else []
           body = let sc = ?scope in
                  let ?scope = ScopeMethod tm m in 
                  case methBody of
@@ -382,7 +382,7 @@ genTemplate t@Template{..} = types ++ consts ++ [struct] ++ prototypes ++ method
          struct = let derived = map (\d -> genDecl [] (parentName $ drvTemplate d) (TemplateTypeSpec nopos $ drvTemplate d) Nothing) tmDerive
                       ports   = map (\p -> genDecl [] (TSL.sname p) (PtrSpec nopos $ TemplateTypeSpec nopos $ portTemplate p) Nothing) tmPort 
                       vars    = map (\v -> genDecl [] (TSL.sname v) (tspec v) Nothing) tmVar
-                      -- only method declared in the local template
+                      -- only methods declared in the local template
                       mdecls  = map (\m -> let CDecl dspecs [(Just (CDeclr n der Nothing [] _), mi, me)] _ = genMethDecl m
                                            in cDecl dspecs [(Just (cDeclr n (cPtrDeclr []:der)), mi, me)]) 
                                 $ filter (null . tmPathTo t . TSL.name) tmMethod
