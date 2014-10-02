@@ -1,10 +1,11 @@
 {-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
-module TSL2C.TSL2C() where
+module TSL2C.TSL2C(specItem2C) where
 
 import Data.Maybe
 import Data.List
 import Data.Bits
+import Text.PrettyPrint
 import Language.C hiding (Pos, nopos)
 import Language.C.Data.Ident
 
@@ -20,6 +21,7 @@ import Frontend.ExprOps
 import Frontend.Statement
 import Frontend.Const
 import Frontend.Spec
+import Frontend.Grammar
 import qualified Pos  as TSL
 import qualified Name as TSL
 import Pos
@@ -29,6 +31,12 @@ import Util
 
 -- TODO: use error monad
 err p m = error $ spos p ++ ": " ++ m
+
+specItem2C :: (?spec::Spec) => SpecItem -> Doc
+specItem2C (SpImport (Import _ n)) = text $ "#include <" ++ TSL.sname n ++ ".h>"
+specItem2C (SpType   decl)         = let ?scope = ScopeTop in pretty $ genType decl
+specItem2C (SpConst  const)        = let ?scope = ScopeTop in pretty $ genConst const
+specItem2C (SpTemplate tm)         = let ?scope = ScopeTop in vcat $ map (($$ text "") . pretty) $ genTemplate tm
 
 -- Wrappers around Language.C constructors
 cDecl :: [CDeclSpec] -> [(Maybe CDeclr, Maybe CInit, Maybe CExpr)] -> CDecl
@@ -367,8 +375,8 @@ genProc p = cFunDef [CTypeSpec cVoidType]
                  let ?scope = ScopeProcess tm p in
                  genStat $ procStatement p
 
-genTemplate :: (?spec::Spec, ?scope::Scope) => Template -> CTranslUnit
-genTemplate t@Template{..} = CTranslUnit (types ++ consts ++ [struct] ++ prototypes ++ methods ++ processes ++ [constructor]) undefNode
+genTemplate :: (?spec::Spec, ?scope::Scope) => Template -> [CExtDecl]
+genTemplate t@Template{..} = types ++ consts ++ [struct] ++ prototypes ++ methods ++ processes ++ [constructor]
    where -- collect all methods declared in the current template and its parents
          struct = let derived = map (\d -> genDecl [] (parentName $ drvTemplate d) (TemplateTypeSpec nopos $ drvTemplate d) Nothing) tmDerive
                       ports   = map (\p -> genDecl [] (TSL.sname p) (PtrSpec nopos $ TemplateTypeSpec nopos $ portTemplate p) Nothing) tmPort 
