@@ -8,6 +8,7 @@ import Data.Bits
 import Text.PrettyPrint
 import Language.C hiding (Pos, nopos)
 import Language.C.Data.Ident
+import System.FilePath.Posix
 
 import Frontend.NS
 import Frontend.Type
@@ -33,10 +34,10 @@ import Util
 err p m = error $ spos p ++ ": " ++ m
 
 specItem2C :: (?spec::Spec) => SpecItem -> Doc
-specItem2C (SpImport (Import _ n)) = text $ "#include <" ++ TSL.sname n ++ ".h>"
+specItem2C (SpImport (Import _ n)) = text $ "#include <" ++ (dropExtension $ TSL.sname n) ++ ".h>"
 specItem2C (SpType   decl)         = let ?scope = ScopeTop in pretty $ genType decl
 specItem2C (SpConst  const)        = let ?scope = ScopeTop in pretty $ genConst const
-specItem2C (SpTemplate tm)         = let ?scope = ScopeTop in vcat $ map (($$ text "") . pretty) $ genTemplate tm
+specItem2C (SpTemplate tm)         = let ?scope = ScopeTemplate tm in vcat $ map (($$ text "") . pretty) $ genTemplate tm
 
 -- Wrappers around Language.C constructors
 cDecl :: [CDeclSpec] -> [(Maybe CDeclr, Maybe CInit, Maybe CExpr)] -> CDecl

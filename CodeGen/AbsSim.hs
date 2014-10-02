@@ -34,7 +34,7 @@ import Pos
 import Synthesis.CG
 import Frontend.Inline
 import Abstract.BFormula
-import qualified Internal.IExpr             as I
+import qualified Internal.IExpr    as I
 import qualified Cudd.Imperative   as C
 import qualified HAST.HAST         as H
 import qualified HAST.BDD          as H
