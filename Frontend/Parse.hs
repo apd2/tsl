@@ -22,14 +22,14 @@ builtinsPath = "/tmp/builtins.tsl"
 -- Recursively parse TSL file and all of its imports
 -- Takes a map of already parsed files and the name of the file
 -- to parse
-parseTSL :: FilePath -> [FilePath] -> Bool -> IO Spec
+parseTSL :: FilePath -> [FilePath] -> Bool -> IO (M.Map FilePath [SpecItem], Spec)
 parseTSL f dirs dobuiltins = do
     modules <- parseTSL' M.empty f dirs
     let spec = mkSpec $ concat $ snd $ unzip $ M.toList modules
     when (isNothing $ find ((== "main")  . sname) $ specTemplate spec) $ fail "template main not found"
     -- Parse builtins
     builtins <- parseBuiltins
-    return $ if' dobuiltins (mergeSpecs spec builtins) spec
+    return (modules, if' dobuiltins (mergeSpecs spec builtins) spec)
 
 parseTSL' :: M.Map FilePath [SpecItem] -> FilePath -> [FilePath] -> IO (M.Map FilePath [SpecItem])
 parseTSL' modules f dirs = do
