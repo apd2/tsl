@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, RecordWildCards #-}
 
-module TSL2C.TSL2C(specItem2C) where
+module TSL2C.TSL2C(module2C) where
 
 import Data.Maybe
 import Data.List
@@ -33,11 +33,22 @@ import Util
 -- TODO: use error monad
 err p m = error $ spos p ++ ": " ++ m
 
-specItem2C :: (?spec::Spec) => SpecItem -> Doc
-specItem2C (SpImport (Import _ n)) = text $ "#include <" ++ (dropExtension $ TSL.sname n) ++ ".h>"
-specItem2C (SpType   decl)         = let ?scope = ScopeTop in pretty $ genType decl
-specItem2C (SpConst  const)        = let ?scope = ScopeTop in pretty $ genConst const
-specItem2C (SpTemplate tm)         = let ?scope = ScopeTemplate tm in vcat $ map (($$ text "") . pretty) $ genTemplate tm
+module2C :: (?spec::Spec) => Bool -> [SpecItem] -> Doc
+module2C h items = incls $$ text "" $$ (pretty $ CTranslUnit decls undefNode)
+    where 
+    (incls,decls) = foldl' (\(is, ds) i -> 
+                             case i of 
+                                  SpImport (Import _ n) -> (is $$ (text $ "#include <" ++ (dropExtensions $ TSL.sname n) ++ ".h>"), ds)
+                                  SpType   decl         -> let ?scope = ScopeTop in (is, ds ++ [CDeclExt $ genType decl])
+                                  SpConst  const        -> let ?scope = ScopeTop in (is, ds ++ [CDeclExt $ genConst const])
+                                  SpTemplate tm         -> let ?scope = ScopeTemplate tm in (is, ds ++ genTemplate tm h))
+                           (empty, []) items
+
+specItem2C :: (?spec::Spec) => Bool -> SpecItem -> Doc
+specItem2C _ (SpImport (Import _ n)) = text $ "#include <" ++ (dropExtensions $ TSL.sname n) ++ ".h>"
+specItem2C _ (SpType   decl)         = let ?scope = ScopeTop in pretty $ genType decl
+specItem2C _ (SpConst  const)        = let ?scope = ScopeTop in pretty $ genConst const
+specItem2C h (SpTemplate tm)         = let ?scope = ScopeTemplate tm in vcat $ map (($$ text "") . pretty) $ genTemplate tm h
 
 -- Wrappers around Language.C constructors
 cDecl :: [CDeclSpec] -> [(Maybe CDeclr, Maybe CInit, Maybe CExpr)] -> CDecl
@@ -136,8 +147,8 @@ etrue = CConst $ cIntConst 1 DecRepr noFlags
 cIntConst :: Integer -> CIntRepr -> Flags CIntFlag -> CConst
 cIntConst i r f = CIntConst (CInteger i r f) undefNode
 
-cStruct :: [CDecl] -> CStructUnion
-cStruct ds = CStruct CStructTag Nothing (Just ds) [] undefNode
+cStruct :: Maybe Ident -> Maybe [CDecl] -> CStructUnion
+cStruct mname ds = CStruct CStructTag mname ds [] undefNode
 
 cCompoundLit :: CDecl -> [([CDesignator], CExpr)] -> CExpr
 cCompoundLit d fs = CCompoundLit d (map (\(desig, i) -> (desig, cInitExpr i)) fs) undefNode
@@ -203,7 +214,7 @@ genDecl' (ArraySpec _ t l)      = (ctspec, (cArrDeclr [] (CArrSize False $ genEx
                                   where (ctspec, derdecls) = genDecl' t
 genDecl' (VarArraySpec _ t)     = (ctspec, cArrDeclr [] (CNoArrSize True):derdecls)
                                   where (ctspec, derdecls) = genDecl' t
-genDecl' (TemplateTypeSpec _ n) = (CTypeSpec $ cTypeDef $ cname n, [])
+genDecl' (TemplateTypeSpec _ n) = (CTypeSpec $ cSUType $ cStruct (Just $ cname n) Nothing, [])
 
 genInt :: Pos -> Bool -> Int -> CTypeSpec
 genInt p True  w | w <= 8    = cTypeDef $ cident "s8"
@@ -218,7 +229,7 @@ genInt p False w | w <= 8    = cTypeDef $ cident "u8"
                  | otherwise = err p "type too wide for C"
 
 genStruct ::  (?spec::Spec, ?scope::Scope) => [Field] -> CTypeSpec
-genStruct fs = cSUType $ cStruct $ map (\f -> genDecl [] (TSL.sname f) (tspec f) Nothing) fs
+genStruct fs = cSUType $ cStruct Nothing $ Just $ map (\f -> genDecl [] (TSL.sname f) (tspec f) Nothing) fs
 
 genEnum :: [Enumerator] -> CTypeSpec
 genEnum es = CEnumType (CEnum Nothing (Just $ map (\e -> (cname e, Nothing)) es) [] undefNode) undefNode
@@ -376,8 +387,10 @@ genProc p = cFunDef [CTypeSpec cVoidType]
                  let ?scope = ScopeProcess tm p in
                  genStat $ procStatement p
 
-genTemplate :: (?spec::Spec, ?scope::Scope) => Template -> [CExtDecl]
-genTemplate t@Template{..} = types ++ consts ++ [struct] ++ prototypes ++ methods ++ processes ++ [constructor]
+genTemplate :: (?spec::Spec, ?scope::Scope) => Template -> Bool -> [CExtDecl]
+genTemplate t@Template{..} header = if header
+                                       then types ++ consts ++ [struct] ++ [constructor]
+                                       else prototypes ++ methods ++ processes ++ [constructor]
    where -- collect all methods declared in the current template and its parents
          struct = let derived = map (\d -> genDecl [] (parentName $ drvTemplate d) (TemplateTypeSpec nopos $ drvTemplate d) Nothing) tmDerive
                       ports   = map (\p -> genDecl [] (TSL.sname p) (PtrSpec nopos $ TemplateTypeSpec nopos $ portTemplate p) Nothing) tmPort 
@@ -388,7 +401,7 @@ genTemplate t@Template{..} = types ++ consts ++ [struct] ++ prototypes ++ method
                                 $ filter (null . tmPathTo t . TSL.name) tmMethod
                       fields  = derived ++ ports ++ vars ++ mdecls
                   in CDeclExt $ cDecl [CStorageSpec cTypedef, 
-                                       CTypeSpec $ cSUType $ cStruct fields]
+                                       CTypeSpec $ cSUType $ cStruct (Just $ cname t) (Just fields)]
                                       [(Just $ cDeclr (Just $ cname t) [], Nothing, Nothing)]
          constructor = let -- constructor initialises template variables and ports and calls parent constructors
                             args = (genDecl [] "this" (PtrSpec nopos $ TemplateTypeSpec nopos $ TSL.name t) Nothing) : 
@@ -407,7 +420,9 @@ genTemplate t@Template{..} = types ++ consts ++ [struct] ++ prototypes ++ method
                             methodinit = map (\m -> cExpr $ cAssign (genPath this (tmPathTo t $ TSL.name m) (TSL.name m)) (cVar $ TSL.sname m))
                                          $ filter (not . methIsVirtual) tmMethod
                             body = cCompound $ map CBlockStmt $ portinit ++ parentinit ++ varinit ++ methodinit
-                       in CFDefExt $ cFunDef [CTypeSpec cVoidType] (cDeclr (Just $ cident $ constructorName t) [cFunDeclr args]) body
+                       in if header
+                             then CDeclExt $ cDecl [CTypeSpec cVoidType] [(Just $ cDeclr (Just $ cident $ constructorName t) [cFunDeclr args], Nothing, Nothing)]
+                             else CFDefExt $ cFunDef [CTypeSpec cVoidType] (cDeclr (Just $ cident $ constructorName t) [cFunDeclr args]) body
          -- types
          types = map (CDeclExt . genType) tmTypeDecl
          consts = map (CDeclExt . genConst) tmConst
