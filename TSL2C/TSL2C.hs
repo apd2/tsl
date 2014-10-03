@@ -102,6 +102,9 @@ cVar n = CVar (cident n) undefNode
 cAssign :: CExpr -> CExpr -> CExpr
 cAssign l r = CAssign CAssignOp l r undefNode
 
+cOrAssign :: CExpr -> CExpr -> CExpr
+cOrAssign l r = CAssign COrAssOp l r undefNode
+
 cExpr :: CExpr -> CStat
 cExpr e = CExpr (Just e) undefNode
 
@@ -183,6 +186,9 @@ cident = builtinIdent
 cname :: (TSL.WithName a) => a -> Ident
 cname = cident . TSL.sname
 
+cint :: Integer -> CExpr
+cint i = CConst $ cIntConst i DecRepr noFlags
+
 toCompound :: CStat -> CStat
 toCompound s@(CCompound _ _ _) = s
 toCompound s                   = cCompound [CBlockStmt s]
@@ -260,7 +266,17 @@ genStat' (SBreak   _ _)           = [CBlockStmt cBreak]
 genStat' (SInvoke  p _ ref as)    = [CBlockStmt $ cExpr $ genCall p ref as]
 genStat' (SAssert  _ _ e)         = [CBlockStmt $ cExpr $ cCall (cVar "assert") [genExpr e]]
 genStat' (SAssume  _ _ e)         = [CBlockStmt $ cExpr $ cCall (cVar "assume") [genExpr e]]
-genStat' (SAssign  _ _ l r)       = [CBlockStmt $ cExpr $ cAssign (genExpr l) (genExpr r)]
+genStat' (SAssign  _ _ l r)       = 
+    case l of
+         ESlice _ e (low, high)  -> let l' = fromInteger $ evalInt low
+                                        h' = fromInteger $ evalInt high
+                                        mask     = foldl' (\m i -> if' (i >= l' && i <= h') m (setBit m i)) (0::Integer) [0..exprWidth e - 1]
+                                        maskexp  = CConst $ cIntConst mask HexRepr noFlags
+                                        emasked  = cBinary CAndOp (genExpr e) maskexp
+                                        shift    = cint $ fromIntegral l'
+                                        rshifted = if' (l' == 0) (genExpr r) (cBinary CShlOp (genExpr r) shift) in
+                                    [CBlockStmt $ cExpr $ cAssign (genExpr e) $ cBinary COrOp emasked rshifted]
+         _                       -> [CBlockStmt $ cExpr $ cAssign (genExpr l) (genExpr r)]
 genStat' (SITE     _ _ i t me)    = [CBlockStmt $ cIf (genExpr i) (genStat t) (fmap genStat me)]
 genStat' (SCase    _ _ e cs md)   = [CBlockStmt $ cSwitch (genExpr e) $ cCompound $ map CBlockStmt $ cases++def]
                                     where cases = map (\(ex,st) -> cCase (genExpr ex) (toStatement $ genStat' st ++ [CBlockStmt cBreak])) cs
@@ -293,7 +309,7 @@ genExpr (ELit  _ w s r v)    = CConst $ cIntConst v repr $ foldl' (flip setFlag)
                                      flags = if' s [] [FlagUnsigned]
                                              ++
                                              if' (w > 32) [FlagLongLong] []
-genExpr (EBool _ b)          = CConst $ cIntConst (if' b 1 0) DecRepr noFlags
+genExpr (EBool _ b)          = cint $ if' b 1 0
 genExpr (EApply p ref as)    = genCall p ref as
 genExpr e@(EField _ e' f)    = case (exprTypeSpec e', exprTypeSpec e) of
                                     (TemplateTypeSpec _ _, TemplateTypeSpec _ _) -> cMember (genExpr e') (cname f) True
@@ -313,7 +329,7 @@ genExpr (ECond p _ _)        = err p "genExpr: ECond not implemented"
 genExpr (ESlice  _ e (l,h))  = masked
                                where e' = genExpr e
                                      mask = CConst $ cIntConst (complement $ (-1) `shiftL` (fromInteger $ evalInt h - evalInt l + 1)) HexRepr noFlags
-                                     shifted = if' (evalInt l==0) e' (cBinary CShrOp e' (CConst $ cIntConst (evalInt l) DecRepr noFlags))
+                                     shifted = if' (evalInt l==0) e' (cBinary CShrOp e' (cint $ evalInt l))
                                      masked  = if' ((fromInteger $ evalInt h) == exprWidth e - 1) shifted (cBinary CAndOp shifted mask)
 genExpr (EStruct _ tname fs) = cCompoundLit (cDecl [CTypeSpec $ cTypeDef $ cname $ last tname] []) fs'
                                where fs' = case fs of
@@ -323,7 +339,7 @@ genExpr (EAtLab p _)         = err p "cannot convert @-expression to C"
 genExpr (ENonDet p _)        = err p "cannot conver non-deterministic value to C"
 
 genConcat :: (?spec::Spec, ?scope::Scope) => Expr -> Expr -> CExpr
-genConcat e1 e2 = cBinary COrOp (genExpr e1) (cBinary CShlOp (genExpr e2) $ CConst $ cIntConst (fromIntegral $ exprWidth e1) DecRepr noFlags)
+genConcat e1 e2 = cBinary COrOp (genExpr e1) (cBinary CShlOp (genExpr e2) $ cint $ fromIntegral $ exprWidth e1)
 
 genCall :: (?spec::Spec, ?scope::Scope) => Pos -> MethodRef -> [Maybe Expr] -> CExpr
 genCall p ref as = cCall mexpr (tmexpr:mapIdx (\ma i -> maybe (cVar "NULL") (genArgExpr i) ma) as)
@@ -348,7 +364,7 @@ genMRef ref@(MethodRef _ path) =
           (parpath, ptr) = foldl' (\(e,isptr) n -> (cMember e (cident $ parentName n) isptr, False)) (instpath, True) $ tmPathTo tm' (TSL.name m)
 
 genPath :: CExpr -> [TSL.Ident] -> TSL.Ident -> CExpr
-genPath e p x = cMember (foldl' (\e n -> cMember e (cname n) False) e p) (cname x) True
+genPath e p x = fst $ foldl' (\(e,ptr) n -> (cMember e (cname n) ptr,False)) (e, True) (p++[x])
 
 genMeth :: (?spec::Spec, ?scope::Scope) => Method -> CFunDef
 genMeth m@Method{..} = cFunDef [cdeclspec] (cDeclr (Just $ cname m) (args:derdecls)) body
