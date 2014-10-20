@@ -39,8 +39,8 @@ module2C h items = incls $$ text "" $$ (pretty $ CTranslUnit decls undefNode)
     (incls,decls) = foldl' (\(is, ds) i -> 
                              case i of 
                                   SpImport (Import _ n) -> (is $$ (text $ "#include <" ++ (dropExtensions $ TSL.sname n) ++ ".h>"), ds)
-                                  SpType   decl         -> let ?scope = ScopeTop in (is, ds ++ [CDeclExt $ genType decl])
-                                  SpConst  const        -> let ?scope = ScopeTop in (is, ds ++ [CDeclExt $ genConst const])
+                                  SpType   decl         -> let ?scope = ScopeTop in (is, ds ++ (if' h [CDeclExt $ genType decl] []))
+                                  SpConst  const        -> let ?scope = ScopeTop in (is, ds ++ (if' h [] [CDeclExt $ genConst const]))
                                   SpTemplate tm         -> let ?scope = ScopeTemplate tm in (is, ds ++ genTemplate tm h))
                            (empty, []) items
 
