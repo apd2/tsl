@@ -45,6 +45,36 @@ import qualified Internal.IExpr             as I
 import qualified Cudd.Imperative            as C
 import qualified Synthesis.BddUtil          as C
 
+condFuncRemove :: (RM s u t) => Ops s u -> DDNode s u -> DDNode s u -> DDNode s u -> t (ST s) (DDNode s u)
+condFuncRemove Ops{..} set care removeCube = do
+    avlAndSet  <- $r2 band set care
+    noUnwanted <- $r1 (bexists removeCube) avlAndSet
+    cond       <- $r2 liCompact noUnwanted care
+    $d deref noUnwanted
+    condAndSet <- $r2 band cond care
+    if condAndSet == avlAndSet 
+        then do $d deref avlAndSet
+                $d deref condAndSet
+                return cond
+        else do $d deref avlAndSet
+                $d deref condAndSet
+                $d deref cond
+                $rp ref set
+                return set
+
+condRemoveSpecialVars :: (RM s u t, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> DDNode s u -> t (ST s) (DDNode s u)
+condRemoveSpecialVars set care = do
+    let DB{_symbolTable = SymbolInfo{..}, ..} = ?db
+    let ops@Ops{..} = constructOps ?m
+    removeCube <- $r $ nodesToCube
+                  $ concatMap (sel1 . snd)
+                  $ filter (elem '$' . show . fst) -- filter special vars
+                  $ M.toList _stateVars 
+    res <- condFuncRemove ops set care removeCube
+    $d deref removeCube
+    return res
+
+
 data Branch s u = BranchITE    (DDNode s u, DDNode s u) (DDNode s u) (Branch s u)
                 | BranchAction (DDNode s u) (DDNode s u)
                 | BranchStuck  String
@@ -230,10 +260,12 @@ gen1Step spec m refdyn pdb cont lp set strategy goal regions = do
     $d deref waitCond1
     waitCond  <- (liftM bnot) $ $r2 liCompact waitCond2 set
     $d deref waitCond2
+    waitCond' <- condRemoveSpecialVars waitCond set
+    $d deref waitCond
     $rp ref set
-    let stepWaitCond = (waitCond, set)
+    let stepWaitCond = (waitCond', set)
     -- Remove these states from set
-    set' <- $r2 band set waitCond
+    set' <- $r2 band set waitCond'
     -- Iterate through what remains
     stepBranches <- mkBranches strategy goal regions set'
     return Step{..}
@@ -326,12 +358,14 @@ mkBranches' strategy goal regions set = do
                          Just act <- pickLabel ops sd strategy condset
                          $d deref condset
                          set'     <- $r2 band set (bnot cond)
+                         cond'    <- condRemoveSpecialVars cond set
+                         $d deref cond
                          if set' == bfalse
                             then do $d deref set 
                                     $d deref set'
-                                    return $ BranchAction cond act
+                                    return $ BranchAction cond' act
                             else do branch' <- mkBranches strategy goal regions set'
-                                    return $ BranchITE (cond, set) act branch'
+                                    return $ BranchITE (cond', set) act branch'
 
 -- Decomposes cond into prime implicants and converts it to a boolean expression
 mkCondition :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => (DDNode s u, DDNode s u) -> t (ST s) [I.Expr]
