@@ -14,16 +14,21 @@ import Frontend.Type
 import Frontend.Template
 import Frontend.Const
 
-data Spec = Spec { specTemplate :: [Template]
-                 , specType     :: [TypeDecl]
-                 , specConst    :: [Const]}
+data Spec = Spec { specTemplate   :: [Template]
+                 , specType       :: [TypeDecl]
+                 , specConst      :: [Const]
+                 , specTransducer :: [Transducer]
+                 }
 
 instance PP Spec where 
-    pp (Spec tms ts cs) = (P.vcat $ map ((P.$+$ P.text "") . pp) ts)
-                          P.$+$
-                          (P.vcat $ map ((P.$+$ P.text "") . pp) cs)
-                          P.$+$
-                          (P.vcat $ map ((P.$+$ P.text "") . pp) tms)
+    pp (Spec tms ts cs txs) = (P.vcat $ map ((P.$+$ P.text "") . pp) ts)
+                              P.$+$
+                              (P.vcat $ map ((P.$+$ P.text "") . pp) cs)
+                              P.$+$
+                              (P.vcat $ map ((P.$+$ P.text "") . pp) tms)
+                              P.$+$
+                              (P.vcat $ map ((P.$+$ P.text "") . pp) txs)
+
 
 instance Show Spec where
     show = P.render . pp
@@ -31,7 +36,7 @@ instance Show Spec where
 emptySpec = Spec [] [] []
 
 mergeSpecs :: Spec -> Spec -> Spec
-mergeSpecs (Spec tm1 t1 c1) (Spec tm2 t2 c2) = Spec tm (t1++t2) (c1++c2)
+mergeSpecs (Spec tm1 t1 c1 tx1) (Spec tm2 t2 c2 tx2) = Spec tm (t1++t2) (c1++c2) (tx1++tx2)
     where tm = foldl' mergeTemplates tm1 tm2
 
 -- If template with the same name exists in the list, merge the two;

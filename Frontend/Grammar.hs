@@ -65,6 +65,7 @@ reservedNames = ["after",
                  "do", 
                  "else", 
                  "endtemplate",
+                 "endtransducer",
                  "enum",
                  "export",
                  "false",
@@ -89,6 +90,7 @@ reservedNames = ["after",
                  "struct",
                  "task", 
                  "template", 
+                 "transducer"
                  "true",
                  "typedef",
                  "uint",
@@ -182,14 +184,16 @@ typeSpec rel = mkType <$> (withPos $  sintType
                                   <|> enumType 
                                   <|> structType) 
                       <*> (many $ (,) <$> ((ModDim <$> (brackets $ if' rel (optionMaybe detexpr) (Just <$> detexpr))) 
-                                      <|>  (ModPtr <$ reservedOp "*")) 
+                                      <|>  (ModPtr      <$ reservedOp "*")
+                                      <|>  (ModSequence <$ reserved "sequence")) 
                                       <*> getPosition)
 
 mkType :: TypeSpec -> [(TypeMod, SourcePos)] -> TypeSpec
 mkType t [] = t
 mkType t ((ModDim Nothing , p):es) = mkType (VarArraySpec (fst $ pos t, p) t) es
 mkType t ((ModDim (Just e), p):es) = mkType (ArraySpec (fst $ pos t, p) t e) es
-mkType t ((ModPtr, p):es)   = mkType (PtrSpec (fst $ pos t, p) t) es
+mkType t ((ModSequence, p):es)     = mkType (SeqSpec (fst $ pos t, p) t) es
+mkType t ((ModPtr, p):es)          = mkType (PtrSpec (fst $ pos t, p) t) es
 
 sintType   = SIntSpec     nopos <$  reserved "sint" <*> (fromIntegral <$> angles decimal)
 uintType   = UIntSpec     nopos <$  reserved "uint" <*> (fromIntegral <$> angles decimal)
@@ -205,16 +209,18 @@ enum = withPos $ Enumerator nopos <$> ident
 -------------------------------------------------------------------------
 
 -- A TSL spec is a list of type, constant, and template declarations
-data SpecItem = SpImport   Import
-              | SpType     TypeDecl
-              | SpConst    Const
-              | SpTemplate Template
+data SpecItem = SpImport     Import
+              | SpType       TypeDecl
+              | SpConst      Const
+              | SpTemplate   Template
+              | SpTransducer Transducer
 
 instance PP SpecItem where
-    pp (SpImport i)   = pp i
-    pp (SpType t)     = pp t
-    pp (SpConst c)    = pp c
-    pp (SpTemplate t) = pp t
+    pp (SpImport i)     = pp i
+    pp (SpType t)       = pp t
+    pp (SpConst c)      = pp c
+    pp (SpTemplate t)   = pp t
+    pp (SpTransducer t) = pp t
 
 
 data Import = Import Pos Ident
@@ -230,9 +236,29 @@ decl =  (SpImport <$> imp)
     <|> (SpConst <$> constant <* semi)
     <|> (SpType <$> typeDef <* semi)
     <|> (SpTemplate <$> template)
+    <|> (SpTransducer <$> transducer)
     <?> "constant, type or template declaration"
 
 imp = withPos $ Import nopos <$ reserved "import" <*> (reservedOp "<" *> (withPos $ Ident nopos <$> manyTill anyChar (reservedOp ">")))
+
+------------------------------------------------------------------------
+-- Transducer
+------------------------------------------------------------------------
+
+transducer = withPos $ Transducer nopos <$ reserved "transducer"
+                                       <*> typeSpec False
+                                       <*> ident
+                                       <*> (parens $ commaSep1 transducerInput)
+                                       <*> (choice transducerComposite statement)
+
+transducerInput = (,) <$> typeSpec False <*> ident
+
+transducerComposite = brackets $ many1 $ transducerInstance <* semi
+
+transducerInstance = withPos $ TransducerInstance nopos <$ reserved "instance"
+                                                        <*> ident
+                                                        <*> ident
+                                                        <*> (parens $ commaSep ident)
 
 ------------------------------------------------------------------------
 -- Template scope
@@ -563,7 +589,7 @@ relexpr = (reservedOp "*" *> unexpected "unexpected * in relation interpretation
 pref  p = Prefix  . chainl1 p $ return       (.)
 postf p = Postfix . chainl1 p $ return (flip (.))
 
-table = [[postf $ choice [postSlice, postRange, postIndex, postField, postPField]]
+table = [[postf $ choice [postSlice, postRange, postIndex, postField, postPField, postInc]]
         ,[pref  $ choice [elen, prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus, prefix "*" Deref, prefix "&" AddrOf]]
         ,[binary "==" Eq AssocLeft, 
           binary "!=" Neq AssocLeft,
@@ -585,6 +611,7 @@ table = [[postf $ choice [postSlice, postRange, postIndex, postField, postPField
         ]
 
 postSlice  = try $ (\s end e -> ESlice (fst $ pos e, end) e s) <$> slice <*> getPosition
+postInc    = try $ (\end e -> EInc (fst $ pos e, end) e) <$ reservedOp "++" <*> getPosition
 postRange  = try $ (\r end a -> ERange (fst $ pos a, end) a r) <$> range <*> getPosition
 postIndex  = (\i end e -> EIndex (fst $ pos e, end) e i) <$> index <*> getPosition
 postField  = (\f end e -> EField (fst $ pos e, end) e f) <$> field <*> getPosition

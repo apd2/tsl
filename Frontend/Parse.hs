@@ -70,7 +70,7 @@ imports s = mapMaybe (\item -> case item of
                                     _                               -> Nothing) s
 
 mkSpec :: [SpecItem] -> Spec
-mkSpec is = Spec templates types consts
+mkSpec is = Spec templates types consts xducers
     where templates = mapMaybe (\i -> case i of 
                                            SpTemplate t -> Just t
                                            _            -> Nothing) is
@@ -80,6 +80,9 @@ mkSpec is = Spec templates types consts
           consts = mapMaybe (\i -> case i of 
                                            SpConst c    -> Just c
                                            _            -> Nothing) is
+          xducers = mapMaybe (\i -> case i of 
+                                           SpTransducer t -> Just t
+                                           _              -> Nothing) is
 
 instance PP [SpecItem] where
     pp is = P.vcat $ map ((P.$+$ P.text "") . pp) is
