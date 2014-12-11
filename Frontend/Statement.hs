@@ -68,7 +68,6 @@ instance PP Statement where
                                                                     Nothing -> empty
                                                                     Just s  -> text "default" <> colon <+> pp s <> semi
         pp' (SMagic   _ _)                     = text "..."
-        pp' (SMagic   _ _)                     = text "..."
         pp' (SMagExit _ _)                     = text "exit"
         pp' (SDoNothing _ _)                   = text "do_nothing"
 
