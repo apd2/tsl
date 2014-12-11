@@ -3,7 +3,6 @@
 module Abstract.TSLAbsGame(AbsPriv,
                   tslAbsGame, 
                   tslUpdateAbsVarAST,
-                  tslStateLabelConstraintAbs,
                   tslInconsistent,
                   tslUpdateAbs,
                   pdbPred,
@@ -106,6 +105,7 @@ tslInitAbs spec m ops = do
 
 -- TODO: where should this go?
 
+{-
 tslStateLabelConstraintAbs :: Spec -> C.STDdManager s u -> PVarOps pdb s u -> StateT pdb (ST s) (C.DDNode s u)
 tslStateLabelConstraintAbs spec m ops = do
     let ?ops    = ops
@@ -114,6 +114,7 @@ tslStateLabelConstraintAbs spec m ops = do
         ?m      = m
         ?pred   = p
     H.compileBDD' ?m ?ops (avarGroupTag . bavarAVar) tslConstraint
+-}
 
 tslConstraint :: (?spec::Spec, ?pred::[Predicate]) => TAST f e c
 tslConstraint = pre

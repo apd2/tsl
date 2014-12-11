@@ -14,6 +14,7 @@ import Data.Tuple.Select
 import qualified Data.Map          as M
 import Control.Monad.State
 import Control.Monad.ST
+import Control.Monad.Morph
 
 import Util
 import Internal.PID
@@ -238,9 +239,9 @@ clearMagic set = do
 compileExpr :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => I.Expr -> t (ST s) (DDNode s u)
 compileExpr e = do
      let Ops{..} = constructOps ?m
-     (res, CompileState newvars _) <- lift
-         $ (flip runStateT) (CompileState (NewVars []) ?db) 
-         $ H.compileBDD' ?m (compileOps $ constructOps ?m) (avarGroupTag . bavarAVar) 
+     (res, CompileState newvars _) <- 
+         (flip runStateT) (CompileState (NewVars []) ?db) 
+         $ H.compileBDD ?m (compileOps $ constructOps ?m) (avarGroupTag . bavarAVar) 
          $ compileFormula 
          $ ptrFreeBExprToFormula e
      if null $ _allocatedStateVars newvars
@@ -366,12 +367,12 @@ compileTransition t = do
     let svars = map (\(av, (_, _, d', _)) -> (av, d'))
                 $ filter (\(_, (_, is, _, _)) -> not $ null $ intersect is _trackedInds) 
                 $ M.toList _stateVars
-    (upd_, CompileState newvars _) <- lift $ (flip runStateT) (CompileState (NewVars []) ?db) $ do
-          p <- pdbPred
+    (upd_, CompileState newvars _) <- (flip runStateT) (CompileState (NewVars []) ?db) $ do
+          p <- hoist lift pdbPred
           let ?pred = p
           let pre = tranPrecondition True trname t
               ast = H.Conj $ pre : (map (compileTransitionVar t) $ svars)
-          H.compileBDD' ?m ?ops (avarGroupTag . bavarAVar) ast
+          H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) ast
     upd <- $r $ return upd_
     if null $ _allocatedStateVars newvars
        then return ()
