@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, ConstraintKinds #-}
+{-# LANGUAGE PolymorphicComponents, RecordWildCards, ScopedTypeVariables, TemplateHaskell, FlexibleContexts, ConstraintKinds, ImplicitParams #-}
 
 module Solver.BVSMT where
 

@@ -38,6 +38,7 @@ import Frontend.Type
 import Frontend.Method
 import Frontend.Const
 import Frontend.Relation
+import Frontend.Transducer
 
 -- exports: all exported parsers must start with removeTabs to get correct position markers
 litParser         = removeTabs *> ((\(ELit _ w s r v) -> (w,s,r,v)) <$> elit True)
@@ -85,12 +86,13 @@ reservedNames = ["after",
                  "relation",
                  "return",
                  "rule",
+                 "seq",
                  "sint",
                  "stop", 
                  "struct",
                  "task", 
                  "template", 
-                 "transducer"
+                 "transducer",
                  "true",
                  "typedef",
                  "uint",
@@ -173,7 +175,9 @@ constant = withPos $ Const nopos <$  reserved "const"
                                      <*> ident 
                                      <*> (reservedOp "=" *> detexpr)
 
-data TypeMod = ModPtr | ModDim (Maybe Expr)
+data TypeMod = ModPtr 
+             | ModSequence 
+             | ModDim (Maybe Expr)
 
 -- Only parse VarArray if rel is true.  Makes sure that VarArray's can only
 -- appear as relation arguments
@@ -185,7 +189,7 @@ typeSpec rel = mkType <$> (withPos $  sintType
                                   <|> structType) 
                       <*> (many $ (,) <$> ((ModDim <$> (brackets $ if' rel (optionMaybe detexpr) (Just <$> detexpr))) 
                                       <|>  (ModPtr      <$ reservedOp "*")
-                                      <|>  (ModSequence <$ reserved "sequence")) 
+                                      <|>  (ModSequence <$ reserved "seq")) 
                                       <*> getPosition)
 
 mkType :: TypeSpec -> [(TypeMod, SourcePos)] -> TypeSpec
@@ -249,16 +253,16 @@ transducer = withPos $ Transducer nopos <$ reserved "transducer"
                                        <*> typeSpec False
                                        <*> ident
                                        <*> (parens $ commaSep1 transducerInput)
-                                       <*> (choice transducerComposite statement)
+                                       <*> (choice [Left <$> transducerComposite, Right <$> statement])
 
-transducerInput = (,) <$> typeSpec False <*> ident
+transducerInput = withPos $ TxInput nopos <$> typeSpec False <*> ident
 
 transducerComposite = brackets $ many1 $ transducerInstance <* semi
 
-transducerInstance = withPos $ TransducerInstance nopos <$ reserved "instance"
-                                                        <*> ident
-                                                        <*> ident
-                                                        <*> (parens $ commaSep ident)
+transducerInstance = withPos $ TxInstance nopos <$ reserved "instance"
+                                               <*> ident
+                                               <*> ident
+                                               <*> (parens $ commaSep ident)
 
 ------------------------------------------------------------------------
 -- Template scope
@@ -428,6 +432,7 @@ statement' =  withPos $
          <|> sassume
          <|> site
          <|> scase
+         <|> sadvance
          <|> sinvoke
          <|> sassign
          <?> "statement")
@@ -459,6 +464,7 @@ site     = SITE     nopos Nothing <$ reserved "if" <*> (parens expr) <*> stateme
 scase    = (fmap uncurry (SCase nopos Nothing <$ reserved "case" <*> (parens detexpr))) 
            <*> (braces $ (,) <$> (many $ (,) <$> detexpr <* colon <*> statement <* semi) 
                              <*> optionMaybe (reserved "default" *> colon *> statement <* semi))
+sadvance = SAdvance nopos Nothing <$ reservedOp "++" <*> detexpr             
 smagic   = SMagic   nopos Nothing <$ ismagic
                         <* (withPos $ nopos <$ reservedOp "...") 
                         -- <*> ((Left <$ reserved "using" <*> ident) <|> (Right <$ reserved "post" <*> detexpr))
@@ -476,6 +482,7 @@ relterm = parens relexpr <|> relterm'
 term' = withPos $
        ( elabel
      <|> erel
+     <|> eeoi
      <|> estruct True
      <|> etern   True
      <|> eapply  True
@@ -488,6 +495,7 @@ term' = withPos $
 detterm' = withPos $
           ( elabel
         <|> erel
+        <|> eeoi
         <|> estruct False
         <|> etern   False
         <|> eapply  False
@@ -511,6 +519,7 @@ relterm' = withPos $
 
 elabel      = EAtLab nopos <$> (reservedOp "@" *> ident)
 erel        = ERel nopos <$ (reservedOp "?") <*> ident <*> (parens $ commaSep detexpr)
+eeoi        = EEOI nopos <$ reserved "eoi" <*> (parens detexpr)
 estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
           anonfields = commaSep1 (expr' det)
@@ -589,7 +598,7 @@ relexpr = (reservedOp "*" *> unexpected "unexpected * in relation interpretation
 pref  p = Prefix  . chainl1 p $ return       (.)
 postf p = Postfix . chainl1 p $ return (flip (.))
 
-table = [[postf $ choice [postSlice, postRange, postIndex, postField, postPField, postInc]]
+table = [[postf $ choice [postSlice, postRange, postIndex, postField, postPField]]
         ,[pref  $ choice [elen, prefix "!" Not, prefix "~" BNeg, prefix "-" UMinus, prefix "*" Deref, prefix "&" AddrOf]]
         ,[binary "==" Eq AssocLeft, 
           binary "!=" Neq AssocLeft,
@@ -611,7 +620,6 @@ table = [[postf $ choice [postSlice, postRange, postIndex, postField, postPField
         ]
 
 postSlice  = try $ (\s end e -> ESlice (fst $ pos e, end) e s) <$> slice <*> getPosition
-postInc    = try $ (\end e -> EInc (fst $ pos e, end) e) <$ reservedOp "++" <*> getPosition
 postRange  = try $ (\r end a -> ERange (fst $ pos a, end) a r) <$> range <*> getPosition
 postIndex  = (\i end e -> EIndex (fst $ pos e, end) e i) <$> index <*> getPosition
 postField  = (\f end e -> EField (fst $ pos e, end) e f) <$> field <*> getPosition

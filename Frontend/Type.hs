@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances #-}
 
-module Frontend.Type(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,VarArraySpec,UserTypeSpec,TemplateTypeSpec, FlexTypeSpec), 
+module Frontend.Type(TypeSpec(BoolSpec,SIntSpec,UIntSpec,StructSpec,EnumSpec,PtrSpec,ArraySpec,VarArraySpec,SeqSpec,UserTypeSpec,TemplateTypeSpec, FlexTypeSpec), 
             WithTypeSpec(..),
             TypeDecl(TypeDecl), 
             Enumerator(Enumerator),
@@ -63,6 +63,7 @@ data TypeSpec = BoolSpec         {tpos :: Pos}
               | PtrSpec          {tpos :: Pos, ptype  :: TypeSpec}
               | ArraySpec        {tpos :: Pos, eltype :: TypeSpec, len :: Expr}
               | VarArraySpec     {tpos :: Pos, eltype :: TypeSpec}
+              | SeqSpec          {tpos :: Pos, eltype :: TypeSpec}
               | UserTypeSpec     {tpos :: Pos, tname  :: StaticSym}
               | TemplateTypeSpec {tpos :: Pos, tmname :: Ident}
               | FlexTypeSpec     {tpos :: Pos}
@@ -77,6 +78,7 @@ instance Eq TypeSpec where
     (==) (PtrSpec _ t1)          (PtrSpec _ t2)          = t1 == t2
     (==) (ArraySpec _ t1 l1)     (ArraySpec _ t2 l2)     = t1 == t2 && l1 == l2
     (==) (VarArraySpec _ t1)     (VarArraySpec _ t2)     = t1 == t2
+    (==) (SeqSpec _ t1)          (SeqSpec _ t2)          = t1 == t2
     (==) (UserTypeSpec _ n1)     (UserTypeSpec _ n2)     = n1 == n2
     (==) (TemplateTypeSpec _ n1) (TemplateTypeSpec _ n2) = n1 == n2
     (==) _                       _                       = False
@@ -91,6 +93,7 @@ instance PP TypeSpec where
     pp (PtrSpec _ t)          = pp t <> char '*'
     pp (ArraySpec _ t l)      = pp t <> (brackets $ pp l)
     pp (VarArraySpec _ t)     = pp t <> (brackets empty)
+    pp (SeqSpec _ t)          = pp t <+> text "seq"
     pp (UserTypeSpec _ n)     = pp n
     pp (TemplateTypeSpec _ n) = text "template" <+> pp n
     pp (FlexTypeSpec _)       = text "*"

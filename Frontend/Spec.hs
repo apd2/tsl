@@ -13,6 +13,7 @@ import Name
 import Frontend.Type
 import Frontend.Template
 import Frontend.Const
+import Frontend.Transducer
 
 data Spec = Spec { specTemplate   :: [Template]
                  , specType       :: [TypeDecl]
