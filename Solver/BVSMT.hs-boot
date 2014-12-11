@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams #-}
+{-# LANGUAGE ImplicitParams, ConstraintKinds #-}
 
 module Solver.BVSMT where
 
@@ -12,4 +12,4 @@ import qualified Cudd.Imperative as C
 
 bvRelNormalise :: (?spec::Spec) => RelOp -> PTerm -> PTerm -> Formula
 bvTermNormalise :: (?spec::Spec) => Term -> Term
-bvSolver :: Spec -> SMTSolver -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var
+bvSolver :: RM s u rm => Spec -> SMTSolver -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var rm

@@ -240,7 +240,7 @@ compileExpr e = do
      let Ops{..} = constructOps ?m
      (res, CompileState newvars _) <- lift
          $ (flip runStateT) (CompileState (NewVars []) ?db) 
-         $ H.compileBDD ?m (compileOps $ constructOps ?m) (avarGroupTag . bavarAVar) 
+         $ H.compileBDD' ?m (compileOps $ constructOps ?m) (avarGroupTag . bavarAVar) 
          $ compileFormula 
          $ ptrFreeBExprToFormula e
      if null $ _allocatedStateVars newvars
@@ -371,7 +371,7 @@ compileTransition t = do
           let ?pred = p
           let pre = tranPrecondition True trname t
               ast = H.Conj $ pre : (map (compileTransitionVar t) $ svars)
-          H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) ast
+          H.compileBDD' ?m ?ops (avarGroupTag . bavarAVar) ast
     upd <- $r $ return upd_
     if null $ _allocatedStateVars newvars
        then return ()
