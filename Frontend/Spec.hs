@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
-module Frontend.Spec(Spec(Spec,specTemplate,specType,specConst), 
+module Frontend.Spec(Spec(Spec,specTemplate,specType,specConst,specTransducer), 
             emptySpec,
             mergeSpecs) where
 

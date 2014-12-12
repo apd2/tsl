@@ -1,7 +1,7 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, TupleSections #-}
 
 module Frontend.StatementValidate(validateStat,
-                         validateStat') where
+                                  validateStat') where
 
 import Control.Monad.Error
 import Data.Maybe
@@ -44,6 +44,7 @@ validateStat' _ (SReturn p _ me) = do
                                                  validateExpr' (fromJust me)
                                                  checkTypeMatch (fromJust me) (Type ?scope t) (exprType $ fromJust me)
          ScopeProcess _ pr -> assert (isNothing me) p "cannot return value from a process"
+         ScopeTransducer _ -> err p "return statement inside transducer"
          ScopeTemplate _   -> err p "return statement inside always-block"
 
 validateStat' l (SSeq _ _ ss) = do
@@ -61,22 +62,23 @@ validateStat' l (SPar p _ ss) = do
                                   _                 -> return ()
          ScopeProcess _ pr -> return ()
          ScopeTemplate _   -> err p $ "fork inside always-block"
+         ScopeTransducer _ -> err p $ "fork inside transducer"
 
 validateStat' _ (SForever _ _ b) = do
     checkLoopBody b
 
 validateStat' _ (SDo _ _ b c) = do
-    validateExpr' c
+    validateRHSExpr' c
     assert (isBool $ exprType c) (pos c) "loop condition is not of boolean type"
     checkLoopBody b
 
 validateStat' _ (SWhile _ _ c b) = do
-    validateExpr' c
+    validateRHSExpr' c
     assert (isBool $ exprType c) (pos c) "loop condition is not of boolean type"
     checkLoopBody b
 
 validateStat' _ (SFor _ _ (mi, c, s) b) = do
-    validateExpr' c
+    validateRHSExpr' c
     assert (isBool $ exprType c) (pos c) "loop condition is not of boolean type"
     case mi of
          Just i  -> validateStat' False i
@@ -91,8 +93,9 @@ validateStat' l (SChoice p _ ss) = do
                                   Procedure           -> err p "non-deterministic choice inside procedure"
                                   Task Uncontrollable -> err p "non-deterministic choice inside uncontrollable task"
                                   _                   -> return ()
-         ScopeProcess _ pr -> return ()
+         ScopeProcess _ _  -> return ()
          ScopeTemplate _   -> err p "non-deterministic choice inside always-block"
+         ScopeTransducer _ -> return ()
     mapM (validateStat' l) ss
     return ()
 
@@ -103,8 +106,9 @@ validateStat' _ (SPause p _) = do
                                   Procedure         -> err p "pause inside procedure"
                                   Task Controllable -> err p "pause inside controllable task"
                                   _                 -> return ()
-         ScopeProcess _ pr -> return ()
+         ScopeProcess _ _  -> return ()
          ScopeTemplate _   -> err p "pause inside always-block"
+         ScopeTransducer _ -> return ()
 
 validateStat' _ (SStop p _) = do
     case ?scope of
@@ -113,8 +117,9 @@ validateStat' _ (SStop p _) = do
                                   Procedure         -> err p "stop inside procedure"
                                   Task Controllable -> err p "stop inside controllable task"
                                   _                 -> return ()
-         ScopeProcess _ pr -> return ()
+         ScopeProcess _ _  -> return ()
          ScopeTemplate _   -> err p "stop inside always-block"
+         ScopeTransducer _ -> err p "stop inside transducer"
 
 validateStat' _ (SWait p _ e) = do
     validateExpr' e
@@ -130,27 +135,29 @@ validateStat' _ (SWait p _ e) = do
                                   Procedure         -> err p "wait inside procedure"
                                   Task Controllable -> err p "wait inside controllable task"
                                   _                 -> return ()
-         ScopeProcess _ pr -> return ()
+         ScopeProcess _ _  -> return ()
          ScopeTemplate _   -> err p "wait inside always-block"
+         ScopeTransducer _ -> err p "wait inside transducer"
 
 validateStat' l (SBreak p _) = assert l p "break outside a loop"
 validateStat' _ (SInvoke p _ m as) = validateCall p m as
 validateStat' _ (SAssert _ _ e) = do
-    validateExpr' e
+    validateRHSExpr' e
     assert (isBool $ exprType e) (pos e) "Assertion must be a boolean expression"
     assert (exprNoSideEffects e) (pos e) "Assertion must be side-effect free"
     assert (not $ isFunctionScope ?scope) (pos e) "Assertions not allowed inside functions"
     assert (not $ isTemplateScope ?scope) (pos e) "Assertions not allowed inside always-blocks"
 
 validateStat' _ (SAssume _ _ e) = do
-    validateExpr' e
+    validateRHSExpr' e
     assert (isBool $ exprType e) (pos e) "Assumption must be a boolean expression"
     assert (exprNoSideEffects e) (pos e) "Assumption must be side-effect free"
 
 validateStat' _ (SAssign _ _ lhs rhs) = do
-    validateExpr' lhs
-    validateExpr' rhs
-    assert (isLExpr lhs) (pos lhs) $ "Left-hand side of assignment is not an L-value"
+    validateRHSExpr' lhs
+    validateRHSExpr' rhs
+    assert (isLExpr lhs) (pos lhs)   $ "Left-hand side of assignment is not an L-value"
+    assert (not $ isSeqContainer $ exprType lhs) (pos lhs) $ "Left-hand side of assignment (or one of its members) is a sequence"
     checkTypeMatch rhs (exprType lhs) (exprType rhs)
     -- No modifications to global variables in a function
     if isFunctionScope ?scope 
@@ -158,7 +165,7 @@ validateStat' _ (SAssign _ _ lhs rhs) = do
        else return ()
 
 validateStat' l (SITE _ _ i t e) = do
-    validateExpr' i
+    validateRHSExpr' i
     checkTypeMatch i (Type ?scope $ BoolSpec nopos) (exprType i)
     validateStat' l t
     case e of 
@@ -166,16 +173,19 @@ validateStat' l (SITE _ _ i t e) = do
          Nothing -> return ()
 
 validateStat' l (SCase p _ c cs md) = do
-    validateExpr' c
+    validateRHSExpr' c
     assert (length cs > 0) p "Empty case statement"
-    mapM (\(e,s) -> do validateExpr' e
+    mapM (\(e,s) -> do validateRHSExpr' e
                        validateStat' l s
                        assert (exprNoSideEffects e) (pos e) "Case label must be side-effect free") cs
     case md of
          Just d  -> validateStat' l d
          Nothing -> return ()
-    mapM (\(e1,_) -> checkTypeMatch e1 (exprType c) (exprType e1)) cs
-    return ()
+    mapM_ (\(e1,_) -> checkTypeMatch e1 (exprType c) (exprType e1)) cs
+
+validateStat' _ (SAdvance _ _ e) = do
+    validateExpr' e
+    assert (isSequence $ exprType e) (pos e) $ "Not a sequence expression " ++ show e
 
 validateStat' l (SMagic p _) = do
     case ?scope of
@@ -187,12 +197,13 @@ validateStat' l (SMagic p _) = do
 checkLoopBody :: (?spec::Spec, ?scope::Scope, ?privoverride::Bool, MonadError String me) => Statement -> me ()
 checkLoopBody s = do
     validateStat' True s
-    case findInstPath False s of
-         Nothing -> return ()
-         Just p  -> err (pos s) $ "Instanteneous path exists through the body of the loop:" ++
-                                  (concat $ map (\s -> "\n    " ++ case s of 
-                                                                        Left st -> spos st ++ ": " ++ show st
-                                                                        Right e -> spos e  ++ ": " ++ show e) p)
+    when (not $ isTransducerScope ?scope) $
+        case findInstPath False s of
+             Nothing -> return ()
+             Just p  -> err (pos s) $ "Instanteneous path exists through the body of the loop:" ++
+                                      (concat $ map (\s -> "\n    " ++ case s of 
+                                                                            Left st -> spos st ++ ": " ++ show st
+                                                                            Right e -> spos e  ++ ": " ++ show e) p)
                                   
 -- Find instantaneous path through the statement.  
 -- If the first argument is true, then Break is considered

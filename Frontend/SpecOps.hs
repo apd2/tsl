@@ -21,6 +21,8 @@ import Frontend.NS
 import Frontend.Method
 import Frontend.Template
 import Frontend.TemplateOps
+import Frontend.Transducer
+import Frontend.TransducerValidate
 import Frontend.TemplateValidate
 import Frontend.InstTree
 import Frontend.TemplateFlatten
@@ -29,6 +31,7 @@ import Frontend.ConstOps
 import Frontend.Expr
 import Frontend.ExprOps
 import Frontend.ExprFlatten
+import Frontend.StatementOps
 
 -- TODO:
 --
@@ -83,6 +86,7 @@ validateSpec s = do
     mapM validateTmInstances                  (specTemplate s)
     validateSpecDerives
     mapM validateTmNS                         (specTemplate s)
+    mapM validateTxNS                         (specTransducer s)
     mapM (validateTypeSpec ScopeTop . tspec)  (specType s)
     mapM validateTmTypeDecls                  (specTemplate s)
     validateTypeDeps
@@ -95,6 +99,7 @@ validateSpec s = do
     mapM validateTmInit2                      (specTemplate s)
     mapM validateTmPrefix2                    (specTemplate s)
     mapM validateTmMethods2                   (specTemplate s)
+    mapM validateTxImplementation2            (specTransducer s)
     mapM validateTmInstances2                 (specTemplate s)
     validateSpecInstances2
     mapM validateTmProcesses2                 (specTemplate s)
@@ -169,16 +174,25 @@ specMapExpr f s =
     in let tm' = map (tmMapExpr f) (specTemplate s)
            t'  = map (\t -> TypeDecl (pos t) (tspecMapExpr f ScopeTop $ tspec t) (name t)) (specType s)
            c'  = map (\c -> c{constVal = mapExpr f ScopeTop (constVal c)}) (specConst s)
-       in Spec tm' t' c'
+           tx' = map (\t -> t{txBody = case txBody t of
+                                            Left is  -> Left is
+                                            Right s  -> Right $ statMapExpr f (ScopeTransducer t) s}) (specTransducer s)
+       in Spec tm' t' c' tx'
 
 -- Map function over all TypeSpec's in the spec
 specMapTSpec :: (Scope -> TypeSpec -> TypeSpec) -> Spec -> Spec
 specMapTSpec f s =
     let ?spec = s
     in let tm' = map (tmMapTSpec f) (specTemplate s)
+           tx' = map (\t -> t{ txOutType = mapTSpec f ScopeTop $ txOutType t
+                             , txInput   = map (\i -> i{txiType = mapTSpec f ScopeTop $ txiType i}) $ txInput t
+                             , txBody    = case txBody t of
+                                                Left is -> Left is
+                                                Right s -> Right $ statMapTSpec f (ScopeTransducer t) s}) 
+                     (specTransducer s)
            t'  = map (\t -> TypeDecl (pos t) (mapTSpec f ScopeTop $ tspec t) (name t)) (specType s)
            c'  = map (\c -> Const (pos c) (mapTSpec f ScopeTop $ tspec c) (name c) (constVal c)) (specConst s)
-       in Spec tm' t' c'
+       in Spec tm' t' c' tx'
 
 
 ---------------------------------------------------------------------

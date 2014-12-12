@@ -4,6 +4,7 @@ module Frontend.NS(Scope(..),
           WithScope(..),
           isFunctionScope,
           isTemplateScope,
+          isTransducerScope,
           Type(Type),
           WithType(..),
           ppType,
@@ -16,7 +17,7 @@ module Frontend.NS(Scope(..),
           lookupGoal    , checkGoal    , getGoal,
           lookupWire    , checkWire    , getWire,
           lookupRelation, checkRelation, getRelation,
-          Obj(..), objType, objLookup, objGet, isObjMutable,
+          Obj(..), objType, objLookup, objGet, isObjMutable, isObjTxOutput,
           specNamespace) where
 
 import Control.Monad.Error
@@ -30,9 +31,11 @@ import TSLUtil
 import Pos
 import Name
 import Frontend.Template
+import Frontend.Transducer
 import Frontend.Process
 import Frontend.Method
 import {-# SOURCE #-} Frontend.MethodOps
+import Frontend.Statement
 import Frontend.Relation
 import Frontend.TVar
 import Frontend.Const
@@ -41,14 +44,16 @@ import Frontend.Spec
 import Frontend.Expr
 
 data Scope = ScopeTop
-           | ScopeTemplate {scopeTm::Template}
-           | ScopeMethod   {scopeTm::Template, scopeMeth::Method}
-           | ScopeProcess  {scopeTm::Template, scopeProc::Process}
-           | ScopeRelation {scopeTm::Template, scopeRel ::Relation}
+           | ScopeTemplate   {scopeTm::Template}
+           | ScopeTransducer {scopeTx::Transducer}
+           | ScopeMethod     {scopeTm::Template, scopeMeth::Method}
+           | ScopeProcess    {scopeTm::Template, scopeProc::Process}
+           | ScopeRelation   {scopeTm::Template, scopeRel ::Relation}
 
 instance Eq Scope where
     (==) ScopeTop              ScopeTop              = True
     (==) (ScopeTemplate t1)    (ScopeTemplate t2)    = name t1 == name t2
+    (==) (ScopeTransducer t1)  (ScopeTransducer t2)  = name t1 == name t2
     (==) (ScopeMethod t1 m1)   (ScopeMethod t2 m2)   = name t1 == name t2 && name m1 == name m2
     (==) (ScopeProcess t1 p1)  (ScopeProcess t2 p2)  = name t1 == name t2 && name p1 == name p2
     (==) (ScopeRelation t1 r1) (ScopeRelation t2 r2) = name t1 == name t2 && name r1 == name r2
@@ -60,12 +65,19 @@ instance Ord Scope where
     compare (ScopeTemplate t1)    (ScopeTemplate t2)    = compare (name t1) (name t2)
     compare (ScopeTemplate _)     ScopeTop              = GT
     compare (ScopeTemplate _)     _                     = LT
+
+    compare (ScopeTransducer t1)  (ScopeTransducer t2)  = compare (name t1) (name t2)
+    compare (ScopeTransducer _)   (ScopeTemplate _)     = GT
+    compare (ScopeTransducer _)   ScopeTop              = GT
+    compare (ScopeTransducer _)   _                     = LT
  
+
     compare (ScopeMethod t1 m1)   (ScopeMethod t2 m2)   = case compare (name t1) (name t2) of
                                                                EQ -> compare (name m1) (name m2)
                                                                c  -> c
     compare (ScopeMethod _ _)     ScopeTop              = GT
     compare (ScopeMethod _ _)     (ScopeTemplate _)     = GT
+    compare (ScopeMethod _ _)     (ScopeTransducer _)   = GT
     compare (ScopeMethod _ _)     _                     = LT
  
     compare (ScopeProcess t1 p1)  (ScopeProcess t2 p2)  = case compare (name t1) (name t2) of
@@ -73,6 +85,7 @@ instance Ord Scope where
                                                                c  -> c
     compare (ScopeProcess _ _)    ScopeTop              = GT
     compare (ScopeProcess _ _)    (ScopeTemplate _)     = GT
+    compare (ScopeProcess _ _)    (ScopeTransducer _)   = GT
     compare (ScopeProcess _ _)    (ScopeMethod _ _)     = GT
     compare (ScopeProcess _ _)    _                     = LT
 
@@ -92,6 +105,9 @@ isTemplateScope :: Scope -> Bool
 isTemplateScope (ScopeTemplate _) = True
 isTemplateScope _                 = False
 
+isTransducerScope :: Scope -> Bool
+isTransducerScope (ScopeTransducer _) = True
+isTransducerScope _                   = False
 
 data Type = Type Scope TypeSpec
 
@@ -101,6 +117,7 @@ instance WithScope Type where
 instance Show Scope where
     show ScopeTop             = "[top scope]"
     show (ScopeTemplate tm)   = sname tm
+    show (ScopeTransducer tx) = sname tx
     show (ScopeMethod   tm m) = sname tm ++ "::" ++ sname m
     show (ScopeProcess  tm p) = sname tm ++ "::" ++ sname p
     show (ScopeRelation tm r) = sname tm ++ "::" ++ sname r
@@ -134,28 +151,36 @@ instance WithType Type where
 -- TSL specification objects
 
 data Obj = ObjSpec
-         | ObjTemplate Template
-         | ObjPort     Template Port
-         | ObjInstance Template Instance
-         | ObjProcess  Template Process
-         | ObjMethod   Template Method
-         | ObjVar      Scope    Var
-         | ObjGVar     Template GVar
-         | ObjWire     Template Wire
-         | ObjArg      Scope    Arg
-         | ObjRArg     Scope    RArg
-         | ObjType              Type
-         | ObjTypeDecl Scope    TypeDecl
-         | ObjConst    Scope    Const
-         | ObjEnum     Type     Enumerator
-         | ObjGoal     Template Goal
-         | ObjRelation Template Relation
+         | ObjTemplate   Template
+         | ObjPort       Template Port
+         | ObjInstance   Template Instance
+         | ObjTransducer Transducer
+         | ObjTxInput    Transducer TxInput
+         | ObjTxOutput   Transducer
+         | ObjTxInstance Transducer TxInstance
+         | ObjProcess    Template Process
+         | ObjMethod     Template Method
+         | ObjVar        Scope    Var
+         | ObjGVar       Template GVar
+         | ObjWire       Template Wire
+         | ObjArg        Scope    Arg
+         | ObjRArg       Scope    RArg
+         | ObjType                Type
+         | ObjTypeDecl   Scope    TypeDecl
+         | ObjConst      Scope    Const
+         | ObjEnum       Type     Enumerator
+         | ObjGoal       Template Goal
+         | ObjRelation   Template Relation
 
 instance WithPos Obj where
     pos ObjSpec             = error $ "Requesting position of ObjSpec"
     pos (ObjTemplate   t)   = pos t
     pos (ObjPort     _ p)   = pos p
     pos (ObjInstance _ i)   = pos i
+    pos (ObjTransducer t)   = pos t
+    pos (ObjTxOutput t)     = pos $ name t
+    pos (ObjTxInput _ i)    = pos i
+    pos (ObjTxInstance _ i) = pos i
     pos (ObjProcess  _ p)   = pos p
     pos (ObjMethod   _ m)   = pos m
     pos (ObjVar      _ v)   = pos v
@@ -172,90 +197,111 @@ instance WithPos Obj where
     atPos _ = error $ "Not implemented: atPos Obj"
 
 instance WithScope Obj where
-    scope ObjSpec           = error $ "requesting scope of ObjSpec"
-    scope (ObjTemplate _)   = ScopeTop
-    scope (ObjPort t _)     = ScopeTemplate t
-    scope (ObjInstance t _) = ScopeTemplate t
-    scope (ObjProcess t _)  = ScopeTemplate t
-    scope (ObjMethod t _)   = ScopeTemplate t
-    scope (ObjVar s _)      = s
-    scope (ObjGVar t _)     = ScopeTemplate t
-    scope (ObjWire t _)     = ScopeTemplate t
-    scope (ObjArg s _)      = s
-    scope (ObjRArg s _)     = s
-    scope (ObjType t)       = scope t
-    scope (ObjTypeDecl s _) = s
-    scope (ObjConst s _)    = s
-    scope (ObjEnum t _)     = scope t
-    scope (ObjGoal t _)     = ScopeTemplate t
-    scope (ObjRelation t _) = ScopeTemplate t
+    scope ObjSpec             = error $ "requesting scope of ObjSpec"
+    scope (ObjTemplate _)     = ScopeTop
+    scope (ObjPort t _)       = ScopeTemplate t
+    scope (ObjInstance t _)   = ScopeTemplate t
+    scope (ObjTransducer _)   = ScopeTop
+    scope (ObjTxInput t _)    = ScopeTransducer t
+    scope (ObjTxOutput t)     = ScopeTransducer t
+    scope (ObjTxInstance t _) = ScopeTransducer t     
+    scope (ObjProcess t _)    = ScopeTemplate t
+    scope (ObjMethod t _)     = ScopeTemplate t
+    scope (ObjVar s _)        = s
+    scope (ObjGVar t _)       = ScopeTemplate t
+    scope (ObjWire t _)       = ScopeTemplate t
+    scope (ObjArg s _)        = s
+    scope (ObjRArg s _)       = s
+    scope (ObjType t)         = scope t
+    scope (ObjTypeDecl s _)   = s
+    scope (ObjConst s _)      = s
+    scope (ObjEnum t _)       = scope t
+    scope (ObjGoal t _)       = ScopeTemplate t
+    scope (ObjRelation t _)   = ScopeTemplate t
     
 instance WithName Obj where
-    name ObjSpec           = error $ "requesting name of ObjSpec"
-    name (ObjTemplate t)   = name t
-    name (ObjPort     _ p) = name p
-    name (ObjInstance _ i) = name i
-    name (ObjProcess  _ p) = name p
-    name (ObjMethod   _ m) = name m
-    name (ObjVar      _ v) = name v
-    name (ObjGVar     _ v) = name v
-    name (ObjWire     _ w) = name w
-    name (ObjArg      _ a) = name a
-    name (ObjRArg     _ a) = name a
-    name (ObjType       _) = error $ "requesting name of a TypeSpec"
-    name (ObjTypeDecl _ t) = name t
-    name (ObjConst    _ c) = name c
-    name (ObjEnum     _ e) = name e
-    name (ObjGoal     _ g) = name g
-    name (ObjRelation _ r) = name r
+    name ObjSpec             = error $ "requesting name of ObjSpec"
+    name (ObjTemplate t)     = name t
+    name (ObjPort     _ p)   = name p
+    name (ObjInstance _ i)   = name i
+    name (ObjTransducer t)   = name t
+    name (ObjTxInput  _ i)   = name i
+    name (ObjTxOutput  t)    = name t
+    name (ObjTxInstance _ i) = name i
+    name (ObjProcess  _ p)   = name p
+    name (ObjMethod   _ m)   = name m
+    name (ObjVar      _ v)   = name v
+    name (ObjGVar     _ v)   = name v
+    name (ObjWire     _ w)   = name w
+    name (ObjArg      _ a)   = name a
+    name (ObjRArg     _ a)   = name a
+    name (ObjType       _)   = error $ "requesting name of a TypeSpec"
+    name (ObjTypeDecl _ t)   = name t
+    name (ObjConst    _ c)   = name c
+    name (ObjEnum     _ e)   = name e
+    name (ObjGoal     _ g)   = name g
+    name (ObjRelation _ r)   = name r
 
 objType :: (?spec::Spec) => Obj -> Type
-objType (ObjTemplate   _) = error $ "requesting objTypee of ObjTemplate"
-objType (ObjPort     _ p) = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ portTemplate p) $ portTemplate p
-objType (ObjInstance _ i) = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ instTemplate i) $ instTemplate i
-objType (ObjProcess  _ _) = error $ "requesting objTypee of ObjProcess"
-objType (ObjMethod   _ _) = error $ "requesting objTypee of ObjMethod"
-objType (ObjVar      s v) = Type s $ tspec v
-objType (ObjGVar     t v) = Type (ScopeTemplate t) (tspec v)
-objType (ObjWire     t w) = Type (ScopeTemplate t) (tspec w)
-objType (ObjArg      s a) = Type s $ tspec a
-objType (ObjRArg     s a) = Type s $ tspec a
-objType (ObjType       t) = t
-objType (ObjTypeDecl _ _) = error $ "requesting objTypee of ObjTypeDecl"
-objType (ObjConst    s c) = Type s $ tspec c
-objType (ObjEnum     t _) = t
-objType (ObjGoal     _ _) = error $ "requesting objTypee of ObjGoal"
-objType (ObjRelation _ _) = error $ "requesting objTypee of ObjRelation"
+objType (ObjTemplate   _)   = error $ "requesting objType of ObjTemplate"
+objType (ObjPort     _ p)   = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ portTemplate p) $ portTemplate p
+objType (ObjInstance _ i)   = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ instTemplate i) $ instTemplate i
+objType (ObjTransducer _)   = error $ "requesting objType of ObjTransducer"
+objType (ObjTxInput  _ i)   = Type ScopeTop $ tspec i
+objType (ObjTxOutput t)     = Type ScopeTop $ txOutType t
+objType (ObjTxInstance _ i) = error $ "requesting objType of ObjTxInstance"
+objType (ObjProcess  _ _)   = error $ "requesting objType of ObjProcess"
+objType (ObjMethod   _ _)   = error $ "requesting objType of ObjMethod"
+objType (ObjVar      s v)   = Type s $ tspec v
+objType (ObjGVar     t v)   = Type (ScopeTemplate t) (tspec v)
+objType (ObjWire     t w)   = Type (ScopeTemplate t) (tspec w)
+objType (ObjArg      s a)   = Type s $ tspec a
+objType (ObjRArg     s a)   = Type s $ tspec a
+objType (ObjType       t)   = t
+objType (ObjTypeDecl _ _)   = error $ "requesting objType of ObjTypeDecl"
+objType (ObjConst    s c)   = Type s $ tspec c
+objType (ObjEnum     t _)   = t
+objType (ObjGoal     _ _)   = error $ "requesting objType of ObjGoal"
+objType (ObjRelation _ _)   = error $ "requesting objType of ObjRelation"
 
 objTypeSpec :: (?spec::Spec) => Obj -> TypeSpec
 objTypeSpec = tspec . objType
 
 -- True if the value of the object can change at run time
 isObjMutable :: Obj -> Bool
-isObjMutable ObjSpec            = False
-isObjMutable (ObjTemplate _)    = False
-isObjMutable (ObjPort _ _)      = False
-isObjMutable (ObjInstance _ _)  = False
-isObjMutable (ObjProcess _ _)   = False
-isObjMutable (ObjMethod _ _)    = False
-isObjMutable (ObjVar _ _)       = True
-isObjMutable (ObjGVar _ _)      = True
-isObjMutable (ObjWire _ _)      = True
-isObjMutable (ObjArg _ _)       = True
-isObjMutable (ObjRArg _ _)      = False
-isObjMutable (ObjType _)        = False
-isObjMutable (ObjTypeDecl _ _)  = False
-isObjMutable (ObjConst _ _)     = False
-isObjMutable (ObjEnum _ _)      = False
-isObjMutable (ObjGoal _ _)      = False
-isObjMutable (ObjRelation _ _)  = False
+isObjMutable ObjSpec             = False
+isObjMutable (ObjTemplate _)     = False
+isObjMutable (ObjPort _ _)       = True
+isObjMutable (ObjInstance _ _)   = True
+isObjMutable (ObjTransducer _)   = False
+isObjMutable (ObjTxInput _ _)    = True
+isObjMutable (ObjTxOutput _)     = True
+isObjMutable (ObjTxInstance _ _) = True
+isObjMutable (ObjProcess _ _)    = False
+isObjMutable (ObjMethod _ _)     = False
+isObjMutable (ObjVar _ _)        = True
+isObjMutable (ObjGVar _ _)       = True
+isObjMutable (ObjWire _ _)       = True
+isObjMutable (ObjArg _ _)        = True
+isObjMutable (ObjRArg _ _)       = False
+isObjMutable (ObjType _)         = False
+isObjMutable (ObjTypeDecl _ _)   = False
+isObjMutable (ObjConst _ _)      = False
+isObjMutable (ObjEnum _ _)       = False
+isObjMutable (ObjGoal _ _)       = False
+isObjMutable (ObjRelation _ _)   = False
+
+isObjTxOutput :: Obj -> Bool
+isObjTxOutput (ObjTxOutput _) = True
+isObjTxOutput _               = False
 
 objLookup :: (?spec::Spec) => Obj -> Ident -> Maybe Obj
-objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c,e]
+objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c,e,x]
     where s = ScopeTop
           d = fmap (ObjTypeDecl s)   $ find ((== n) . name) (specType ?spec)
           c = fmap (ObjConst    s)   $ find ((== n) . name) (specConst ?spec)
           t = fmap ObjTemplate       $ find ((== n) . name) (specTemplate ?spec)
+          x = fmap ObjTransducer     $ find ((== n) . name) (specTransducer ?spec)
           e = fmap (uncurry ObjEnum) $ find ((== n) . name . snd) (concatMap (\d' -> case tspec d' of
                                                                                           EnumSpec _ es -> map (Type s (UserTypeSpec (pos d') $ [name d']),) es
                                                                                           _             -> []) $ 
@@ -281,6 +327,17 @@ objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,w,i,pr,m,d,c,r,e,g,
           -- search parent templates
           par = listToMaybe $ catMaybes $ map (\d' -> objLookup (ObjTemplate $ getTemplate $ drvTemplate d') n) (tmDerive t)
 
+objLookup (ObjTransducer t) n = listToMaybe $ catMaybes $ [inp,inst,v,o]
+    where inp  = fmap (ObjTxInput t) $ find ((== n) . name) (txInput t)
+          inst = case txBody t of
+                      Left is -> fmap (ObjTxInstance t) $ find ((== n) . name) is
+                      Right _ -> Nothing
+          v    = case txBody t of
+                      Left _  -> Nothing
+                      Right s -> fmap (ObjVar (ScopeTransducer t)) $ find ((== n) . name) $ stmtVar s
+          o    = if' (n == name t) (Just $ ObjTxOutput t) Nothing
+objLookup (ObjTxInput t i)  n = objLookup (ObjType $ Type ScopeTop (tspec i)) n
+objLookup (ObjTxOutput t)   n = objLookup (ObjType $ Type ScopeTop (txOutType t)) n
 objLookup (ObjPort _ p)     n = case objLookup ObjSpec (portTemplate p) of
                                      Just o@(ObjTemplate _)  -> objLookup o n
                                      Nothing                 -> Nothing
@@ -330,6 +387,9 @@ lookupIdent ScopeTop n          = objLookup ObjSpec n
 lookupIdent (ScopeTemplate t) n = listToMaybe $ catMaybes [tm,global]
     where tm     = objLookup (ObjTemplate t) n
           global = objLookup ObjSpec n
+lookupIdent (ScopeTransducer t) n = listToMaybe $ catMaybes [tx,global]
+    where tx     = objLookup (ObjTransducer t) n
+          global = objLookup ObjSpec n          
 lookupIdent (ScopeMethod t m) n = listToMaybe $ catMaybes [local,tm,global]
     where local  = objLookup (ObjMethod t m) n
           tm     = objLookup (ObjTemplate t) n
@@ -381,6 +441,7 @@ lookupTypeDecl s@(ScopeTemplate _) [n] = case lookupTypeLocal s n of
                                               Nothing -> fmap (,ScopeTop) $ lookupTypeLocal ScopeTop n
                                               Just t  -> Just (t, s)
 lookupTypeDecl (ScopeTemplate _)   ns  = lookupTypeDecl ScopeTop ns
+lookupTypeDecl (ScopeTransducer _) ns  = lookupTypeDecl ScopeTop ns
 lookupTypeDecl (ScopeMethod t _)   ns  = lookupTypeDecl (ScopeTemplate t) ns
 lookupTypeDecl (ScopeProcess t _)  ns  = lookupTypeDecl (ScopeTemplate t) ns
 lookupTypeDecl (ScopeRelation t _) ns  = lookupTypeDecl (ScopeTemplate t) ns
@@ -481,6 +542,7 @@ getRelation s n = fromJustMsg "getRelation: relation not found" $ lookupRelation
 
 specNamespace :: (?spec::Spec) => [Obj]
 specNamespace = map ObjTemplate (specTemplate ?spec) ++ 
+                map ObjTransducer (specTransducer ?spec) ++ 
                 map (ObjTypeDecl ScopeTop) (specType ?spec) ++ 
                 map (ObjConst    ScopeTop) (specConst ?spec) ++ 
                 (concatMap (\d -> case tspec d of

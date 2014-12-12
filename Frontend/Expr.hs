@@ -1,6 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances, FlexibleInstances #-}
 
-module Frontend.Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,ERange,ELength,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,EAtLab,ERel,EEOI,ENonDet),
+module Frontend.Expr(Expr(ETerm,ELit,EBool,EApply,EField,EPField,EIndex,ERange,ELength,EUnOp,EBinOp,ETernOp,ECase,ECond,ESlice,EStruct,EAtLab,ERel,EEOI,ESeqVal,ENonDet),
             ConstExpr, 
             LExpr,
             Slice,
@@ -63,6 +63,7 @@ data Expr = ETerm   {epos::Pos, ssym::StaticSym}
           | EAtLab  {epos::Pos, lab::Ident}
           | ERel    {epos::Pos, rname::Ident, rargs::[Expr]}
           | EEOI    {epos::Pos, arg::Expr}
+          | ESeqVal {epos::Pos, arg::Expr}
           | ENonDet {epos::Pos, ndname::Maybe Ident{-internal use only-}}
 
 instance Eq Expr where 
@@ -84,6 +85,7 @@ instance Eq Expr where
    (==) (EAtLab _ l1)         (EAtLab _ l2)         = l1 == l2
    (==) (ERel _ n1 as1)       (ERel _ n2 as2)       = n1 == n2 && as1 == as2
    (==) (EEOI _ s1)           (EEOI _ s2)           = s1 == s2
+   (==) (ESeqVal _ s1)        (ESeqVal _ s2)        = s1 == s2
    (==) (ENonDet _ _)         (ENonDet _ _)         = True
    (==) _                     _                     = False
 
@@ -116,6 +118,7 @@ instance PP Expr where
     pp (EAtLab _ l)              = char '@' <> pp l
     pp (ERel _ n as)             = char '?' <> pp n <+> (parens $ hsep $ punctuate comma $ map pp as)
     pp (EEOI _ s)                = text "eoi" <> (parens $ pp s)
+    pp (ESeqVal _ s)             = char '<' <> pp s <> char '>'
     pp (ENonDet _ _)             = char '*'
 
 instance Show Expr where

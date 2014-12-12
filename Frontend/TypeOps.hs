@@ -10,7 +10,7 @@ module Frontend.TypeOps(mapTSpec,
                         typeComparable,
                         typeWidth,
                         typeSigned,
-                        isInt, isBool, isPtr, isArray, isStruct,
+                        isInt, isBool, isPtr, isArray, isStruct, isSequence, isSeqContainer,
                         tdeclGraph) where
 
 import Control.Monad.Error
@@ -40,6 +40,7 @@ mapTSpec f s (StructSpec p fs)    = f s $ StructSpec p (map (\fl -> Field (pos f
 mapTSpec f s (PtrSpec p t)        = f s $ PtrSpec p (mapTSpec f s t)
 mapTSpec f s (ArraySpec p t l)    = f s $ ArraySpec p (mapTSpec f s t) l
 mapTSpec f s (VarArraySpec p t)   = f s $ VarArraySpec p (mapTSpec f s t)
+mapTSpec f s (SeqSpec p t)        = f s $ SeqSpec p (mapTSpec f s t)
 mapTSpec f s t = f s t
 
 -- Map function over expressions in TypeSpec
@@ -81,6 +82,19 @@ isStruct x = case tspec $ typ' x of
                StructSpec _ _ -> True
                _              -> False
 
+isSequence :: (?spec::Spec, WithType a) => a -> Bool
+isSequence x = case tspec $ typ' x of
+               SeqSpec _ _ -> True
+               _           -> False
+
+isSeqContainer :: (?spec::Spec, WithType a) => a -> Bool
+isSeqContainer x = case tsp of
+                        SeqSpec _ _      -> True
+                        StructSpec _ fs  -> any (isSeqContainer . Type sc . tspec) fs
+                        ArraySpec _ t _  -> isSeqContainer (Type sc t)
+                        VarArraySpec _ t -> isSeqContainer (Type sc t)
+                        _                -> False
+                   where Type sc tsp = typ' x
 -------------------------------------------------
 -- Various equivalence relations over types
 -------------------------------------------------
@@ -105,6 +119,7 @@ typeIso x y =
             (ArraySpec _  atx lx, ArraySpec _ aty ly) -> typeIso (Type sx atx) (Type sy aty) &&
                                                          (let ?scope = sx in evalInt lx) == (let ?scope = sy in evalInt ly)
             (VarArraySpec _ atx , VarArraySpec _ aty) -> typeIso (Type sx atx) (Type sy aty)
+            (SeqSpec _ stx      , SeqSpec _ sty)      -> typeIso (Type sx stx) (Type sy sty)
             (_                  , _)                  -> False
 
 
@@ -128,6 +143,7 @@ typeMatch x y =
             (ArraySpec _  atx lx, ArraySpec _ aty ly) -> typeMatch (Type sx atx) (Type sy aty) &&
                                                          (let ?scope = sx in evalInt lx) == (let ?scope = sy in evalInt ly)
             (VarArraySpec _  atx, VarArraySpec _ aty) -> typeMatch (Type sx atx) (Type sy aty)
+            (SeqSpec _  stx     , SeqSpec _ sty)      -> typeMatch (Type sx stx) (Type sy sty)
             (_                  , FlexTypeSpec _)     -> True
             (_                  , _)                  -> False
 
@@ -161,6 +177,7 @@ typeComparable x y =
             (ArraySpec _  atx lx, ArraySpec _ aty ly) -> typeMatch (Type sx atx) (Type sy aty) &&
                                                          (let ?scope = sx in evalInt lx) == (let ?scope = sy in evalInt ly)
             (VarArraySpec _  atx, VarArraySpec _ aty) -> typeMatch (Type sx atx) (Type sy aty)
+            (SeqSpec _  stx     , SeqSpec _ sty)      -> typeMatch (Type sx stx) (Type sy sty)
             (_                  , _)                  -> False
 
 

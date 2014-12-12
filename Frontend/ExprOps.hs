@@ -63,6 +63,8 @@ mapExpr f s e =
          ESlice p e (l,h)       -> ESlice  p (mapExpr f s e) (mapExpr f s l, mapExpr f s h)
          EStruct p n (Left fs)  -> EStruct p n (Left $ map (mapSnd $ mapExpr f s) fs)
          EStruct p n (Right fs) -> EStruct p n (Right $ map (mapExpr f s) fs)
+         EEOI p sq              -> EEOI    p (mapExpr f s sq)
+         ESeqVal p sq           -> ESeqVal p (mapExpr f s sq)
          ERel p n as            -> ERel    p n (map (mapExpr f s) as)
          e'                     -> e'
 
@@ -85,6 +87,8 @@ exprCallees s (ECond   _ cs md)         = concatMap (\(e1,e2) -> exprCallees s e
 exprCallees s (ESlice  _ e (l,h))       = exprCallees s e ++ exprCallees s l ++ exprCallees s h
 exprCallees s (EStruct _ _ (Left fs))   = concatMap (exprCallees s . snd) fs
 exprCallees s (EStruct _ _ (Right fs))  = concatMap (exprCallees s) fs
+exprCallees s (EEOI    _ sq)            = exprCallees s sq
+exprCallees s (ESeqVal _ sq)            = exprCallees s sq
 exprCallees s (ERel    _ _ as)          = concatMap (exprCallees s) as
 exprCallees _ _                         = []
 
@@ -164,10 +168,11 @@ evalBool e = let BoolVal b = val $ eval e
 -- L-expression: variable, field, array element,
 isLExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isLExpr (ETerm _ n)           = case getTerm ?scope n of
-                                     ObjConst _ _ -> False
-                                     ObjEnum  _ _ -> False
-                                     ObjWire  _ _ -> False
-                                     _            -> True
+                                     ObjConst _ _   -> False
+                                     ObjEnum  _ _   -> False
+                                     ObjWire  _ _   -> False
+                                     ObjTxInput _ _ -> False
+                                     _              -> True
 isLExpr (EField  _       e f) = isLExpr e &&
                                 case objGet (ObjType $ exprType e) f of
                                      ObjWire  _ _ -> False
@@ -250,6 +255,8 @@ isConstExpr (ESlice _ e (l,h))       = isConstExpr e && isConstExpr l && isConst
 isConstExpr (EStruct _ _ (Left fs))  = and $ map (isConstExpr . snd) fs
 isConstExpr (EStruct _ _ (Right fs)) = and $ map isConstExpr fs
 isConstExpr (ERel _ _ _)             = False
+isConstExpr (EEOI _ _)               = False
+isConstExpr (ESeqVal _ _)            = False
 isConstExpr (ENonDet _ _)            = False
 
 
@@ -283,6 +290,8 @@ exprNoSideEffects' (ESlice _ e (l,h))       = exprNoSideEffects' e && exprNoSide
 exprNoSideEffects' (EStruct _ _ (Left fs))  = all (exprNoSideEffects' . snd) fs 
 exprNoSideEffects' (EStruct _ _ (Right fs)) = all exprNoSideEffects' fs 
 exprNoSideEffects' (ERel _ _ as)            = all exprNoSideEffects' as
+exprNoSideEffects' (EEOI _ _)               = True
+exprNoSideEffects' (ESeqVal _ _)            = False -- can fail
 exprNoSideEffects' _                        = True
 
 -- Check that method call is side-effect-free:
@@ -302,9 +311,11 @@ applyNoSideEffects mref mas =  (all isLocalLHS $ catMaybes oargs)
 isPureExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isPureExpr (ETerm   _ t)            = (\o -> (not $ isObjMutable o) ||
                                              case o of
-                                                  ObjArg _ _  -> True
-                                                  ObjVar  _ _ -> True
-                                                  _           -> False)
+                                                  ObjArg _ _     -> True
+                                                  ObjVar  _ _    -> True
+                                                  ObjTxInput _ _ -> True
+                                                  ObjTxOutput _  -> True
+                                                  _              -> False)
                                       $ getTerm ?scope t
 isPureExpr (ELit    _ _ _ _ _)      = True
 isPureExpr (EBool   _ _)            = True
@@ -325,6 +336,8 @@ isPureExpr (EStruct _ _ (Left fs))  = all isPureExpr $ map snd fs
 isPureExpr (EStruct _ _ (Right fs)) = all isPureExpr fs
 isPureExpr (EAtLab  _ _)            = False
 isPureExpr (ERel    _ _ as)         = all isPureExpr as
+isPureExpr (EEOI    _ _)            = True
+isPureExpr (ESeqVal _ _)            = False
 isPureExpr (ENonDet _ _)            = False
 
 -- True if expression _can_ terminate instantaneously 
@@ -353,6 +366,8 @@ isInstExpr (ESlice  _ e _)          = isInstExpr e
 isInstExpr (EStruct _ _ (Left fs))  = all isInstExpr $ map snd fs
 isInstExpr (EStruct _ _ (Right fs)) = all isInstExpr fs
 isInstExpr (ERel _ _ as)            = all isInstExpr as
+isInstExpr (EEOI _ _)               = True
+isInstExpr (ESeqVal _ _)            = True
 isInstExpr (ENonDet _ _)            = True
 
 -- Objects referred to by the expression
@@ -378,6 +393,8 @@ exprObjs (ESlice  _ e (l,h))      = exprObjs e ++ exprObjs l ++ exprObjs h
 exprObjs (EStruct _ _ (Left fs))  = concatMap (exprObjs . snd) fs
 exprObjs (EStruct _ _ (Right fs)) = concatMap exprObjs fs
 exprObjs (ERel    _ n as)         = uncurry ObjRelation (getRelation ?scope n) : concatMap exprObjs as
+exprObjs (EEOI    _ s)            = exprObjs s
+exprObjs (ESeqVal _ s)            = exprObjs s
 exprObjs _                        = []
 
 -- recursive version
@@ -429,11 +446,11 @@ exprType (EUnOp   p Not e)       = Type ?scope $ BoolSpec p
 exprType (EUnOp   _ Deref e)     = Type s t where Type s (PtrSpec _ t) = typ' $ exprType e
 exprType (EUnOp   p AddrOf e)    = Type s (PtrSpec p t) where Type s t = typ' $ exprType e
 exprType (EBinOp  p op e1 e2) | elem op [Eq,Neq,Lt,Gt,Lte,Gte,And,Or,Imp] = Type ?scope $ BoolSpec p
-                         | isArithBOp op = case arithBOpType op (s1,w1) (s2,w2) of
-                                                (True, w')  -> Type ?scope (SIntSpec p w')
-                                                (False, w') -> Type ?scope (UIntSpec p w')
-                                           where (s1,w1) = (typeSigned $ exprType e1, exprWidth e1)
-                                                 (s2,w2) = (typeSigned $ exprType e2, exprWidth e2)
+                              | isArithBOp op = case arithBOpType op (s1,w1) (s2,w2) of
+                                                     (True, w')  -> Type ?scope (SIntSpec p w')
+                                                     (False, w') -> Type ?scope (UIntSpec p w')
+                                                where (s1,w1) = (typeSigned $ exprType e1, exprWidth e1)
+                                                      (s2,w2) = (typeSigned $ exprType e2, exprWidth e2)
 exprType (ETernOp _ _ e2 e3)     = maxType [exprType e2, exprType e3]
 exprType (ECase _ _ cs md)       = maxType $ map exprType $ (map snd cs) ++ maybeToList md
 exprType (ECond _ cs md)         = maxType $ map exprType $ (map snd cs) ++ maybeToList md
@@ -441,6 +458,8 @@ exprType (ESlice p e (l,h))      = Type ?scope $ UIntSpec p (fromInteger (evalIn
 exprType (EStruct p tn _)        = Type ?scope $ UserTypeSpec p tn
 exprType (EAtLab p l)            = Type ?scope $ BoolSpec p
 exprType (ERel   p _ _)          = Type ?scope $ BoolSpec p
+exprType (EEOI   p s)            = Type ?scope $ BoolSpec p
+exprType (ESeqVal p s)           = Type sc t where Type sc (SeqSpec _ t) = typ' $ exprType s
 exprType (ENonDet p _)           = Type ?scope $ FlexTypeSpec p
 
 

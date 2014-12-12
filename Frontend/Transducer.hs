@@ -31,11 +31,14 @@ instance WithPos TxInput where
     pos       = txipos
     atPos i p = i{txipos = p}
 
+instance WithTypeSpec TxInput where 
+    tspec = txiType
+
 data TxInstance = TxInstance { tipos      :: Pos
-                                             , tiTxName   :: Ident
-                                             , tiInstName :: Ident
-                                             , tiInputs   :: [Ident]
-                                             }
+                             , tiTxName   :: Ident
+                             , tiInstName :: Ident
+                             , tiInputs   :: [Ident]
+                             }
 
 instance PP TxInstance where
     pp TxInstance{..} = text "instance" <+> pp tiTxName <+> pp tiInstName 
