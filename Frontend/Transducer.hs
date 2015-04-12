@@ -76,5 +76,3 @@ instance WithName Transducer where
 instance WithPos Transducer where
     pos       = txpos
     atPos t p = t{txpos = p}
-
-

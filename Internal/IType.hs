@@ -28,6 +28,7 @@ data Type = Bool
           | Enum     String
           | Struct   [Field]
           | Ptr      Type
+          | Seq      Type
           | Array    Type Int
           | VarArray Type
           deriving (Eq,Ord)
@@ -39,6 +40,7 @@ instance PP Type where
     pp (Enum e)     = text e
     pp (Struct fs)  = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
     pp (Ptr t)      = pp t <> char '*'
+    pp (Seq t)      = pp t <+> text "seq"
     pp (Array t l)  = pp t <> char '[' <> pp l <> char ']'
     pp (VarArray t) = pp t <> char '[' <> char ']'
 

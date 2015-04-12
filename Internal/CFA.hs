@@ -76,8 +76,9 @@ import qualified Frontend.Expr      as F
 import qualified Frontend.Method    as F
 
 -- Atomic statement
-data Statement = SAssume Expr
-               | SAssign Expr Expr
+data Statement = SAssume  Expr
+               | SAssign  Expr Expr
+               | SAdvance Expr
                deriving (Eq)
 
 instance PP Statement where
@@ -139,13 +140,15 @@ instance PP Stack where
 stackSetLoc :: Stack -> Loc -> Stack
 stackSetLoc ((Frame sc _):frs) l' = (Frame sc l') : frs
 
-data LocLabel = LInst  {locAct :: LocAction}
-              | LPause {locAct :: LocAction, locStack :: Stack, locLabels :: [String], locExpr :: Expr}
-              | LFinal {locAct :: LocAction, locStack :: Stack, locLabels :: [String]}
+data LocLabel = LInst    {locAct :: LocAction}
+              | LPause   {locAct :: LocAction, locStack :: Stack, locLabels :: [String], locExpr :: Expr}
+              | LAdvance {locAct :: LocAction, locExpr :: Expr}
+              | LFinal   {locAct :: LocAction, locStack :: Stack, locLabels :: [String]}
 
 instance PP LocLabel where
     pp (LInst  a)          = pp a
     pp (LPause a _ labs e) = text "WAIT" <> (brackets $ hcat $ punctuate comma $ map pp labs) <> (parens $ pp e) $$ pp a
+    pp (LAdvance a e)      = pp e <> text "++"                                                                   $$ pp a
     pp (LFinal a _ labs)   = text "F"    <> (brackets $ hcat $ punctuate comma $ map pp labs)                    $$ pp a
 
 instance Show LocLabel where

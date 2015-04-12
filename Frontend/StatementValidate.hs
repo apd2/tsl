@@ -197,13 +197,12 @@ validateStat' l (SMagic p _) = do
 checkLoopBody :: (?spec::Spec, ?scope::Scope, ?privoverride::Bool, MonadError String me) => Statement -> me ()
 checkLoopBody s = do
     validateStat' True s
-    when (not $ isTransducerScope ?scope) $
-        case findInstPath False s of
-             Nothing -> return ()
-             Just p  -> err (pos s) $ "Instanteneous path exists through the body of the loop:" ++
-                                      (concat $ map (\s -> "\n    " ++ case s of 
-                                                                            Left st -> spos st ++ ": " ++ show st
-                                                                            Right e -> spos e  ++ ": " ++ show e) p)
+    case findInstPath False s of
+         Nothing -> return ()
+         Just p  -> err (pos s) $ "Instanteneous path exists through the body of the loop:" ++
+                                  (concat $ map (\s -> "\n    " ++ case s of 
+                                                                        Left st -> spos st ++ ": " ++ show st
+                                                                        Right e -> spos e  ++ ": " ++ show e) p)
                                   
 -- Find instantaneous path through the statement.  
 -- If the first argument is true, then Break is considered
@@ -247,6 +246,7 @@ findInstPath b     s@(SITE _ _ c t e)    = if not $ isInstExpr c
                                                         Just st -> shortest $ catMaybes $ map (findInstPath b) $ [t,st]
 findInstPath b     s@(SCase _ _ _ cs md) = shortest $ catMaybes $ map (findInstPath b) $ (map snd cs) ++ maybeToList md
 findInstPath _       (SMagic _ _)        = Nothing
+findInstPath _     s@(SAdvance _ _ e)    = if isXInputExpr e then Nothing else Just [Left s]
 
 
 isBreak :: Either Statement Expr -> Bool

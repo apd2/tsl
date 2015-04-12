@@ -8,6 +8,7 @@ module Frontend.ExprOps(mapExpr,
                         isConstExpr,
                         isInstExpr,
                         isPureExpr,
+                        isXInputExpr,
                         eval,
                         evalInt,
                         exprNoSideEffects,
@@ -182,6 +183,7 @@ isLExpr (EIndex  _       e _) = isLExpr e
 isLExpr (ERange  _ _ _)       = False -- TODO: support range expressions in LHS if needed
 isLExpr (ESlice  _       e _) = isLExpr e
 isLExpr (EUnOp   _ Deref e  ) = True
+isLExpr (ESeqVal _ e)         = not $ isXInputExpr e
 isLExpr _                     = False
 
 -- Mem-expression: like L-expression, but must additionally
@@ -259,6 +261,18 @@ isConstExpr (EEOI _ _)               = False
 isConstExpr (ESeqVal _ _)            = False
 isConstExpr (ENonDet _ _)            = False
 
+-- Expression refers to part of an input argument to a transducer
+isXInputExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+isXInputExpr (ETerm _ n)     = case getTerm ?scope n of
+                                    ObjTxInput _ _ -> True
+                                    _              -> False
+isXInputExpr (EField _ s _)  = isXInputExpr s
+isXInputExpr (EPField _ s _) = isXInputExpr s
+isXInputExpr (EIndex _ a _)  = isXInputExpr a
+isXInputExpr (ERange _ a _)  = isXInputExpr a
+isXInputExpr (ESlice _ e _)  = isXInputExpr e
+isXInputExpr (ESeqVal _ s)   = isXInputExpr s
+isXInputExpr _               = False
 
 -- Side-effect free expressions
 

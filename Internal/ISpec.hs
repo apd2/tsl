@@ -55,6 +55,7 @@ data Spec = Spec {
     specPrefix :: Maybe CFA,                   -- prefix blocks
     specProc   :: [Process],                   -- processes
     specCAct   :: CFA,                         -- controllable transitions
+    
     specUpds   :: M.Map String [(Expr, Expr)], -- variable update functions specified explicitly
     specRels   :: [Relation],
     specApply  :: [Apply],

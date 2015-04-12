@@ -105,6 +105,13 @@ statToCFA before s = do
     
 statToCFA0 :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA0 before   (SSeq _ _ ss)    = foldM statToCFA before ss
+statToCFA0 before s@(SAdvance _ _ e) = do sc <- gets ctxScope
+                                          let ?scope = sc
+                                          ei <- exprToIExprDet e
+                                          ctxLocSetAct before (I.ActStat s) 
+                                          if isXInputExpr e
+                                             then ctxAdvance before ei (I.ActStat s)
+                                             else ctxInsTrans' before $ I.TranStat $ I.SAdvance ei
 statToCFA0 before s@(SPause _ _)     = do ctxLocSetAct before (I.ActStat s)
                                           ctxPause before I.true (I.ActStat s)
 statToCFA0 before s@(SWait _ _ c)    = do ctxLocSetAct before (I.ActStat s)

@@ -472,6 +472,12 @@ ctxPause loc cond act = do
 --    ctxSuffix loc after after
     ctxInsTrans' after (I.TranStat $ I.SAssume cond)
 
+ctxAdvance :: I.Loc -> I.Expr -> I.LocAction -> State CFACtx I.Loc
+ctxAdvance loc eseq act = do
+    after <- ctxInsLocLab (I.LAdvance act eseq)
+    ctxInsTrans loc after $ I.TranNop
+    return after
+
 ctxFinal :: I.Loc -> State CFACtx I.Loc
 ctxFinal loc = do 
     labs <- gets ctxLabels
