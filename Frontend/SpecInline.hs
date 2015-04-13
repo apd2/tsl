@@ -13,12 +13,13 @@ import qualified Data.Graph.Inductive.Graph as G
 import TSLUtil
 import Util hiding (name, trace)
 import Frontend.Spec
-import qualified Internal.ISpec    as I
-import qualified Internal.TranSpec as I
-import qualified Internal.IExpr    as I
-import qualified Internal.CFA      as I
-import qualified Internal.IType    as I
-import qualified Internal.IVar     as I
+import qualified Internal.ISpec       as I
+import qualified Internal.TranSpec    as I
+import qualified Internal.IExpr       as I
+import qualified Internal.CFA         as I
+import qualified Internal.IType       as I
+import qualified Internal.IVar        as I
+import qualified Internal.ITransducer as I
 import Internal.PID
 import Pos
 import Name
@@ -38,6 +39,7 @@ import Frontend.MethodOps
 import Frontend.Process
 import Frontend.Type
 import Frontend.Inline
+import Frontend.Transducer
 
 
 -- Main function
@@ -82,6 +84,7 @@ spec2Internal s =
         specTran           = error "specTran undefined"
         specUpds           = M.empty -- mkUpds spec'
         specApply          = map applyToIApply $ tmApply tmMain
+        specXducers        = map xducerToIXducer $ specTransducer s
         spec0              = I.Spec {..}
         spec               = I.specMapCFA (\cfa -> I.cfaMapExpr cfa $ exprExpandLabels spec0) spec0
         spec'              = I.specMapCFA (\cfa -> I.cfaMapStat cfa $ statAddNullTypes spec) spec
@@ -376,6 +379,28 @@ mkVars = mkErrVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires ++ gvars ++ fva
         (let ?scope = ScopeMethod tmMain m in map (\v -> mkVarDecl (varMem v) (NSID mpid (Just m)) v (varType v)) (methVar m)) ++ 
         (let ?scope = ScopeMethod tmMain m in map (\a -> mkVarDecl False (NSID mpid (Just m)) a (argType a)) (methArg m)) ++
         (if ret then maybeToList (mkRetVarDecl mpid m) else [])
+
+----------------------------------------------------------------------
+-- Transducers
+----------------------------------------------------------------------
+
+xducerToIXducer :: (?spec::Spec) => Transducer -> I.Transducer
+xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer (mkType $ Type ScopeTop ot) (sname n) is' b'
+    where is' = map (\i -> (mkType $ Type ScopeTop $ txiType i, sname i)) is
+          ctx stat = CFACtx { ctxEPID    = Nothing 
+                            , ctxStack   = [(ScopeTransducer x, error "return from a transducer", Nothing, xducerLMap x)]
+                            , ctxCFA     = I.newCFA (ScopeTransducer x) stat I.true
+                            , ctxBrkLocs = error "break outside a loop"
+                            , ctxGNMap   = globalConstNMap
+                            , ctxLastVar = 0
+                            , ctxVar     = []
+                            , ctxLabels  = []}
+          b' = case b of
+                    Left  insts -> Left $ map (\i -> I.TxInstance (sname i) (sname $ tiInstName i) (map sname $ tiInputs i)) insts
+                    Right st    -> let ?procs = []
+                                       ?nestedmb = False
+                                   in Right $ ctxCFA $ execState (do aft <- procStatToCFA st I.cfaInitLoc
+                                                                     ctxFinal aft) (ctx st)
 
 ----------------------------------------------------------------------
 -- CFA transformation

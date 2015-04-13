@@ -207,6 +207,7 @@ cfaSave cfa title tmp = graphSave cfa ("cfa_" ++ title) tmp
 isDelayLabel :: LocLabel -> Bool
 isDelayLabel (LPause _ _ _ _) = True
 isDelayLabel (LFinal _ _ _)   = True
+isDelayLabel (LAdvance _ _)   = True
 isDelayLabel (LInst _)        = False
 
 isDeadendLoc :: CFA -> Loc -> Bool

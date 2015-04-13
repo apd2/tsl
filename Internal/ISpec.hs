@@ -37,6 +37,7 @@ import Internal.IVar
 import Internal.IType
 import Internal.IExpr
 import Internal.IRelation
+import Internal.ITransducer
 import Internal.TranSpec
 import PP
 import Internal.PID
@@ -49,18 +50,18 @@ data Process = Process {
 }
 
 data Spec = Spec {
-    specEnum   :: [Enumeration],
-    specVar    :: [Var],
-    specWire   :: Maybe CFA,                   -- wire assignment
-    specPrefix :: Maybe CFA,                   -- prefix blocks
-    specProc   :: [Process],                   -- processes
-    specCAct   :: CFA,                         -- controllable transitions
-    
-    specUpds   :: M.Map String [(Expr, Expr)], -- variable update functions specified explicitly
-    specRels   :: [Relation],
-    specApply  :: [Apply],
-    specTran   :: TranSpec                     -- info required for variable update
-                                               -- computation
+    specEnum    :: [Enumeration],
+    specVar     :: [Var],
+    specWire    :: Maybe CFA,                   -- wire assignment
+    specPrefix  :: Maybe CFA,                   -- prefix blocks
+    specProc    :: [Process],                   -- processes
+    specCAct    :: CFA,                         -- controllable transitions
+    specUpds    :: M.Map String [(Expr, Expr)], -- variable update functions specified explicitly
+    specRels    :: [Relation],
+    specApply   :: [Apply],
+    specTran    :: TranSpec,                    -- info required for variable update
+                                                -- computation
+    specXducers :: [Transducer]                 -- transducers
 }
 
 specStateVar :: Spec -> [Var]

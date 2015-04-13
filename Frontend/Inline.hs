@@ -26,6 +26,8 @@ import Frontend.Process
 import Frontend.Type
 import Frontend.TypeOps
 import Frontend.ExprOps
+import Frontend.Transducer
+import Frontend.Statement
 import Ops
 import Frontend.Const
 import Frontend.Val
@@ -298,25 +300,35 @@ methodLMap mpid meth =
 procLMap :: Process -> NameMap
 procLMap p = M.fromList $ map (\v -> (name v, mkVar (NSID (Just $ PrID (sname p) []) Nothing) v)) (procVar p)
 
+xducerLMap :: Transducer -> NameMap
+xducerLMap x@Transducer{..} = M.fromList $ inputs ++ [output] ++ locals
+    where inputs = map (\i -> (name i, I.EVar $ sname i)) txInput
+          output = (name x, I.EVar $ sname x)
+          locals = case txBody of
+                        Left _   -> []
+                        Right st -> map (\v -> (name v, I.EVar $ sname v)) $ stmtVar st
+
 scopeLMap :: Maybe PrID -> Scope -> NameMap
 scopeLMap mpid sc = 
     case sc of
          ScopeMethod   _ meth -> methodLMap mpid meth
          ScopeProcess  _ proc -> procLMap proc
+         ScopeTransducer tx   -> xducerLMap tx
          ScopeTemplate _      -> M.empty
  
 globalNMap :: (?spec::Spec) => NameMap
-globalNMap = M.fromList $ gvars ++ wires ++ enums ++ consts
+globalNMap = M.union (M.fromList $ gvars ++ wires) globalConstNMap
     where -- global variables
           gvars  = map (\v -> (name v, mkVar (NSID Nothing Nothing) v)) $ tmVar tmMain
           -- wires
           wires  = map (\w -> (name w, mkVar (NSID Nothing Nothing) w)) $ tmWire tmMain
-          -- enums
-          enums  = concatMap (\d -> case tspec d of
+
+globalConstNMap :: (?spec::Spec) => NameMap
+globalConstNMap = M.fromList $ enums ++ consts
+    where enums  = concatMap (\d -> case tspec d of
                                             EnumSpec _ es -> map (\e -> (name e, I.EConst $ I.EnumVal $ sname e)) es
                                             _             -> []) 
                              $ specType ?spec
-          -- consts
           consts = let ?scope = ScopeTop
                    in mapMaybe (\c -> case eval $ constVal c of
                                            TVal _ (StructVal _) -> Nothing
