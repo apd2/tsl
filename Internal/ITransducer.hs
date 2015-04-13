@@ -5,6 +5,7 @@ module Internal.ITransducer(TxInstance(..),
 
 import Internal.CFA
 import Internal.IType
+import Internal.IVar
 
 data TxInstance = TxInstance { tiTxName   :: String
                              , tiInstName :: String
@@ -14,7 +15,7 @@ data TxInstance = TxInstance { tiTxName   :: String
 data Transducer = Transducer { txOutType        :: Type
                              , txName           :: String
                              , txInput          :: [(Type, String)]
-                             , txBody           :: Either [TxInstance] CFA
+                             , txBody           :: Either [TxInstance] (CFA, [Var])
                              }
 
 
