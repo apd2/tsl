@@ -118,10 +118,10 @@ solToVarAsns vmap vs (cond, sol) = (conj $ map (catomToExpr vmap) cond, map (\v 
 solToVarAsn :: (?spec::Spec, ?vmap::VarMap) => [(BV.SVar, Either Bool BV.CTerm)] -> Expr -> VarAsn
 solToVarAsn sol e = 
     case exprType e of
-         Struct fs  -> AsnStruct $ map (\(Field n _) -> (n, solToVarAsn sol $ EField e n)) fs
-         Array _ _  -> error "solToVarAsn: Array is not supported"
-         VarArray _ -> error "solToVarAsn: VarArray is not supported"
-         _          -> solToScalarAsn sol e
+         Struct _ fs  -> AsnStruct $ map (\(Field n _) -> (n, solToVarAsn sol $ EField e n)) fs
+         Array _ _ _  -> error "solToVarAsn: Array is not supported"
+         VarArray _ _ -> error "solToVarAsn: VarArray is not supported"
+         _            -> solToScalarAsn sol e
 
 solToScalarAsn :: (?spec::Spec, ?vmap::VarMap) => [(BV.SVar, Either Bool BV.CTerm)] -> Expr -> VarAsn
 solToScalarAsn sol e = AsnScalar 
@@ -230,7 +230,7 @@ avarToRel (AVarBool t               , [True])  = (BV.Eq , t, TTrue)
 avarToRel (AVarBool t               , [False]) = (BV.Neq, t, TTrue) 
 avarToRel (AVarInt  t               , val)     = (BV.Eq , t, TUInt (length val) (boolArrToBitsBe val))
 avarToRel (AVarEnum t               , val)     = (BV.Eq , t, TEnum $ (enumEnums $ getEnumeration n) !! (boolArrToBitsBe val))
-                                                 where Enum n = termType t
+                                                 where Enum _ n = termType t
 
 -- TODO: Add pair-wise inequality constraints between
 -- AddrOf terms
@@ -389,9 +389,9 @@ fixupTypes :: (?spec::Spec) => Expr -> Expr
 fixupTypes (EBinOp op e1 e2) = EBinOp op (fixupType (exprType e2) e1) (fixupType (exprType e1) e2)
 
 fixupType :: (?spec::Spec) => Type -> Expr -> Expr
-fixupType (Enum n) e = if' (isConstExpr e) (EConst $ EnumVal $ (enumEnums $ getEnumeration n) !! fromInteger (ivalVal $ evalConstExpr e)) e
-fixupType Bool     e = if' (isConstExpr e) (EConst $ BoolVal $ if' ((ivalVal $ evalConstExpr e) == 0) False True) e
-fixupType _        e = e
+fixupType (Enum _ n) e = if' (isConstExpr e) (EConst $ EnumVal $ (enumEnums $ getEnumeration n) !! fromInteger (ivalVal $ evalConstExpr e)) e
+fixupType (Bool _)   e = if' (isConstExpr e) (EConst $ BoolVal $ if' ((ivalVal $ evalConstExpr e) == 0) False True) e
+fixupType _          e = e
 
 ctermToTerm :: (?spec::Spec, ?vmap::VarMap) => BV.CTerm -> Term
 ctermToTerm t@BV.CTerm{..} | null ctVars

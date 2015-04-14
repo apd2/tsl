@@ -82,7 +82,7 @@ avarWidth (AVarInt  t) = termWidth t
 
 avarRange :: (?spec::Spec) => AbsVar -> Int
 avarRange (AVarPred _) = 1
-avarRange (AVarEnum t) = let Enum n = termType t in
+avarRange (AVarEnum t) = let Enum _ n = termType t in
                          (length $ enumEnums $ getEnumeration n) - 1
 avarRange (AVarBool _) = 1
 avarRange (AVarInt  t) = (1 `shiftL` (termWidth t)) - 1
@@ -128,10 +128,10 @@ avarToExpr (AVarInt  t) = termToExpr t
 
 avarValToConst :: (?spec::Spec) => AbsVar -> Int -> Val
 avarValToConst av i = case exprType $ avarToExpr av of
-                           Bool   -> if' (i==0) (BoolVal False) (BoolVal True)
-                           UInt w -> UIntVal w (fromIntegral i)
-                           SInt w -> SIntVal w (fromIntegral i)
-                           Enum n -> EnumVal $ (enumEnums $ getEnumeration n) !! i
+                           Bool _   -> if' (i==0) (BoolVal False) (BoolVal True)
+                           UInt _ w -> UIntVal w (fromIntegral i)
+                           SInt _ w -> SIntVal w (fromIntegral i)
+                           Enum _ n -> EnumVal $ (enumEnums $ getEnumeration n) !! i
 
 
 instance PP AbsVar where

@@ -181,17 +181,17 @@ mkArg' :: (?inspec::F.Spec, ?flatspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.S
 mkArg' lab t e =
     -- trace ("mkArg' " ++ show lab ++ " " ++ (show $ F.tspec t) ++ "" ++ show e) $
     case I.exprType e of
-         Struct fs  -> let F.Type sc (F.StructSpec _ fs') = let ?spec = ?flatspec 
-                                                                ?scope = ?sc 
-                                                            in F.typ' t
-                       in (let ?spec = ?flatspec in F.ppType t) PP.<> 
-                          (PP.braces $ PP.hcat $ PP.punctuate PP.comma $ map (\(Field n _,f) -> let t' = let ?spec = ?flatspec 
-                                                                                                             ?scope = sc 
-                                                                                                          in F.fieldType f
-                                                                                                in mkArg' lab t' (I.EField e n)) $ zip fs fs')
-         Array _ _  -> error $ "mkArg " ++ show e ++ ": Arrays are not supported"
-         VarArray _ -> error $ "mkArg " ++ show e ++ ": VarArrays are not supported"
-         _          -> mkScalar lab e
+         Struct _ fs  -> let F.Type sc (F.StructSpec _ fs') = let ?spec = ?flatspec 
+                                                                  ?scope = ?sc 
+                                                              in F.typ' t
+                         in (let ?spec = ?flatspec in F.ppType t) PP.<> 
+                            (PP.braces $ PP.hcat $ PP.punctuate PP.comma $ map (\(Field n _,f) -> let t' = let ?spec = ?flatspec 
+                                                                                                               ?scope = sc 
+                                                                                                           in F.fieldType f
+                                                                                                  in mkArg' lab t' (I.EField e n)) $ zip fs fs')
+         Array _ _ _  -> error $ "mkArg " ++ show e ++ ": Arrays are not supported"
+         VarArray _ _ -> error $ "mkArg " ++ show e ++ ": VarArrays are not supported"
+         _            -> mkScalar lab e
 
 mkScalar :: (?inspec::F.Spec, ?spec::Spec, ?pid::PrID, ?sc::F.Scope) => [(String, VarAsn)] -> I.Expr -> PP.Doc
 mkScalar lab e | masn == Nothing = PP.text "/* any value */" PP.<> (exprToTSL2 ?inspec ?pid ?sc $ I.EConst $ I.valDefault $ I.exprType e)
@@ -386,7 +386,7 @@ mkCondCube care cub = do
    return $ I.conj 
           $ map (\(av, vals) -> -- Cube may contain ivalid enum values.  Filter them out.
                                 let vals' = case av of 
-                                                 AVarEnum t -> let Enum n = termType t
+                                                 AVarEnum t -> let Enum _ n = termType t
                                                                    l = toInteger $ length $ enumEnums $ getEnumeration n
                                                                in filter (< l) vals
                                                  _          -> vals

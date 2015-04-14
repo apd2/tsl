@@ -7,10 +7,12 @@ import Data.List.Split
 import Data.Maybe
 import Data.Tuple.Select
 import Control.Monad.State
+import Text.PrettyPrint
 import qualified Data.Map             as M
 import qualified Data.Graph.Inductive as G
 
 import Util hiding (name)
+import PP
 import qualified Internal.IExpr    as I
 import qualified Internal.CFA      as I
 import qualified Internal.IType    as I
@@ -102,7 +104,7 @@ mkEnVar :: PrID -> Maybe Method -> I.Expr
 mkEnVar pid mmeth = I.EVar $ mkEnVarName pid mmeth
 
 mkEnVarDecl :: PrID -> Maybe Method -> I.Var
-mkEnVarDecl pid mmeth = I.Var False I.VarState (mkEnVarName pid mmeth) I.Bool
+mkEnVarDecl pid mmeth = I.Var False I.VarState (mkEnVarName pid mmeth) (I.Bool Nothing)
 
 mkWaitForTask :: PrID -> Method -> I.Expr
 mkWaitForTask pid meth = envar I.=== I.false
@@ -156,7 +158,7 @@ mkFairSchedVarName :: String
 mkFairSchedVarName = "$fair_sched"
 
 mkFairSchedVarDecl :: I.Var
-mkFairSchedVarDecl = I.Var False I.VarState mkFairSchedVarName I.Bool
+mkFairSchedVarDecl = I.Var False I.VarState mkFairSchedVarName (I.Bool Nothing)
 
 mkFairSchedVar :: I.Expr
 mkFairSchedVar = I.EVar mkFairSchedVarName
@@ -172,7 +174,7 @@ isFairVarName :: String -> Bool
 isFairVarName n = (isJust $ fairProcVarPID n) || n == mkFairSchedVarName
 
 mkFairProcVarDecl :: PrID -> I.Var
-mkFairProcVarDecl pid = I.Var False I.VarState (mkFairProcVarName pid) I.Bool
+mkFairProcVarDecl pid = I.Var False I.VarState (mkFairProcVarName pid) (I.Bool Nothing)
 
 mkFairProcVar :: PrID -> I.Expr
 mkFairProcVar pid = I.EVar $ mkFairProcVarName pid
@@ -207,7 +209,7 @@ mkPIDEnumName = "$pidenum"
 --mkEPIDNone = "$epidnone"
 
 mkPIDLVarDecl :: [PrID] -> (I.Var, I.Enumeration)
-mkPIDLVarDecl pids = (I.Var False I.VarTmp mkPIDLVarName (I.Enum mkPIDEnumName), enum)
+mkPIDLVarDecl pids = (I.Var False I.VarTmp mkPIDLVarName (I.Enum Nothing mkPIDEnumName), enum)
     where enum = I.Enumeration mkPIDEnumName $ map mkPIDEnumeratorName pids
 
 --mkContVarName :: String
@@ -226,7 +228,7 @@ mkContLVar :: I.Expr
 mkContLVar = I.EVar mkContLVarName
 
 mkContLVarDecl :: (?spec::Spec) => I.Var
-mkContLVarDecl = I.Var False I.VarTmp mkContLVarName I.Bool
+mkContLVarDecl = I.Var False I.VarTmp mkContLVarName (I.Bool Nothing)
 
 mkMagicVarName :: String
 mkMagicVarName = "$magic"
@@ -235,7 +237,7 @@ mkMagicVar :: I.Expr
 mkMagicVar = I.EVar mkMagicVarName
 
 mkMagicVarDecl :: I.Var
-mkMagicVarDecl = I.Var False I.VarState mkMagicVarName I.Bool
+mkMagicVarDecl = I.Var False I.VarState mkMagicVarName (I.Bool Nothing)
 
 mkMagicDoneCond :: I.Expr
 mkMagicDoneCond = mkMagicVar I.=== I.false
@@ -247,7 +249,7 @@ mkErrVar :: I.Expr
 mkErrVar = I.EVar mkErrVarName
 
 mkErrVarDecl :: I.Var
-mkErrVarDecl = I.Var False I.VarState mkErrVarName I.Bool
+mkErrVarDecl = I.Var False I.VarState mkErrVarName (I.Bool Nothing)
 
 mkTagVarName :: String
 mkTagVarName = "$tag"
@@ -260,7 +262,7 @@ mkTagDoNothing = "$tagnop"  -- idle loop transition
 -- mkTagNone = "$tagnone"
 
 mkTagVarDecl :: (?spec::Spec) => (I.Var, I.Enumeration)
-mkTagVarDecl = (I.Var False I.VarTmp mkTagVarName (I.Enum "$tags"), I.Enumeration "$tags" mkTagList)
+mkTagVarDecl = (I.Var False I.VarTmp mkTagVarName (I.Enum Nothing "$tags"), I.Enumeration "$tags" mkTagList)
 
 mkTagList :: (?spec::Spec) => [String]
 mkTagList = mkTagExit :
@@ -276,14 +278,14 @@ mkChoiceTypeName :: Int -> String
 mkChoiceTypeName n = "$choice" ++ show n
 
 mkChoiceType :: Int -> I.Type
-mkChoiceType n = I.Enum $ mkChoiceTypeName n
+mkChoiceType n = I.Enum Nothing $ mkChoiceTypeName n
 
 mkChoiceValName :: String -> Int -> String
 mkChoiceValName tname i = tname ++ "_" ++ show i
 
 mkChoice :: I.Var -> Int -> I.Expr
 mkChoice v i = I.EConst $ I.EnumVal $ mkChoiceValName tname i
-    where I.Enum tname = I.varType v 
+    where I.Enum _ tname = I.varType v 
 
 mkChoiceEnumDecl :: Int -> I.Enumeration
 mkChoiceEnumDecl i = I.Enumeration {..}
@@ -350,15 +352,18 @@ valToIVal (TVal _ (EnumVal n))     = I.EnumVal $ sname n
 mkType :: (?spec::Spec) => Type -> I.Type
 mkType t = 
     case typ' t of
-         Type _ (BoolSpec     _)      -> I.Bool
-         Type _ (SIntSpec     _ w)    -> I.SInt w
-         Type _ (UIntSpec     _ w)    -> I.UInt w
-         Type s (StructSpec   _ fs)   -> I.Struct $ map (\(Field _ t' n) -> I.Field (sname n) (mkType (Type s t'))) fs 
-         Type _ (EnumSpec     _ es)   -> I.Enum $ getEnumName $ name $ head es
-         Type s (PtrSpec      _ t')   -> I.Ptr $ mkType $ Type s t'
-         Type s (ArraySpec    _ t' l) -> let ?scope = s in I.Array (mkType $ Type s t') (fromInteger $ evalInt l)
-         Type s (VarArraySpec _ t')   -> let ?scope = s in I.VarArray (mkType $ Type s t')
+         Type _ (BoolSpec     _)      -> I.Bool alias
+         Type _ (SIntSpec     _ w)    -> I.SInt alias w
+         Type _ (UIntSpec     _ w)    -> I.UInt alias w
+         Type s (StructSpec   _ fs)   -> I.Struct alias $ map (\(Field _ t' n) -> I.Field (sname n) (mkType (Type s t'))) fs 
+         Type _ (EnumSpec     _ es)   -> I.Enum alias $ getEnumName $ name $ head es
+         Type s (PtrSpec      _ t')   -> I.Ptr alias $ mkType $ Type s t'
+         Type s (ArraySpec    _ t' l) -> let ?scope = s in I.Array alias (mkType $ Type s t') (fromInteger $ evalInt l)
+         Type s (VarArraySpec _ t')   -> let ?scope = s in I.VarArray alias (mkType $ Type s t')
          Type _ t'                    -> error $ "mkType: " ++ show t'
+    where alias = case tspec t of
+                       UserTypeSpec _ a -> Just $ render $ pp a
+                       _                -> Nothing
 
 
 getEnumName :: (?spec::Spec) => Ident -> String

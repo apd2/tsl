@@ -172,7 +172,7 @@ tslInconsistent spec m ops = do
     let ?spec = spec
     allvars <- hoist lift $ Abs.allVars ops
     let enumcond = H.Disj
-                   $ map (\av@(AVarEnum t) -> let Enum tname = termType t
+                   $ map (\av@(AVarEnum t) -> let Enum _ tname = termType t
                                               in H.Conj 
                                                  $ mapIdx (\_ i -> H.Not $ H.EqConst (H.NVar $ avarBAVar av) i)
                                                  $ enumEnums $ getEnumeration tname)

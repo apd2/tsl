@@ -22,27 +22,29 @@ instance PP Field where
 instance Typed Field where
     typ (Field _ t) = t
 
-data Type = Bool
-          | SInt     Int
-          | UInt     Int
-          | Enum     String
-          | Struct   [Field]
-          | Ptr      Type
-          | Seq      Type
-          | Array    Type Int
-          | VarArray Type
+type MString = Maybe String
+
+data Type = Bool     MString 
+          | SInt     MString Int
+          | UInt     MString Int
+          | Enum     MString String
+          | Struct   MString [Field]
+          | Ptr      MString Type
+          | Seq      MString Type
+          | Array    MString Type Int
+          | VarArray MString Type
           deriving (Eq,Ord)
 
 instance PP Type where
-    pp Bool         = text "bool"
-    pp (SInt i)     = text "sint" <> char '<' <> pp i <> char '>'
-    pp (UInt i)     = text "uint" <> char '<' <> pp i <> char '>'
-    pp (Enum e)     = text e
-    pp (Struct fs)  = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
-    pp (Ptr t)      = pp t <> char '*'
-    pp (Seq t)      = pp t <+> text "seq"
-    pp (Array t l)  = pp t <> char '[' <> pp l <> char ']'
-    pp (VarArray t) = pp t <> char '[' <> char ']'
+    pp (Bool _)       = text "bool"
+    pp (SInt _ i)     = text "sint" <> char '<' <> pp i <> char '>'
+    pp (UInt _ i)     = text "uint" <> char '<' <> pp i <> char '>'
+    pp (Enum _ e)     = text e
+    pp (Struct _ fs)  = text "struct" <+> (braces $ nest' $ vcat $ map ((<> semi) . pp) fs)
+    pp (Ptr _ t)      = pp t <> char '*'
+    pp (Seq _ t)      = pp t <+> text "seq"
+    pp (Array _ t l)  = pp t <> char '[' <> pp l <> char ']'
+    pp (VarArray _ t) = pp t <> char '[' <> char ']'
 
 instance Show Type where
     show = render . pp
@@ -55,36 +57,38 @@ instance Typed Type where
 
 isSigned :: (Typed a) => a -> Bool
 isSigned x = case typ x of
-                  SInt _ -> True
-                  UInt _ -> False
+                  SInt _ _ -> True
+                  UInt _ _ -> False
 
 
 isInt :: (Typed a) => a -> Bool
 isInt x = case typ x of
-               SInt _ -> True
-               UInt _ -> True
+               SInt _ _ -> True
+               UInt _ _ -> True
                _      -> False
 
 isEnum :: (Typed a) => a -> Bool
 isEnum x = case typ x of
-                Enum _ -> True
-                _      -> False
+                Enum _ _ -> True
+                _        -> False
 
 isPtr :: (Typed a) => a -> Bool
 isPtr x = case typ x of
-               Ptr _ -> True
-               _     -> False
+               Ptr _ _ -> True
+               _       -> False
 
 isBool :: (Typed a) => a -> Bool
-isBool x = typ x == Bool 
+isBool x = case typ x of
+                Bool _ -> True 
+                _      -> False
 
 isScalar :: (Typed a) => a -> Bool
 isScalar x = case typ x of
-                  Bool   -> True
-                  SInt _ -> True
-                  UInt _ -> True
-                  Enum _ -> True
-                  Ptr _  -> True
+                  Bool _   -> True
+                  SInt _ _ -> True
+                  UInt _ _ -> True
+                  Enum _ _ -> True
+                  Ptr  _ _ -> True
                   _      -> False
 
 data Enumeration = Enumeration { enumName  :: String

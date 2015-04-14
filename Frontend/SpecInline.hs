@@ -53,7 +53,7 @@ spec2Internal s =
         -- PC variables and associated enums
         (pcvars, pcenums) = unzip 
                             $ map (\(EPIDProc pid,cfa) -> let enum = I.Enumeration (mkPCEnumName pid) $ map (mkPCEnum pid) $ I.cfaDelayLocs cfa
-                                                              var  = I.Var False I.VarState (mkPCVarName pid) (I.Enum $ I.enumName enum)
+                                                              var  = I.Var False I.VarState (mkPCVarName pid) (I.Enum Nothing $ I.enumName enum)
                                                           in (var, enum)) 
                             $ filter ((/=1) . length . I.cfaDelayLocs . snd)
                             $ filter ((/= EPIDCont) . fst) cfas

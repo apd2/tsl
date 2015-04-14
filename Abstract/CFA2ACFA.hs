@@ -325,8 +325,8 @@ lhsExprEq (EUnOp Deref e1) e2             | t1 == t2 && isMemExpr e2 =
          FTrue  -> CasLeaf True
          FFalse -> CasLeaf False
          f      -> casTree [(f, CasLeaf True), (fnot f, CasLeaf False)]
-    where Ptr t1 = exprType e1
-          t2     = exprType e2
+    where Ptr _ t1 = exprType e1
+          t2       = exprType e2
 lhsExprEq _              _                           = CasLeaf False
 
 

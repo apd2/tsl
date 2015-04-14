@@ -105,14 +105,14 @@ getRelation r = fromJustMsg ("getRelation: relation " ++ r ++ " not found")
 
 
 twidth :: (?spec::Spec) => Type -> Int
-twidth Bool        = 1
-twidth (Ptr _)     = 64
-twidth (SInt w)    = w
-twidth (UInt w)    = w
-twidth (Enum e)    = bitWidth $ length (enumEnums $ getEnumeration e) - 1
-twidth (Array t l) = l * twidth t
-twidth (Struct fs) = sum $ map typeWidth fs
-twidth t           = error $ "twidth " ++ show t ++ " undefined"
+twidth (Bool _)      = 1
+twidth (Ptr _ _)     = 64
+twidth (SInt _ w)    = w
+twidth (UInt _ w)    = w
+twidth (Enum _ e)    = bitWidth $ length (enumEnums $ getEnumeration e) - 1
+twidth (Array _ t l) = l * twidth t
+twidth (Struct _ fs) = sum $ map typeWidth fs
+twidth t             = error $ "twidth " ++ show t ++ " undefined"
 
 typeWidth :: (?spec::Spec, Typed a) => a -> Int
 typeWidth = twidth . typ

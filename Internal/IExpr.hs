@@ -70,9 +70,9 @@ lvalToExpr (LIndex a i) = EIndex (lvalToExpr a) (EConst $ UIntVal 32 i)
 
 lvalType :: (?spec::Spec) => LVal -> Type
 lvalType (LVar n)     = typ $ getVar n
-lvalType (LField s n) = let Struct fs = lvalType s
+lvalType (LField s n) = let Struct _ fs = lvalType s
                         in typ $ fromJust $ find (\(Field f _) -> n == f) fs 
-lvalType (LSeqVal e)  = t where Seq t = lvalType e
+lvalType (LSeqVal e)  = t where Seq _ t = lvalType e
 
 instance PP LVal where
     pp (LVar n)     = pp n
@@ -94,11 +94,11 @@ ivalIsSigned (SIntVal _ _) = True
 ivalIsSigned (UIntVal _ _) = False
 
 valType :: (?spec::Spec) => Val -> Type
-valType (BoolVal _)   = Bool
-valType (SIntVal w _) = SInt w
-valType (UIntVal w _) = UInt w
-valType (EnumVal n)   = Enum $ enumName $ getEnumerator n
-valType (PtrVal a)    = Ptr $ lvalType a
+valType (BoolVal _)   = Bool Nothing
+valType (SIntVal w _) = SInt Nothing w
+valType (UIntVal w _) = UInt Nothing w
+valType (EnumVal n)   = Enum Nothing $ enumName $ getEnumerator n
+valType (PtrVal a)    = Ptr Nothing $ lvalType a
 valType (NullVal t)   = t
 
 instance PP Val where
@@ -121,13 +121,13 @@ instance PP Slice where
 -- Default value of a type
 valDefault :: (?spec::Spec, Typed a) => a -> Val
 valDefault x = case typ x of
-                    Bool      -> BoolVal False
-                    SInt w    -> SIntVal w 0
-                    UInt w    -> UIntVal w 0  
-                    Enum n    -> EnumVal $ head $ enumEnums $ getEnumeration n
-                    Struct _  -> error "valDefault Struct"
-                    Ptr t     -> NullVal t
-                    Array _ _ -> error "valDefault Array"
+                    Bool _       -> BoolVal False
+                    SInt _ w     -> SIntVal w 0
+                    UInt _ w     -> UIntVal w 0  
+                    Enum _ n     -> EnumVal $ head $ enumEnums $ getEnumeration n
+                    Struct _ _   -> error "valDefault Struct"
+                    Ptr _ t      -> NullVal t
+                    Array _ _ _  -> error "valDefault Array"
 
 
 valSlice :: Val -> Slice -> Val
@@ -138,24 +138,24 @@ valSlice v (l,h) = UIntVal (h - l + 1)
                    0 [l..h]
 
 parseVal :: (MonadError String me, ?spec::Spec) => Type -> String -> me Val
-parseVal (SInt w) str = do
+parseVal (SInt _ w) str = do
     (w',_,_,v) <- case P.parse litParser "" str of
                        Left e  -> throwError $ show e
                        Right x -> return x
     when  (w' > w) $ throwError $ "Width mismatch"
     return $ SIntVal w v 
-parseVal (UInt w) str = do
+parseVal (UInt _ w) str = do
     (w',s,_,v) <- case P.parse litParser "" str of
                        Left e  -> throwError $ show e
                        Right x -> return x
     when (w' > w) $ throwError $ "Width mismatch"
     when s $ throwError $ "Sign mismatch"
     return $ UIntVal w v 
-parseVal Bool str =
+parseVal (Bool _) str =
     case P.parse boolParser "" str of
          Left e  -> throwError $ show e
          Right b -> return $ BoolVal b
-parseVal (Enum n) str = 
+parseVal (Enum _ n) str = 
     case lookupEnumerator str of
          Nothing    -> throwError $ "Invalid enumerator: " ++ str
          Just enum  -> if' (enumName enum == n) (return $ EnumVal str)
@@ -195,34 +195,34 @@ instance Show Expr where
 exprType :: (?spec::Spec) => Expr -> Type
 exprType (EVar n)                               = typ $ getVar n
 exprType (EConst v)                             = valType v
-exprType (EField s f)                           = let Struct fs = exprType s
+exprType (EField s f)                           = let Struct _ fs = exprType s
                                                   in typ $ fromJust $ find (\(Field n _) -> n == f) fs 
 exprType (EIndex a _)                           = case exprType a of
-                                                       Array t _  -> t
-                                                       VarArray t -> t
+                                                       Array _ t _  -> t
+                                                       VarArray _ t -> t
 exprType (ERange a _)                           = case exprType a of
-                                                       Array t _  -> VarArray t
-                                                       VarArray t -> VarArray t
-exprType (ELength _)                            = UInt arrLengthBits
+                                                       Array _ t _  -> VarArray Nothing t
+                                                       VarArray _ t -> VarArray Nothing t
+exprType (ELength _)                            = UInt Nothing arrLengthBits
 exprType (EUnOp op e) | isArithUOp op           = if s 
-                                                     then SInt w
-                                                     else UInt w
+                                                     then SInt Nothing w
+                                                     else UInt Nothing w
                                                   where (s,w) = arithUOpType op (isSigned $ exprType e, exprWidth e)
-exprType (EUnOp Not _)                          = Bool
-exprType (EUnOp Deref e)                        = t where Ptr t = exprType e
-exprType (EUnOp AddrOf e)                       = Ptr $ exprType e
-exprType (EBinOp op e1 e2) | isRelBOp op        = Bool
-                           | isBoolBOp op       = Bool
+exprType (EUnOp Not _)                          = Bool Nothing
+exprType (EUnOp Deref e)                        = t where Ptr _ t = exprType e
+exprType (EUnOp AddrOf e)                       = Ptr Nothing $ exprType e
+exprType (EBinOp op e1 e2) | isRelBOp op        = Bool Nothing
+                           | isBoolBOp op       = Bool Nothing
                            | isBitWiseBOp op    = exprType e1
                            | isArithBOp op      = if s 
-                                                     then SInt w
-                                                     else UInt w
+                                                     then SInt Nothing w
+                                                     else UInt Nothing w
                                                   where (s,w) = arithBOpType op (s1,w1) (s2,w2)
                                                         (s1,w1) = (isSigned $ exprType e1, exprWidth e1)
                                                         (s2,w2) = (isSigned $ exprType e1, exprWidth e2)
-exprType (ESlice _ (l,h))                       = UInt $ h - l + 1
-exprType (ERel _ _)                             = Bool
-exprType (ESeqVal e)                            = t where Seq t = exprType e
+exprType (ESlice _ (l,h))                       = UInt Nothing $ h - l + 1
+exprType (ERel _ _)                             = Bool Nothing
+exprType (ESeqVal e)                            = t where Seq _ t = exprType e
 
 exprWidth :: (?spec::Spec) => Expr -> Int
 exprWidth = typeWidth . exprType
@@ -238,10 +238,10 @@ exprSlice e                      s                                      = ESlice
 
 -- Extract all scalars from expression
 exprScalars :: Expr -> Type -> [Expr]
-exprScalars e (Struct fs)  = concatMap (\(Field n t) -> exprScalars (EField e n) t) fs
-exprScalars e (Array  t s) = concatMap (\i -> exprScalars (EIndex e (EConst $ UIntVal (bitWidth $ s-1) $ fromIntegral i)) t) [0..s-1]
-exprScalars e (VarArray _) = error $ "exprScalars VarArray " ++ show e
-exprScalars e _            = [e]
+exprScalars e (Struct _ fs)  = concatMap (\(Field n t) -> exprScalars (EField e n) t) fs
+exprScalars e (Array _  t s) = concatMap (\i -> exprScalars (EIndex e (EConst $ UIntVal (bitWidth $ s-1) $ fromIntegral i)) t) [0..s-1]
+exprScalars e (VarArray _ _) = error $ "exprScalars VarArray " ++ show e
+exprScalars e _              = [e]
 
 -- Variables involved in the expression
 exprVars :: (?spec::Spec) => Expr -> [Var]
@@ -302,7 +302,7 @@ plus (e:es) = EBinOp Plus e $ plus es
 -- extend arguments to fit array index and sum them modulo array length
 plusmod :: (?spec::Spec) => Expr -> [Expr] -> Expr
 plusmod ar es = (plus $ map (exprPad w) es) .% EConst (UIntVal (bitWidth l) $ fromIntegral l)
-    where Array _ l = exprType ar
+    where Array _ _ l = exprType ar
           w = bitWidth (l-1)
 
 exprPad :: (?spec::Spec) => Int -> Expr -> Expr

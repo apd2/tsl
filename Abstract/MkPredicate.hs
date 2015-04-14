@@ -24,9 +24,9 @@ exprNormalise = mapExpr exprNormalise'
 
 exprNormalise' :: (?spec::Spec) => Expr -> Expr
 exprNormalise' e = case exprType e of
-                        UInt _ -> e'
-                        SInt _ -> e'
-                        _      -> e
+                        UInt _ _ -> e'
+                        SInt _ _ -> e'
+                        _        -> e
     where e' = termToExpr $ scalarExprToTerm e
 
 -- Convert scalar expression without pointer dereferences and boolean operators to a term

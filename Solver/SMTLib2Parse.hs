@@ -172,25 +172,25 @@ storeFromExpr' t (ExpIdent i) args =
          Nothing -> case M.lookup i args of
                          Just e  -> storeFromExpr t e M.empty
                          Nothing -> error $ "storeFromExpr: unknown enumerator: " ++ show i
-storeFromExpr' t (ExpBool b) _ = if' (t /= Bool) (error "storeFromExpr: bool type mismatch") $ 
+storeFromExpr' t (ExpBool b) _ = if' (not $ isBool t) (error "storeFromExpr: bool type mismatch") $ 
                                      (SVal $ BoolVal b)
-storeFromExpr' (UInt w) (ExpInt v) _ = SVal $ UIntVal w v
-storeFromExpr' (SInt w) (ExpInt v) _ | msb v == w - 1 = 
+storeFromExpr' (UInt _ w) (ExpInt v) _ = SVal $ UIntVal w v
+storeFromExpr' (SInt _ w) (ExpInt v) _ | msb v == w - 1 = 
     SVal $ SIntVal w $ - ((foldl' complementBit v [0..w-1]) + 1)
-                                     | otherwise      = SVal $ SIntVal w v
+                                       | otherwise      = SVal $ SIntVal w v
 storeFromExpr' t (ExpApply "=" [a1,a2]) args = SVal $ BoolVal $ v1 == v2
     where -- XXX: assume that comparisons are always between (integer) array indices
-          SVal (UIntVal _ v1) = storeFromExpr (UInt 32) a1 args
-          SVal (UIntVal _ v2) = storeFromExpr (UInt 32) a2 args
+          SVal (UIntVal _ v1) = storeFromExpr (UInt Nothing 32) a1 args
+          SVal (UIntVal _ v2) = storeFromExpr (UInt Nothing 32) a2 args
 storeFromExpr' t (ExpApply "ite" [i,th,el]) args = if' cond (storeFromExpr' t th args) (storeFromExpr' t el args)
-    where cond = case storeFromExpr Bool i args of
+    where cond = case storeFromExpr (Bool Nothing) i args of
                       SVal (BoolVal b) -> b
                       _                -> error $ "storeFromExpr: cannot evaluate boolean expression " ++ show i
-storeFromExpr' (Struct fs) (ExpApply n as) args | isPrefixOf "mk-Struct" n =
+storeFromExpr' (Struct _ fs) (ExpApply n as) args | isPrefixOf "mk-Struct" n =
     if length fs /= length as 
        then error "storeFromExpr: incorrect number of fields in a struct"
        else SStruct (M.fromList $ map (\((Field n t), e) -> (n, storeFromExpr t e args)) $ zip fs as) ?spec
-storeFromExpr' (Array t l) (ExpAsArray n) _ | isNothing marr = error $ "storeFromExpr: array \"" ++ n ++ "\" not found"
+storeFromExpr' (Array _ t l) (ExpAsArray n) _ | isNothing marr = error $ "storeFromExpr: array \"" ++ n ++ "\" not found"
                                             | otherwise      = SArr $ M.fromList $ map (\i -> (i, storeFromExpr t e $ M.singleton a (ExpInt $ fromIntegral i))) [0..l-1]
     where marr = find ((==n) . dvarName) ?alldecls
           Just (DeclVarAsn _ [a] e) = marr

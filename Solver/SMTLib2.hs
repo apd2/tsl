@@ -131,38 +131,38 @@ mkTypeMap' (m,doc) t = let (tname, tdecl) = mkTypeMap1 m t
                        in (M.insert t tname m, doc $$ tdecl)
 
 subtypes :: Type -> [Type]
-subtypes Bool        = []
-subtypes (SInt _)    = []
-subtypes (UInt _)    = []
-subtypes (Enum _)    = []
-subtypes (Struct fs) = map typ fs
-subtypes (Array t _) = [t]
-subtypes (Ptr t)     = [t]
+subtypes (Bool _)      = []
+subtypes (SInt _ _)    = []
+subtypes (UInt _ _)    = []
+subtypes (Enum _ _)    = []
+subtypes (Struct _ fs) = map typ fs
+subtypes (Array _ t _) = [t]
+subtypes (Ptr _ t)     = [t]
 
 subtypesRec :: Type -> [Type]
 subtypesRec t = t:(concatMap subtypesRec $ subtypes t)
 
 mkTypeMap1 :: (?spec::Spec) => M.Map Type String -> Type -> (String, Doc)
-mkTypeMap1 _ Bool        = ( "Bool"                                  
-                           , empty)
-mkTypeMap1 _ (SInt w)    = ( "(_ BitVec " ++ show w ++ ")"
-                           , empty)
-mkTypeMap1 _ (UInt w)    = ( "(_ BitVec " ++ show w ++ ")"
-                           , empty)
-mkTypeMap1 _ (Enum n)    = ( mkIdent n
-                           , parens $ text "declare-datatypes ()" <+> (parens $ parens $ hsep $ map (text . mkIdent)
-                                                                       -- filter out parens to work around errors in parser
-                                                                       $ (filter (\c -> notElem c "()") n):(enumEnums $ getEnumeration n)))
-mkTypeMap1 m (Struct fs) = ( mkIdent tname
-                           , parens $ text "declare-datatypes ()" 
-                                      <+> (parens $ parens $ text tname 
-                                           <+> parens (text ("mk-" ++ tname) <+> (hsep $ map (\(Field n t) -> parens $ text (tname ++ n) <+> text (m M.! t)) fs))))
-                           where tname = "Struct" ++ (show $ M.size m)
-mkTypeMap1 m (Ptr t)     = ( tname
-                           , parens $ text "declare-sort" <+> text tname)
-                           where tname = ptrTypeName m t
-mkTypeMap1 m (Array t l) = ( "(Array (_ BitVec " ++ (show $ bitWidth $ l - 1) ++ ") " ++ m M.! t ++ ")"
-                           , empty)
+mkTypeMap1 _ (Bool _)      = ( "Bool"                                  
+                             , empty)
+mkTypeMap1 _ (SInt _ w)    = ( "(_ BitVec " ++ show w ++ ")"
+                             , empty)
+mkTypeMap1 _ (UInt _ w)    = ( "(_ BitVec " ++ show w ++ ")"
+                             , empty)
+mkTypeMap1 _ (Enum _ n)    = ( mkIdent n
+                             , parens $ text "declare-datatypes ()" <+> (parens $ parens $ hsep $ map (text . mkIdent)
+                                                                         -- filter out parens to work around errors in parser
+                                                                         $ (filter (\c -> notElem c "()") n):(enumEnums $ getEnumeration n)))
+mkTypeMap1 m (Struct _ fs) = ( mkIdent tname
+                             , parens $ text "declare-datatypes ()" 
+                                        <+> (parens $ parens $ text tname 
+                                             <+> parens (text ("mk-" ++ tname) <+> (hsep $ map (\(Field n t) -> parens $ text (tname ++ n) <+> text (m M.! t)) fs))))
+                             where tname = "Struct" ++ (show $ M.size m)
+mkTypeMap1 m (Ptr _ t)     = ( tname
+                             , parens $ text "declare-sort" <+> text tname)
+                             where tname = ptrTypeName m t
+mkTypeMap1 m (Array _ t l) = ( "(Array (_ BitVec " ++ (show $ bitWidth $ l - 1) ++ ") " ++ m M.! t ++ ")"
+                             , empty)
 
 ptrTypeName :: (Typed a) => M.Map Type String -> a -> String
 ptrTypeName m t = mkIdent $ "Ptr" ++ (m M.! typ t)
@@ -180,7 +180,7 @@ instance SMTPP Formula where
                                            then trace ("WARNING: smtpp: enum value out of bounds: " ++ n ++ "=" ++ show i) $ text "false"
                                            else parens $ smtpp REq <+> smtpp v <+> 
                                                 (text $ mkIdent $ (enumEnums $ getEnumeration n) !! i)
-                                        where Enum n = termType t
+                                        where Enum _ n = termType t
     smtpp (FEqConst v@(AVarInt _) i)  = parens $ smtpp REq <+> smtpp v <+> (text $ "(_ bv" ++ show i ++ " " ++ (show $ avarWidth v) ++ ")")
     smtpp (FBinOp op f1 f2)           = parens $ smtpp op <+> smtpp f1 <+> smtpp f2
     smtpp (FNot f)                    = parens $ text "not" <+> smtpp f
