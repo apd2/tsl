@@ -249,6 +249,8 @@ exprToIExpr' (ENonDet _ mn) t               = do v <- ctxInsTmpVar mn $ mkType t
                                                  return $ I.EVar $ I.varName v
 exprToIExpr' (ESeqVal _ s) _                = do s' <- exprToIExprDet s
                                                  return $ I.ESeqVal s'
+exprToIExpr' (EEOI _ e) _                   = do e' <- exprToIExprDet e
+                                                 return $ I.EEOI e'
 exprToIExpr' e _                            = error $ "exprToIExpr' " ++ show e
 
 

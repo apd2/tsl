@@ -385,8 +385,9 @@ mkVars = mkErrVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires ++ gvars ++ fva
 ----------------------------------------------------------------------
 
 xducerToIXducer :: (?spec::Spec) => Transducer -> I.Transducer
-xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer (mkType $ Type ScopeTop ot) (sname n) is' b'
+xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer outtype (sname n) is' b'
     where is' = map (\i -> (mkType $ Type ScopeTop $ txiType i, sname i)) is
+          outtype = mkType $ Type ScopeTop ot
           sc = ScopeTransducer x
           ctx stat = CFACtx { ctxEPID    = Nothing 
                             , ctxStack   = [(sc, error "return from a transducer", Nothing, xducerLMap x)]
@@ -400,7 +401,10 @@ xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer (mkType $ Type ScopeTo
                     Left  insts -> Left $ map (\i -> I.TxInstance (sname i) (sname $ tiInstName i) (map sname $ tiInputs i)) insts
                     Right st    -> let ?procs = []
                                        ?nestedmb = False in
-                                   let vars = map (\v -> I.Var False I.VarState (sname v) (mkType $ Type sc $ tspec v)) $ stmtVar st in
+                                   let stvars = map (\v -> I.Var False I.VarState (sname v) (mkType $ Type sc $ tspec v)) $ stmtVar st in
+                                       invars = map (\(nm,t) -> I.Var False I.VarState nm t) is'
+                                       outvars = I.Var False I.VarState (sname n) outtype
+                                       vars = stvars ++ invars ++ outvars
                                    Right $ (ctxCFA $ execState (do aft <- procStatToCFA st I.cfaInitLoc
                                                                    ctxFinal aft) (ctx st), vars)
 

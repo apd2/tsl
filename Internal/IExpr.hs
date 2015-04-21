@@ -172,6 +172,7 @@ data GExpr v = EVar      v
              | ESlice    (GExpr v) Slice
              | ERel      String [GExpr v]
              | ESeqVal   (GExpr v)
+             | EEOI      (GExpr v)
              deriving (Eq, Ord)
 
 type Expr = GExpr String
@@ -188,6 +189,7 @@ instance (PP v) => PP (GExpr v) where
     pp (ESlice e s)      = pp e <> pp s
     pp (ERel n as)       = char '?' <> pp n <> (parens $ hcat $ punctuate (text ", ") $ map pp as)
     pp (ESeqVal e)       = char '<' <> pp e <> char '>'
+    pp (EEOI e)          = text "eoi" <> (parens $ pp e)
 
 instance Show Expr where
     show = render . pp
@@ -223,6 +225,7 @@ exprType (EBinOp op e1 e2) | isRelBOp op        = Bool Nothing
 exprType (ESlice _ (l,h))                       = UInt Nothing $ h - l + 1
 exprType (ERel _ _)                             = Bool Nothing
 exprType (ESeqVal e)                            = t where Seq _ t = exprType e
+exprType (EEOI e)                               = Bool Nothing
 
 exprWidth :: (?spec::Spec) => Expr -> Int
 exprWidth = typeWidth . exprType
@@ -259,6 +262,7 @@ exprVars' (EBinOp _ e1 e2) = exprVars' e1 ++ exprVars' e2
 exprVars' (ESlice e _)     = exprVars' e
 exprVars' (ERel _ as)      = concatMap exprVars' as
 exprVars' (ESeqVal e)      = exprVars' e
+exprVars' (EEOI e)         = exprVars' e
 
 (===) :: Expr -> Expr -> Expr
 e1 === e2 = EBinOp Eq e1 e2
@@ -329,6 +333,7 @@ exprPtrSubexpr (EBinOp _ e1 e2) = exprPtrSubexpr e1 ++ exprPtrSubexpr e2
 exprPtrSubexpr (ESlice e _)     = exprPtrSubexpr e
 exprPtrSubexpr (ERel _ as)      = concatMap exprPtrSubexpr as
 exprPtrSubexpr (ESeqVal e)      = exprPtrSubexpr e
+exprPtrSubexpr (EEOI e)         = exprPtrSubexpr e
 exprPtrSubexpr _                = []
 
 isConstExpr :: Expr -> Bool
@@ -344,6 +349,7 @@ isConstExpr (EBinOp _ e1 e2) = isConstExpr e1 && isConstExpr e2
 isConstExpr (ESlice e _)     = isConstExpr e
 isConstExpr (ERel _ _)       = False -- even if all args are constant, it may not evaluate to a constant
 isConstExpr (ESeqVal _)      = False
+isConstExpr (EEOI _)         = False
 
 isConstLExpr :: Expr -> Bool
 isConstLExpr (EVar _)     = True
@@ -424,3 +430,4 @@ mapExpr f e0 = case f e0 of
                     ESlice e s      -> ESlice (mapExpr f e) s
                     ERel n as       -> ERel n $ map (mapExpr f) as
                     ESeqVal e       -> ESeqVal (mapExpr f e)
+                    EEOI e          -> EEOI (mapExpr f e)

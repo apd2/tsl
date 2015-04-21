@@ -5,6 +5,7 @@ module Internal.IType(Field(..),
              isInt,
              isBool,
              isPtr,
+             isSeq,
              isEnum,
              isScalar,
              Enumeration(..)) where
@@ -81,6 +82,11 @@ isBool :: (Typed a) => a -> Bool
 isBool x = case typ x of
                 Bool _ -> True 
                 _      -> False
+
+isSeq :: (Typed a) => a -> Bool
+isSeq x = case typ x of
+               Seq _ _ -> True
+               _       -> False
 
 isScalar :: (Typed a) => a -> Bool
 isScalar x = case typ x of

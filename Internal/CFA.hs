@@ -50,6 +50,7 @@ module Internal.CFA(Statement(..),
            cfaSave,
            cfaSplitLoc,
            cfaLocTrans,
+           cfaLocTransCFA,
            cfaSource,
            cfaSink) where
 
@@ -337,7 +338,7 @@ cfaPruneUnreachable cfa keep =
                cfaPruneUnreachable (foldl' (\_cfa n -> G.delNode n _cfa) cfa unreach) keep
 
 -- locations reachable from specified location before reaching the next delay location
--- (the from location if not included in the result)
+-- (the from location is not included in the result)
 cfaReachInst :: CFA -> Loc -> S.Set Loc
 cfaReachInst cfa from = cfaReachInst' cfa S.empty (S.singleton from)
 
@@ -375,6 +376,10 @@ cfaSplitLoc loc cfa = (loc', cfa3)
           cfa1         = foldl' (\cfa0 (f,t,_) -> G.delEdge (f,t) cfa0) cfa i 
           (cfa2, loc') = cfaInsLoc (LInst ActNone) cfa1
           cfa3         = foldl' (\cfa0 (f,_,l) -> G.insEdge (f,loc',l) cfa0) cfa2 i
+
+cfaLocTransCFA :: CFA -> Loc -> CFA
+cfaLocTransCFA cfa loc = cfaPrune cfa (S.insert loc r)
+    where r = cfaReachInst cfa loc
 
 -- Atomic transitions originating from location
 -- Each returned CFA has a single source and a single sink location.
