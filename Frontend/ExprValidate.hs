@@ -236,10 +236,6 @@ validateExpr' (EStruct p tn mes) = do
                                   $ zip es fs
     return ()
 
-validateExpr' (EEOI _ e) = do
-    validateExpr' e
-    assert (isSequence $ exprType e) (pos e) $ "Argument of the eoi operator must be a sequence expression"
-
 validateExpr' (ESeqVal _ e) = do
     validateExpr' e
     assert (isSequence $ exprType e) (pos e) $ "Not a sequence expression " ++ show e

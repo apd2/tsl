@@ -2,11 +2,13 @@
 
 module TSL2Boogie.Spec2Boogie(spec2Boogie) where
 
-import qualified Data.Map       as M
+import qualified Data.Map             as M
 import Data.Maybe
 import Data.List
+import qualified Data.Graph.Inductive as IG
+import qualified Data.Graph.Dom       as G
+import Data.Tuple.Select
 import Text.PrettyPrint
-import qualified Data.Graph.Dom as G
 
 import PP
 import Ops
@@ -20,13 +22,12 @@ import Internal.IExpr
 
 type Path = [String]
 
-instance PP Path where
-    pp p = hcat $ punctuate (char '.') (map text p)
+ppPath p = hcat $ punctuate (char '.') (map text p)
 
 -- alphabet symbol: input port name:field names. [] = init symbol
 type Symbol = [String]
-instance PP Symbol  where
-    pp s = hcat $ punctuate (char '.') (map text s)
+
+ppSymbol s = hcat $ punctuate (char '.') (map text s)
 
 data XVar = XVar Path Var
 
@@ -40,13 +41,13 @@ spec2Boogie spec = let ?spec = spec in
                       else Nothing
 
 mkMainXducer :: (?spec::Spec) => Doc
-mkMainXducer = (vcat $ types ++ map mkVar vs) $+$ xducers
+mkMainXducer = (vcat $ types : pp "" : map mkVar vs) $+$ xducers
     where vs      = collectVars [] $ getXducer "main"
           types   = vcat $ map collectTypes $ specXducers ?spec
           xducers = mkXducer [] (getXducer "main") []
 
 getXducer :: (?spec::Spec) => String -> Transducer
-getXducer = fromMaybe $ find ((== "main") . txName) $ specXducers ?spec
+getXducer n = fromJust $ find ((== n) . txName) $ specXducers ?spec
 
 collectVars :: (?spec::Spec) => Path -> Transducer -> [XVar]
 collectVars p Transducer{..} = 
@@ -55,7 +56,7 @@ collectVars p Transducer{..} =
          Right (_, vs) -> map (XVar p) vs
 
 collectTypes :: (?spec::Spec) => Transducer -> Doc
-collectTypes x = vcat $ stenum:(map mkType $ foldl' add [] $ collectTypes' x)
+collectTypes x = vcat $ stenum:(map (uncurry mkType) $ foldl' add [] $ collectTypes' x)
     where add :: [(Type, [String])] -> Type -> [(Type, [String])]
           add []      t = [(t,[])]
           add ((t0,as):ts) t = case (t0,t) of
@@ -64,10 +65,9 @@ collectTypes x = vcat $ stenum:(map mkType $ foldl' add [] $ collectTypes' x)
           -- state enum
           stenum = case txBody x of
                         Left _        -> empty
-                        Right (cfa,_) -> mkEnumType n $ map (stateName x) locs
-                                         where locs = cfaDelayLocs cfa `delete` cfaInitLoc 
-                                               n = stateTypeName x
-
+                        Right (cfa,_) -> mkEnumType n $ map (render . stateName x) locs
+                                         where locs = delete cfaInitLoc (cfaDelayLocs cfa)
+                                               n = render $ stateTypeName x
 
 collectTypes' :: (?spec::Spec) => Transducer -> [Type]
 collectTypes' Transducer{..} = 
@@ -80,13 +80,13 @@ collectTypes' Transducer{..} =
 -- Bools and bitvectors are builtins in Boogie - ignore them.
 -- Strip sequence types.
 collectTypesT :: (?spec::Spec) => Type -> [Type]
-collectTypesT t@(Enum _)      = [t]
-collectTypesT t@(Struct fs)   = nub $ t:(map (\(Field _ t) -> collectTypesT t) fs)
-collectTypesT    (Ptr _)      = error "Pointer type in transducer"
-collectTypesT    (Seq t)      = collectTypesT t         
-collectTypesT  t@(Array t' _) = nub $ t:(collectTypesT t')
-collectTypesT    (VarArray _) = error "VarArray type in transducer"
-collectTypesT    _            = []
+collectTypesT t@(Enum _ _)     = [t]
+collectTypesT t@(Struct _ fs)  = nub $ t:(concatMap (\(Field _ t) -> collectTypesT t) fs)
+collectTypesT   (Ptr _ _)      = error "Pointer type in transducer"
+collectTypesT   (Seq _ t)      = collectTypesT t         
+collectTypesT t@(Array _ t' _) = nub $ t:(collectTypesT t')
+collectTypesT   (VarArray _ _) = error "VarArray type in transducer"
+collectTypesT   _              = []
 
 mkVar :: (?spec::Spec) => XVar -> Doc
 mkVar (XVar p v) = text "var" <+> xvName p (varName v) <+> char ':' <+> (typeName $ varType v)
@@ -101,7 +101,7 @@ typeName (Struct (Just n) _) = text n
 typeName (Array _ _ _)       = error "Not implemented: arrays in Spec2Boogie.hs"
 
 
-mkEnumType :: [String] -> Doc
+mkEnumType :: String -> [String] -> Doc
 mkEnumType n es = (text "type" <+> text "finite" <+> text n <> semi)
                   $$
                   (vcat $ map (\e -> text "const" <+> text "unique" <+> text e <> colon <+> text n <> semi) es)
@@ -110,32 +110,33 @@ mkEnumType n es = (text "type" <+> text "finite" <+> text n <> semi)
     where disj = hcat $ punctuate (text "||") $ map (\e -> text "_x" <+> text "==" <+> text e) es
 
 mkType :: (?spec::Spec) => Type -> [String] -> Doc
-mkType (Enum   _ n)  _ = mkEnumType n es
+mkType (Enum _ n)  _    = mkEnumType n es
     where Enumeration _ es = getEnumeration n 
-mkType (Struct n fs) as = (text "type" <+> text "{:datatype}" <+> text n <> semi)
-                          $$
-                          (text "function" <+> text "{:constructor}" <+> text n <> parens args) <+> colon <+> name n <> semi
-                          $$
-                          (vcat $ map (\a -> text "type" <+> text a <+> char '=' <+> text n <> semi) as)
-    where args = hsep
+mkType (Struct mn fs) as = (text "type" <+> text "{:datatype}" <+> pp n <> semi)
+                           $$
+                           (text "function" <+> text "{:constructor}" <+> pp n <> parens args) <+> colon <+> pp n <> semi
+                           $$
+                           (vcat $ map (\a -> text "type" <+> text a <+> char '=' <+> pp n <> semi) as)
+    where Just n = mn
+          args = hsep
                  $ punctuate comma
                  $ map (\(Field nm t) -> text nm <> colon <> typeName t)
                  $ filter (not . isSeq) fs
 
 mkXducer :: (?spec::Spec) => Path -> Transducer -> [(Path, String)] -> Doc
-mkXducer p x@Transducer{..} fanout =
-    case txBody of
+mkXducer p x fanout =
+    case txBody x of
          -- composite transducer
          Left is -> -- print instances; route each instance output to other instance inputs or to the top-level output
                     vcat $ punctuate (text "") 
                     $ (mapIdx (\i id -> mkXducer (p++[tiInstName i]) (getXducer $ tiTxName i) (connect id)) is)
                     where -- compute list of ports that an instance is connected to
-                          connect :: Int -> [Path]
+                          connect :: Int -> [(Path, String)]
                           connect id | id == length is - 1 = fanout ++ ports
                                      | otherwise           = ports
                                      where 
-                                     name = tiInputs $ is !! id
-                                     ports = concatMap (\TxInstance{..} -> map (\(_,port) -> (p++[tiInstName], port)) 
+                                     name = tiInstName $ is !! id
+                                     ports = concatMap (\TxInstance{..} -> map (\(_,(_,port)) -> (p++[tiInstName], port)) 
                                                                            $ filter ((== name) . fst) 
                                                                            $ zip tiInputs (txInput $ getXducer tiTxName)) is
          -- simple transducer
@@ -164,7 +165,7 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     symbols' (Seq _ (Struct _ fs)) ns = (concatMap (\(Field fn ft) -> symbols' ft (ns++[fn])) fs) ++ [ns]
     symbols' (Seq _ (Seq    _ t))  ns = symbols' t (ns++["<>"])
     symbols' (Seq _ t)             ns = [ns]
-    symbols' _                        = []
+    symbols' _                     _  = []
 
     -- states along with the symbol acceped in each state
     states :: [(Loc,Maybe Symbol)]
@@ -187,12 +188,19 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
                       
     symbolType = exprType . sym2Expr
 
-    ([initst], states') = partition (null . fromJust . snd) $ filter isJust states
+    ([(initst,_)], states') = partition (null . fromJust . snd) $ filter (isJust . snd) states
     -- transition CFAs
-    initCFA = cfaLocTransCFA cfa initst
+    (initSink, initCFA) = cfaAddUniqueSink $ cfaLocTransCFA cfa initst
+    cfas::M.Map Symbol [(Loc,Loc,CFA)] 
     cfas = M.fromList
-           $ map (\ss -> (fromJust $ snd $ head ss, map ((\l -> (l, cfaLocTransCFA cfa l)) . fst) ss))
+           $ map (\ss -> (fromJust $ snd $ head ss, map ((\l -> let (sink, cfa') = cfaAddUniqueSink $ cfaLocTransCFA cfa l
+                                                                in (l, sink, cfa')) . fst) ss))
            $ sortAndGroup snd states'
+
+    -- the post-dominator algorithm requires a unique sink
+    cfaAddUniqueSink :: CFA -> (Loc, CFA)
+    cfaAddUniqueSink cfa = (sink, foldl' (\c loc -> cfaInsTrans loc sink TranNop c) cfa' $ cfaSink cfa)
+        where (cfa',sink) = cfaInsLoc (LInst ActNone) cfa
 
     -- generate state var
     stvar = text "var" <+> stateVarName p <+> char ':' <+> stateTypeName x
@@ -202,15 +210,13 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     invars  = map mkSymVar insymbols
     outvars = map mkSymVar outsymbols
 
-    vars = vcat $ stvar : text "" : invars : text "" : outvars
+    vars = vcat $ stvar : text "" : invars ++ text "" : outvars
 
     mkSymVar :: Symbol -> Doc
     mkSymVar s = (text "var" <+> symVarName p s <+> char ':' <+> (typeName $ symbolType s) <> semi)
-                 $+$
-                 (text "var" <+> eoiVarName p s <+> char ':' <+> text "bool" <> semi)
 
     -- init method
-    initproc = (text "procedure" <+> initializerName p <+> (parens empty)) $+$ lbrace $+$ (nest' $ mkCFA initCFA initst) $+$ rbrace
+    initproc = (text "procedure" <+> initializerName p <+> (parens empty)) $+$ lbrace $+$ (nest' $ mkCFA (initst, initSink, initCFA)) $+$ rbrace
 
     -- input handlers
     handlers = map mkHandler insymbols
@@ -220,21 +226,18 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
         where
         -- procedure signature
         sig =  text "procedure" <+> handlerName p sym 
-           <+> (parens $ symVarName [] sym <> colon <> (typeName $ symbolType sym) <>
-                         comma <+> text "eoi" <> colon <> text "bool")
+           <+> (parens $ symVarName [] sym <> colon <> (typeName $ symbolType sym))
         -- save input symbol and eof flag
         readinp = assign (symVarName p sym) (symVarName [] sym)
-                  $+$
-                  assign (eoiVarName p sym) (text "eoi")
 
         -- for each state where sym is handled, generate code from CFA
         handlers = maybe [] 
-                         (\(loc, cfa) -> (stateVarName p <+> text "==" <+> stateName x loc, mkCFA cfa loc)) 
+                         (map (\(loc, sink, cfa) -> (stateVarName p <+> pp "==" <+> stateName x loc, mkCFA (loc, sink, cfa))))
                          (M.lookup sym cfas)
 
         -- generate empty handlers (loop transitions) for all states where sym's parent is handled
         parents = init $ tail $ inits sym
-        parentlocs = concatMap (\sym' -> maybe [] fst $ M.lookup sym' cfas) parents
+        parentlocs = concatMap (\sym' -> maybe [] (map sel1) $ M.lookup sym' cfas) parents
         loops = if null parents 
                    then []
                    else [(hsep $ punctuate (text "&&") $ map (\loc -> stateVarName p <+> text "==" <+> stateName x loc) parentlocs, empty)]
@@ -249,22 +252,20 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
                                           ((rbrace <+> text "else" <+> lbrace) $+$ (nest' $ mkSwitch rest) $+$ rbrace)
                                           (zeroWidthText "} else " <> mkSwitch rest))
 
-    mkCFA :: CFA -> Loc -> Doc
-    mkCFA cfa loc = mkCFA' cfa loc Nothing
-
-    mkCFA' :: CFA -> Loc -> Maybe Loc -> Doc
-    mkCFA' cfa from mto | Just from == mto  = empty                                        -- stop at the "to" node
-                        | null trans        = assign (stateVarName p) (stateName x from) -- final location
-                        | null (tail trans) = mkTransition lab0 $+$ mkCFA' cfa loc0 mto    -- single successor
-                        | otherwise         = (mkSwitch 
-                                               $ map (\(tlab,loc) -> (text "*", mkTransition tlab $+$ mkCFA' cfa loc pdom)) trans)
-                                              $+$
-                                              mkCFA' cfa pdom mto 
+    mkCFA :: (Loc, Loc, CFA) -> Doc
+    mkCFA (from, sink, cfa) = mkCFA' (from, sink, cfa) sink
+    
+    mkCFA' :: (Loc, Loc, CFA) -> Loc -> Doc
+    mkCFA' (from, sink, cfa) to | from == to        = empty                                             -- stop at the "to" node
+                                | loc0 == sink      = assign (stateVarName p) (stateName x from)        -- final location
+                                | null (tail trans) = mkTransition lab0 $+$ mkCFA' (loc0, sink, cfa) to -- single successor
+                                | otherwise         = (mkSwitch 
+                                                        $ map (\(tlab,loc) -> (text "*", mkTransition tlab $+$ mkCFA' (loc, sink,cfa) pdom)) trans)
+                                                       $+$
+                                                       mkCFA' (pdom, sink, cfa) to 
         where trans@((lab0,loc0):_) = cfaSuc from cfa
               -- postdominator of from
-              pdom = case G.ipdom (from, cfa) of
-                          [x] -> Just x
-                          _   -> Nothing
+              pdom = fromJust $ lookup from $ G.ipdom (sink, G.fromEdges $ IG.edges cfa)
 
     mkTransition :: TranLabel -> Doc
     mkTransition (TranStat (SAssume e))   = text "assume" <> (parens $ mkExpr e) <> semi
@@ -273,11 +274,8 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     mkTransition TranNop                  = empty
 
     mkAdvance :: Expr -> Doc
-    mkAdvance exp = eoi $+$ out $+$ randomize
+    mkAdvance exp = out $+$ randomize
         where sym = expr2Sym exp
-              -- recursively output eoi to all children and reset their eoi var's to false
-              eoi = map (\sym' -> output sym' True $+$ (assign (eoiVarName p sym') (text "false"))) 
-                    $ init $ symbols' (symbolType sym) sym
               -- output current symbol value
               out = output sym False
               output s e = vcat 
@@ -310,27 +308,29 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     mkExpr (EBinOp BinMinus e1 e2) = bvbop "SUB" e1 e2
     mkExpr (EBinOp Mul e1 e2)      = bvbop "MULT" e1 e2
     mkExpr (ESlice e (l,h))        = mkExpr e <> (brackets $ pp h <> char ':' <> pp l)
-    mkExpr (EEOI e)                = parens $ (eoiVarName p $ expr2Sym e) <+> text "==" <+> text "true"
 
     bvbop op e1 e2 = text ("BV"++(show $ exprWidth e1)++op) <> (parens $ mkExpr e1 <> comma <+> mkExpr e2)
 
-eoiVarName :: Path -> Symbol -> Doc
-eoiVarName p s = pp p <> char '$' <> pp s <> text "_eoi"
+    mkConst :: Val -> Doc
+    mkConst (BoolVal True)     = pp "true"
+    mkConst (BoolVal False)    = pp "false"
+    mkConst (UIntVal w v)      = pp v <> text "bv" <> pp w
+    mkConst (EnumVal n)        = pp n
 
 symVarName :: Path -> Symbol -> Doc
-symVarName p s = pp p <> char '$' <> pp s
+symVarName p s = ppPath p <> char '$' <> ppSymbol s
 
 handlerName :: Path -> Symbol -> Doc
-handlerName p s = pp p <> char '$' <> text "handle_" <> pp s
+handlerName p s = ppPath p <> char '$' <> pp "handle_" <> ppSymbol s
 
 stateVarName :: Path -> Doc
-stateVarName p = pp p <> text "$$state"
+stateVarName p = ppPath p <> pp "$$state"
 
 stateName :: Transducer -> Loc -> Doc
-stateName x l = (text $ txName x) <> text "$$" <> pp l
+stateName x l = (text $ txName x) <> pp "$$" <> pp l
 
 stateTypeName :: Transducer -> Doc
-stateTypeName x = (text $ txName x) <> "_state_t"
+stateTypeName x = (pp $ txName x) <> pp "_state_t"
 
 initializerName :: Path -> Doc 
-initializerName p = pp p <> text "$$init"
+initializerName p = ppPath p <> pp "$$init"

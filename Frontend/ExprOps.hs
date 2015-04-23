@@ -64,7 +64,6 @@ mapExpr f s e =
          ESlice p e (l,h)       -> ESlice  p (mapExpr f s e) (mapExpr f s l, mapExpr f s h)
          EStruct p n (Left fs)  -> EStruct p n (Left $ map (mapSnd $ mapExpr f s) fs)
          EStruct p n (Right fs) -> EStruct p n (Right $ map (mapExpr f s) fs)
-         EEOI p sq              -> EEOI    p (mapExpr f s sq)
          ESeqVal p sq           -> ESeqVal p (mapExpr f s sq)
          ERel p n as            -> ERel    p n (map (mapExpr f s) as)
          e'                     -> e'
@@ -88,7 +87,6 @@ exprCallees s (ECond   _ cs md)         = concatMap (\(e1,e2) -> exprCallees s e
 exprCallees s (ESlice  _ e (l,h))       = exprCallees s e ++ exprCallees s l ++ exprCallees s h
 exprCallees s (EStruct _ _ (Left fs))   = concatMap (exprCallees s . snd) fs
 exprCallees s (EStruct _ _ (Right fs))  = concatMap (exprCallees s) fs
-exprCallees s (EEOI    _ sq)            = exprCallees s sq
 exprCallees s (ESeqVal _ sq)            = exprCallees s sq
 exprCallees s (ERel    _ _ as)          = concatMap (exprCallees s) as
 exprCallees _ _                         = []
@@ -257,7 +255,6 @@ isConstExpr (ESlice _ e (l,h))       = isConstExpr e && isConstExpr l && isConst
 isConstExpr (EStruct _ _ (Left fs))  = and $ map (isConstExpr . snd) fs
 isConstExpr (EStruct _ _ (Right fs)) = and $ map isConstExpr fs
 isConstExpr (ERel _ _ _)             = False
-isConstExpr (EEOI _ _)               = False
 isConstExpr (ESeqVal _ _)            = False
 isConstExpr (ENonDet _ _)            = False
 
@@ -304,7 +301,6 @@ exprNoSideEffects' (ESlice _ e (l,h))       = exprNoSideEffects' e && exprNoSide
 exprNoSideEffects' (EStruct _ _ (Left fs))  = all (exprNoSideEffects' . snd) fs 
 exprNoSideEffects' (EStruct _ _ (Right fs)) = all exprNoSideEffects' fs 
 exprNoSideEffects' (ERel _ _ as)            = all exprNoSideEffects' as
-exprNoSideEffects' (EEOI _ _)               = True
 exprNoSideEffects' (ESeqVal _ _)            = False -- can fail
 exprNoSideEffects' _                        = True
 
@@ -350,7 +346,6 @@ isPureExpr (EStruct _ _ (Left fs))  = all isPureExpr $ map snd fs
 isPureExpr (EStruct _ _ (Right fs)) = all isPureExpr fs
 isPureExpr (EAtLab  _ _)            = False
 isPureExpr (ERel    _ _ as)         = all isPureExpr as
-isPureExpr (EEOI    _ _)            = True
 isPureExpr (ESeqVal _ _)            = False
 isPureExpr (ENonDet _ _)            = False
 
@@ -380,7 +375,6 @@ isInstExpr (ESlice  _ e _)          = isInstExpr e
 isInstExpr (EStruct _ _ (Left fs))  = all isInstExpr $ map snd fs
 isInstExpr (EStruct _ _ (Right fs)) = all isInstExpr fs
 isInstExpr (ERel _ _ as)            = all isInstExpr as
-isInstExpr (EEOI _ _)               = True
 isInstExpr (ESeqVal _ _)            = True
 isInstExpr (ENonDet _ _)            = True
 
@@ -407,7 +401,6 @@ exprObjs (ESlice  _ e (l,h))      = exprObjs e ++ exprObjs l ++ exprObjs h
 exprObjs (EStruct _ _ (Left fs))  = concatMap (exprObjs . snd) fs
 exprObjs (EStruct _ _ (Right fs)) = concatMap exprObjs fs
 exprObjs (ERel    _ n as)         = uncurry ObjRelation (getRelation ?scope n) : concatMap exprObjs as
-exprObjs (EEOI    _ s)            = exprObjs s
 exprObjs (ESeqVal _ s)            = exprObjs s
 exprObjs _                        = []
 
@@ -472,7 +465,6 @@ exprType (ESlice p e (l,h))      = Type ?scope $ UIntSpec p (fromInteger (evalIn
 exprType (EStruct p tn _)        = Type ?scope $ UserTypeSpec p tn
 exprType (EAtLab p l)            = Type ?scope $ BoolSpec p
 exprType (ERel   p _ _)          = Type ?scope $ BoolSpec p
-exprType (EEOI   p s)            = Type ?scope $ BoolSpec p
 exprType (ESeqVal p s)           = Type sc t where Type sc (SeqSpec _ t) = typ' $ exprType s
 exprType (ENonDet p _)           = Type ?scope $ FlexTypeSpec p
 

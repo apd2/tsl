@@ -401,10 +401,10 @@ xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer outtype (sname n) is' 
                     Left  insts -> Left $ map (\i -> I.TxInstance (sname i) (sname $ tiInstName i) (map sname $ tiInputs i)) insts
                     Right st    -> let ?procs = []
                                        ?nestedmb = False in
-                                   let stvars = map (\v -> I.Var False I.VarState (sname v) (mkType $ Type sc $ tspec v)) $ stmtVar st in
-                                       invars = map (\(nm,t) -> I.Var False I.VarState nm t) is'
-                                       outvars = I.Var False I.VarState (sname n) outtype
-                                       vars = stvars ++ invars ++ outvars
+                                   let stvars = map (\v -> I.Var False I.VarState (sname v) (mkType $ Type sc $ tspec v)) $ stmtVar st
+                                       invars = map (\(t,nm) -> I.Var False I.VarState nm t) is'
+                                       outvar = I.Var False I.VarState (sname n) outtype
+                                       vars = stvars ++ invars ++ [outvar] in
                                    Right $ (ctxCFA $ execState (do aft <- procStatToCFA st I.cfaInitLoc
                                                                    ctxFinal aft) (ctx st), vars)
 

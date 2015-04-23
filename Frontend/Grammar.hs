@@ -482,7 +482,6 @@ relterm = parens relexpr <|> relterm'
 term' = withPos $
        ( elabel
      <|> erel
-     <|> eeoi
      <|> eseqval
      <|> estruct True
      <|> etern   True
@@ -496,7 +495,6 @@ term' = withPos $
 detterm' = withPos $
           ( elabel
         <|> erel
-        <|> eeoi
         <|> eseqval
         <|> estruct False
         <|> etern   False
@@ -521,7 +519,6 @@ relterm' = withPos $
 
 elabel      = EAtLab nopos <$> (reservedOp "@" *> ident)
 erel        = ERel nopos <$ (reservedOp "?") <*> ident <*> (parens $ commaSep detexpr)
-eeoi        = EEOI nopos <$ reserved "eoi" <*> (parens detexpr)
 eseqval     = ESeqVal nopos <$ reservedOp "<" <*> detexpr <* reservedOp ">"
 estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
