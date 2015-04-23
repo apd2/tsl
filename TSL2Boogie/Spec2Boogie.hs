@@ -34,11 +34,11 @@ data XVar = XVar Path Var
 xvName :: Path -> String -> Doc
 xvName p v = hcat $ punctuate (char '.') (map text $ p ++ [v])
 
-spec2Boogie :: Spec -> Maybe Doc
+spec2Boogie :: Spec -> Either String Doc
 spec2Boogie spec = let ?spec = spec in
                    if any ((== "main") . txName) $ specXducers spec
-                      then Just mkMainXducer
-                      else Nothing
+                      then Right mkMainXducer
+                      else Left "no main transducer found"
 
 mkMainXducer :: (?spec::Spec) => Doc
 mkMainXducer = (vcat $ types : pp "" : map mkVar vs) $+$ xducers
