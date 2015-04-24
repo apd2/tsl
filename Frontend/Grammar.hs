@@ -77,6 +77,7 @@ reservedNames = ["after",
                  "if", 
                  "import",
                  "init",
+                 "instance",
                  "mem",
                  "out",
                  "pause",
@@ -127,6 +128,7 @@ comma      = T.comma lexer
 braces     = T.braces lexer
 parens     = T.parens lexer
 angles     = T.angles lexer
+squares    = T.squares lexer
 brackets   = T.brackets lexer
 natural    = T.natural lexer
 decimal    = T.decimal lexer
@@ -240,7 +242,7 @@ decl =  (SpImport <$> imp)
     <|> (SpConst <$> constant <* semi)
     <|> (SpType <$> typeDef <* semi)
     <|> (SpTemplate <$> template)
-    <|> (SpTransducer <$> transducer)
+    <|> (SpTransducer <$> transducer <* semi)
     <?> "constant, type or template declaration"
 
 imp = withPos $ Import nopos <$ reserved "import" <*> (reservedOp "<" *> (withPos $ Ident nopos <$> manyTill anyChar (reservedOp ">")))
@@ -253,11 +255,11 @@ transducer = withPos $ Transducer nopos <$ reserved "transducer"
                                        <*> typeSpec False
                                        <*> ident
                                        <*> (parens $ commaSep1 transducerInput)
-                                       <*> (choice [Left <$> transducerComposite, Right <$> statement])
+                                       <*> (choice [try $ Left <$> transducerComposite, try $ Right <$> statement])
 
 transducerInput = withPos $ TxInput nopos <$> typeSpec False <*> ident
 
-transducerComposite = brackets $ many1 $ transducerInstance <* semi
+transducerComposite = braces $ many1 $ transducerInstance <* semi
 
 transducerInstance = withPos $ TxInstance nopos <$ reserved "instance"
                                                <*> ident
@@ -519,7 +521,7 @@ relterm' = withPos $
 
 elabel      = EAtLab nopos <$> (reservedOp "@" *> ident)
 erel        = ERel nopos <$ (reservedOp "?") <*> ident <*> (parens $ commaSep detexpr)
-eseqval     = ESeqVal nopos <$ reservedOp "<" <*> detexpr <* reservedOp ">"
+eseqval     = ESeqVal nopos <$> squares detexpr
 estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
           anonfields = commaSep1 (expr' det)

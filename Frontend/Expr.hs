@@ -115,7 +115,7 @@ instance PP Expr where
     pp (EStruct _ t (Right fs))  = pp t <+> (braces' $ vcat $ punctuate comma $ map pp fs)
     pp (EAtLab _ l)              = char '@' <> pp l
     pp (ERel _ n as)             = char '?' <> pp n <+> (parens $ hsep $ punctuate comma $ map pp as)
-    pp (ESeqVal _ s)             = char '<' <> pp s <> char '>'
+    pp (ESeqVal _ s)             = char '[' <> pp s <> char ']'
     pp (ENonDet _ _)             = char '*'
 
 instance Show Expr where

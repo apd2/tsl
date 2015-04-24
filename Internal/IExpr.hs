@@ -78,7 +78,7 @@ instance PP LVal where
     pp (LVar n)     = pp n
     pp (LField s f) = pp s <> char '.' <> pp f
     pp (LIndex a i) = pp a <> char '[' <> pp i <> char ']'
-    pp (LSeqVal e)  = char '<' <> pp e <> char '>'
+    pp (LSeqVal e)  = char '[' <> pp e <> char ']'
 
 -- Value
 data Val = BoolVal   Bool
