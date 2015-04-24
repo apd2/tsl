@@ -10,13 +10,14 @@ module Frontend.NS(Scope(..),
           ppType,
           showType,
           lookupGlobal,
-          lookupTemplate, checkTemplate, getTemplate, 
-          lookupTypeDecl, checkTypeDecl, getTypeDecl,
-          lookupTerm    , checkTerm    , getTerm,
-          lookupMethod  , checkMethod  , getMethod,
-          lookupGoal    , checkGoal    , getGoal,
-          lookupWire    , checkWire    , getWire,
-          lookupRelation, checkRelation, getRelation,
+          lookupTemplate  , checkTemplate  , getTemplate, 
+          lookupTransducer, checkTransducer, getTransducer, 
+          lookupTypeDecl  , checkTypeDecl  , getTypeDecl,
+          lookupTerm      , checkTerm      , getTerm,
+          lookupMethod    , checkMethod    , getMethod,
+          lookupGoal      , checkGoal      , getGoal,
+          lookupWire      , checkWire      , getWire,
+          lookupRelation  , checkRelation  , getRelation,
           Obj(..), objType, objLookup, objGet, isObjMutable, isObjTxOutput,
           specNamespace) where
 
@@ -424,6 +425,20 @@ checkTemplate :: (?spec::Spec, MonadError String me) => Ident -> me (Template)
 checkTemplate n = do
     case lookupTemplate n of
          Nothing -> err (pos n) $ "Unknown template name: " ++ show n
+         Just t  -> return t
+
+-- Transducer lookup
+lookupTransducer :: (?spec::Spec) => Ident -> Maybe Transducer
+lookupTransducer n = case objLookup ObjSpec n of
+                        Just (ObjTransducer t) -> Just t
+                        _                      -> Nothing
+getTransducer :: (?spec::Spec) => Ident -> Transducer
+getTransducer n = fromJustMsg ("getTransducer failed: " ++ show n) $ lookupTransducer n
+
+checkTransducer :: (?spec::Spec, MonadError String me) => Ident -> me (Transducer)
+checkTransducer n = do
+    case lookupTransducer n of
+         Nothing -> err (pos n) $ "Unknown transducer name: " ++ show n
          Just t  -> return t
 
 -- Type lookup

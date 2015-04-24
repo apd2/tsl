@@ -6,6 +6,7 @@ import Data.List
 import Control.Monad.Error
 import Data.Maybe
 
+import Util hiding (name)
 import Pos
 import Name
 import TSLUtil
@@ -17,6 +18,7 @@ import Frontend.Statement
 import Frontend.StatementValidate
 import Frontend.TypeOps
 import Frontend.TVarOps
+import Frontend.Type
 
 validateTxNS :: (?spec::Spec, MonadError String me) => Transducer -> me ()
 validateTxNS t = do
@@ -33,7 +35,30 @@ validateTxImplementation2 t = do
          Right s -> validateTxStatement t
 
 validateTxConnections :: (?spec::Spec, MonadError String me) => Transducer -> me ()
-validateTxConnections Transducer{txBody=Left is,..} = error "validateTxConnections not implemented"
+validateTxConnections tx@Transducer{txBody=Left is} = do
+    let otype = Type ScopeTop $ txOutType tx
+    -- every instance input refers to another local instance or global input of 
+    -- the matching type
+    mapIdxM_ (\inst iid -> do
+        let x = getTransducer (tiTxName inst)
+            xtype = Type ScopeTop $ txOutType x
+        mapIdxM (\i id -> do let t = Type ScopeTop $ tspec $ txInput x !! id
+                                 ptypes = (map (\i' -> (sname i', Type ScopeTop $ txOutType $ getTransducer $ tiTxName i')) is)
+                                       ++ (map (\i' -> (sname i', Type ScopeTop $ tspec i')) $ txInput tx)
+                             assert (elem (sname i) $ map fst ptypes) (pos i) 
+                                    $ "Input stream name " ++ sname i ++ " does not refer to a transducer instance or input port"
+                             let t' = fromJust $ lookup (sname i) ptypes
+                             assert (typeIso t t') (pos i) 
+                                    $ "Expected type " ++ (show $ tspec t) ++ " but " ++ sname i ++ " has type " ++ (show $ tspec t'))
+                $ tiInputs inst
+        -- the last transducer matches the output type of the composition
+        when (iid == length is - 1) 
+             $ assert (typeIso otype xtype) (pos inst) 
+             $ "Expected output type " ++ (show $ tspec otype) ++ " but " ++ sname inst ++ " has output type " ++ (show $ tspec xtype))
+        is
+
+
+    -- TODO: no circular connections
 
 validateTxStatement :: (?spec::Spec, MonadError String me) => Transducer -> me ()
 validateTxStatement t@Transducer{txBody=Right s,..} = do
