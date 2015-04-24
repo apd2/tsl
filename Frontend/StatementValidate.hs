@@ -154,7 +154,7 @@ validateStat' _ (SAssume _ _ e) = do
     assert (exprNoSideEffects e) (pos e) "Assumption must be side-effect free"
 
 validateStat' _ (SAssign _ _ lhs rhs) = do
-    validateRHSExpr' lhs
+    validateExpr' lhs
     validateRHSExpr' rhs
     assert (isLExpr lhs) (pos lhs)   $ "Left-hand side of assignment is not an L-value"
     assert (not $ isSeqContainer $ exprType lhs) (pos lhs) $ "Left-hand side of assignment (or one of its members) is a sequence"

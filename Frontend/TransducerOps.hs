@@ -8,7 +8,7 @@ import Frontend.Transducer
 import Frontend.Statement
 
 txLocalDecls :: (?spec::Spec) => Transducer -> [Obj]
-txLocalDecls t = (ObjTxOutput t) : 
+txLocalDecls t = -- (ObjTxOutput t) : 
                  (map (ObjTxInput t) (txInput t))    ++
                  case txBody t of
                       Left is -> map (ObjTxInstance t) is

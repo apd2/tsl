@@ -301,7 +301,7 @@ exprNoSideEffects' (ESlice _ e (l,h))       = exprNoSideEffects' e && exprNoSide
 exprNoSideEffects' (EStruct _ _ (Left fs))  = all (exprNoSideEffects' . snd) fs 
 exprNoSideEffects' (EStruct _ _ (Right fs)) = all exprNoSideEffects' fs 
 exprNoSideEffects' (ERel _ _ as)            = all exprNoSideEffects' as
-exprNoSideEffects' (ESeqVal _ _)            = False -- can fail
+exprNoSideEffects' (ESeqVal _ e)            = exprNoSideEffects' e
 exprNoSideEffects' _                        = True
 
 -- Check that method call is side-effect-free:
