@@ -57,7 +57,7 @@ type PDB rm pdb s u = StateT AbsPriv (StateT pdb (rm (ST s)))
 -- Interface
 -----------------------------------------------------------------------
 
-tslAbsGame :: (RM s u rm) => Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var rm -> Abs.Abstractor s u AbsVar AbsVar rm AbsPriv
+tslAbsGame :: (RM s u rm) => Spec -> C.DDManager s u -> TheorySolver s u AbsVar AbsVar Var rm -> Abs.Abstractor s u AbsVar AbsVar rm AbsPriv
 tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = []
                                       , Abs.goalAbs                 = tslGoalAbs                 spec m
                                       , Abs.fairAbs                 = tslFairAbs                 spec m
@@ -70,7 +70,7 @@ tslAbsGame spec m ts = Abs.Abstractor { Abs.initialState            = []
                                       --, Abs.filterPromoCandidates   = tslFilterCandidates        spec m
                                       }
 
-tslGoalAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB rm pdb s u [C.DDNode s u]
+tslGoalAbs :: (RM s u rm) => Spec -> C.DDManager s u -> PVarOps pdb s u -> PDB rm pdb s u [C.DDNode s u]
 tslGoalAbs spec m ops = do
     let ?ops  = ops
     p <- lift $ hoist lift pdbPred
@@ -82,7 +82,7 @@ tslGoalAbs spec m ops = do
                           H.compileBDD m ops (avarGroupTag . bavarAVar) ast)
          $ tsGoal $ specTran spec
 
-tslFairAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB rm pdb s u [C.DDNode s u]
+tslFairAbs :: (RM s u rm) => Spec -> C.DDManager s u -> PVarOps pdb s u -> PDB rm pdb s u [C.DDNode s u]
 tslFairAbs spec m ops = do
     let ?ops  = ops
     p <- lift $ hoist lift pdbPred
@@ -91,7 +91,7 @@ tslFairAbs spec m ops = do
         ?pred = p
     lift $ mapM (H.compileBDD m ops (avarGroupTag . bavarAVar) . bexprAbstract . fairCond) $ tsFair $ specTran spec
 
-tslInitAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB rm pdb s u (C.DDNode s u)
+tslInitAbs :: (RM s u rm) => Spec -> C.DDManager s u -> PVarOps pdb s u -> PDB rm pdb s u (C.DDNode s u)
 tslInitAbs spec m ops = do 
     let ?ops  = ops
     p <- lift $ hoist lift pdbPred
@@ -125,7 +125,7 @@ tslConstraint = pre
           $ mapIdx (\tr i -> tranPrecondition True ("pre_" ++ show i) tr) $ (tsUTran $ specTran ?spec) ++ (tsCTran $ specTran ?spec)
     
 
-tslContAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> PVarOps pdb s u -> PDB rm pdb s u (C.DDNode s u)
+tslContAbs :: (RM s u rm) => Spec -> C.DDManager s u -> PVarOps pdb s u -> PDB rm pdb s u (C.DDNode s u)
 tslContAbs spec m ops = do 
     let ?ops  = ops
     p <- lift $ hoist lift pdbPred
@@ -134,7 +134,7 @@ tslContAbs spec m ops = do
         ?pred = p
     lift $ H.compileBDD m ops (avarGroupTag . bavarAVar) $ bexprAbstract $ mkContLVar === true
 
-tslUpdateAbs :: (RM s u rm) => Spec -> C.STDdManager s u -> TheorySolver s u AbsVar AbsVar Var rm -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB rm pdb s u ([C.DDNode s u], C.DDNode s u)
+tslUpdateAbs :: (RM s u rm) => Spec -> C.DDManager s u -> TheorySolver s u AbsVar AbsVar Var rm -> [(AbsVar,[C.DDNode s u])] -> PVarOps pdb s u -> PDB rm pdb s u ([C.DDNode s u], C.DDNode s u)
 tslUpdateAbs spec m _ avars ops = do
     --trace ("tslUpdateAbs " ++ (intercalate "," $ map (show . fst) avars)) $ return ()
     let ?ops    = ops
@@ -149,7 +149,7 @@ tslUpdateAbs spec m _ avars ops = do
     inconsistent <- lift $ tslInconsistent spec m ops
     let disjunct acc []     = return acc
         disjunct acc (x:xs) = do 
-            acc' <- C.bor ?m acc x
+            acc' <- C.bOr ?m acc x
             C.deref ?m acc
             C.deref ?m x
             disjunct acc' xs
@@ -167,7 +167,7 @@ tslUpdateAbs spec m _ avars ops = do
 --    let upd' = init upd ++ [updwithinc]
     return (upd, inconsistent')
 
-tslInconsistent :: (RM s u rm) => Spec -> C.STDdManager s u -> PVarOps pdb s u -> StateT pdb (rm (ST s)) (C.DDNode s u)
+tslInconsistent :: (RM s u rm) => Spec -> C.DDManager s u -> PVarOps pdb s u -> StateT pdb (rm (ST s)) (C.DDNode s u)
 tslInconsistent spec m ops = do
     let ?spec = spec
     allvars <- hoist lift $ Abs.allVars ops
@@ -180,16 +180,16 @@ tslInconsistent spec m ops = do
         contcond = compileFormula $ ptrFreeBExprToFormula $ conj [mkContLVar, neg mkMagicVar]
     H.compileBDD m ops (avarGroupTag . bavarAVar) $ H.Disj [enumcond {-, contcond-}]
 
-tslUpdateAbsVar :: (RM s u rm, ?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.STDdManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB rm pdb s u (C.DDNode s u, C.DDNode s u)
+tslUpdateAbsVar :: (RM s u rm, ?ops::PVarOps pdb s u, ?spec::Spec, ?m::C.DDManager s u, ?pred::[Predicate]) => (AbsVar,[C.DDNode s u]) -> PDB rm pdb s u (C.DDNode s u, C.DDNode s u)
 tslUpdateAbsVar (av, n) = do
     --trace ("compiling " ++ show av) $ return () 
     upd <- lift $ H.compileBDD ?m ?ops (avarGroupTag . bavarAVar) $ tslUpdateAbsVarAST (av,n)
     -- include blocked states into inconsistent (to avoid splitting on those states)
     blocked <- lift $ lift $ lift $ do  
           vcube <- C.nodesToCube ?m n
-          pre   <- C.bexists ?m upd vcube
+          pre   <- C.bExists ?m upd vcube
           C.deref ?m vcube
-          return $ C.bnot pre
+          return $ C.bNot pre
     return (upd, blocked)
 
 tslUpdateAbsVarAST :: (?spec::Spec, ?pred::[Predicate]) => (AbsVar, f) -> TAST f e c
@@ -213,7 +213,7 @@ tslUpdateAbsVarAST (av, n)                                       = H.Disj (uncha
     ident = H.EqVar (H.NVar $ avarBAVar av) (H.FVar n)
     unchanged = H.And (H.Conj $ map H.Not pres) ident
 
-tslFilterCandidates :: (RM s u rm) => Spec -> C.STDdManager s u -> [AbsVar] -> PDB rm pdb s u ([AbsVar], [AbsVar])
+tslFilterCandidates :: (RM s u rm) => Spec -> C.DDManager s u -> [AbsVar] -> PDB rm pdb s u ([AbsVar], [AbsVar])
 tslFilterCandidates _ _ avs = do
    cands <- get
    let (relavs, neutral) = partition avarIsRelPred avs
@@ -259,7 +259,7 @@ pdbPred = do
 -- Precomputing inconsistent combinations of abstract variables
 ----------------------------------------------------------------------------
 
-absVarInconsistent :: (?spec::Spec, ?m::C.STDdManager s u) => TheorySolver s u AbsVar AbsVar Var rm -> (AbsVar, [AbsVar]) -> TAST f e c
+absVarInconsistent :: (?spec::Spec, ?m::C.DDManager s u) => TheorySolver s u AbsVar AbsVar Var rm -> (AbsVar, [AbsVar]) -> TAST f e c
 absVarInconsistent ts (AVarPred p, avs) = 
     case predVar p of
          [v] -> -- consider pair-wise combinations with all predicates involving only this variable;

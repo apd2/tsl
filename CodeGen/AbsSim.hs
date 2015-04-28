@@ -56,7 +56,7 @@ type DbgNotify s u = (String -> DDNode s u -> DDNode s u -> DDNode s u -> ST s (
 
 -- Generate condition that holds whenever the magic block specified by 
 -- mbpos is active.
-mbToStateConstraint :: (RM s u t) => Spec -> C.STDdManager s u -> DB s u AbsVar AbsVar -> Pos -> t (ST s) (DDNode s u)
+mbToStateConstraint :: (RM s u t) => Spec -> C.DDManager s u -> DB s u AbsVar AbsVar -> Pos -> t (ST s) (DDNode s u)
 mbToStateConstraint spec m pdb mbpos = do
     let Ops{..} = constructOps m
     let ?spec = spec
@@ -68,7 +68,7 @@ mbToStateConstraint spec m pdb mbpos = do
                                                    mblocs]
 
 -- Restrict a relation to states inside the MB
-restrictToMB :: (RM s u t) => Spec -> C.STDdManager s u -> DB s u AbsVar AbsVar -> Pos -> DDNode s u -> t (ST s) (DDNode s u)
+restrictToMB :: (RM s u t) => Spec -> C.DDManager s u -> DB s u AbsVar AbsVar -> Pos -> DDNode s u -> t (ST s) (DDNode s u)
 restrictToMB spec m pdb mbpos set = do
     let ops@Ops{..} = constructOps m
     cond <- mbToStateConstraint spec m pdb mbpos
@@ -80,7 +80,7 @@ restrictToMB spec m pdb mbpos set = do
 -- initial location to the specified pause location.
 simulateCFAAbstractToLoc :: (RM s u t) 
                          => Spec 
-                         -> C.STDdManager s u 
+                         -> C.DDManager s u 
                          -> RefineDynamic s u 
                          -> DB s u AbsVar AbsVar 
                          -> DDNode s u 
@@ -113,7 +113,7 @@ simulateCFAAbstractToLoc spec m refdyn pdb cont lp cfa initset loc winregion cb 
 -- Return the set of final states.
 simulateCFAAbstractToCompletion :: (RM s u t) 
                                 => Spec 
-                                -> C.STDdManager s u 
+                                -> C.DDManager s u 
                                 -> RefineDynamic s u 
                                 -> DB s u AbsVar AbsVar 
                                 -> DDNode s u 
@@ -144,7 +144,7 @@ simulateCFAAbstractToCompletion spec m refdyn pdb cont lp cfa initset winregion 
 -- of reachable states.
 simulateGameAbstract :: (RM s u t) 
                      => Spec 
-                     -> C.STDdManager s u 
+                     -> C.DDManager s u 
                      -> RefineDynamic s u 
                      -> DB s u AbsVar AbsVar 
                      -> DDNode s u 
@@ -193,7 +193,7 @@ checkWinRegion Ops{..} win set txt = do
     when (not issubset) $ lift $ traceST txt
 
 -- Simulate the entire game starting from the given set.
-simulateGameAbstractFrom :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u) 
+simulateGameAbstractFrom :: (RM s u t, ?spec::Spec, ?m::C.DDManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u) 
                          => [CompiledMB' s u] 
                          -> DDNode s u 
                          -> t (ST s) (DDNode s u)
@@ -223,7 +223,7 @@ simulateGameAbstractFrom mbs initset = do
        else simulateGameAbstractFrom mbs reach'
 
 -- Takes a set of states and forces the magic variable to false.
-clearMagic :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) (DDNode s u)
+clearMagic :: (RM s u t, ?spec::Spec, ?m::C.DDManager s u, ?db::DB s u AbsVar AbsVar) => DDNode s u -> t (ST s) (DDNode s u)
 clearMagic set = do
     let Ops{..} = constructOps ?m
         DB{_symbolTable = SymbolInfo{..}, ..} = ?db
@@ -236,7 +236,7 @@ clearMagic set = do
     $d deref set'
     return res
 
-compileExpr :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?db::DB s u AbsVar AbsVar) => I.Expr -> t (ST s) (DDNode s u)
+compileExpr :: (RM s u t, ?spec::Spec, ?m::C.DDManager s u, ?db::DB s u AbsVar AbsVar) => I.Expr -> t (ST s) (DDNode s u)
 compileExpr e = do
      let Ops{..} = constructOps ?m
      (res, CompileState newvars _) <- 
@@ -252,7 +252,7 @@ compileExpr e = do
 -- Simulate a controllable transition tr from "from" followed by a transitive 
 -- closure of uncontrollable transitions.
 -- Assumes that label variables and don't cares in tr.
-simulateControllable :: (RM s u t, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u) 
+simulateControllable :: (RM s u t, ?m::C.DDManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u) 
                      => DDNode s u 
                      -> DDNode s u 
                      -> t (ST s) (DDNode s u)
@@ -287,7 +287,7 @@ simulateControllable from tr = do
 -- Annotate pause locations with sets of states
 -- initset - set of possible initial states
 -- Assumes that pause locations that represent magic blocks do not have outgoing transitions.
-cfaAnnotateReachable :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u) 
+cfaAnnotateReachable :: (RM s u t, ?spec::Spec, ?m::C.DDManager s u, ?rd::RefineDynamic s u, ?db::DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u) 
                      => CFA 
                      -> DDNode s u 
                      -> t (ST s) (M.Map Loc (DDNode s u))
@@ -307,7 +307,7 @@ cfaAnnotateReachable cfa initset = do
     mapM_ ($d deref . sel3) tupds
     return res
 
-annotate' :: (RM s u t, ?spec::Spec, ?m::C.STDdManager s u, ?rd::RefineDynamic s u, ?db :: DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u)
+annotate' :: (RM s u t, ?spec::Spec, ?m::C.DDManager s u, ?rd::RefineDynamic s u, ?db :: DB s u AbsVar AbsVar, ?cont::DDNode s u, ?lp::Lab s u, ?winregion::DDNode s u, ?cb::DbgNotify s u)
           => [(Loc, Loc, DDNode s u)]    -- Compiled transitions
           -> [Loc]                       -- Frontier
           -> M.Map Loc (DDNode s u)      -- Annotations computed so far
@@ -358,7 +358,7 @@ withTmpCompile' Ops{..} func = do
     return res
 
 
-compileTransition :: (RM s u t, ?db::DB s u AbsVar AbsVar, ?spec::Spec, ?m::C.STDdManager s u) => Transition -> t (ST s) (DDNode s u)
+compileTransition :: (RM s u t, ?db::DB s u AbsVar AbsVar, ?spec::Spec, ?m::C.DDManager s u) => Transition -> t (ST s) (DDNode s u)
 compileTransition t = do
     let DB{_symbolTable = SymbolInfo{..}, _sections = SectionInfo{..}, ..} = ?db
     let ops@Ops{..} = constructOps ?m
