@@ -20,6 +20,7 @@ import Internal.IVar
 import Internal.IType
 import Internal.IExpr
 
+
 type Path = [String]
 
 ppPath p = hcat $ punctuate (char '.') (map text p)
@@ -29,7 +30,7 @@ type Symbol = [String]
 
 ppSymbol s = hcat $ punctuate (char '.') (map text s)
 
-data XVar = XVar Path Var
+--data XVar = XVar Path Var
 
 xvName :: Path -> String -> Doc
 xvName p v = hcat $ punctuate (char '.') (map text $ p ++ [v])
@@ -41,19 +42,19 @@ spec2Boogie spec = let ?spec = spec in
                       else Left "no main transducer found"
 
 mkMainXducer :: (?spec::Spec) => Doc
-mkMainXducer = (vcat $ types : pp "" : map mkVar vs) $+$ xducers
-    where vs      = collectVars [] $ getXducer "main"
+mkMainXducer = vcat $ [types, pp "" {-: map mkVar vs-}, xducers]
+    where -- vs      = collectVars [] $ getXducer "main"
           types   = vcat $ map collectTypes $ specXducers ?spec
           xducers = mkXducer [] (getXducer "main") []
 
 getXducer :: (?spec::Spec) => String -> Transducer
-getXducer n = fromJust $ find ((== n) . txName) $ specXducers ?spec
+getXducer n = fromJustMsg ("fromJust Nothing getXducer" {-intercalate "," $ n : (map txName $ specXducers ?spec)-}) $ find ((== n) . txName) $ specXducers ?spec
 
-collectVars :: (?spec::Spec) => Path -> Transducer -> [XVar]
-collectVars p Transducer{..} = 
-    case txBody of
-         Left is       -> concatMap (\i -> collectVars (p++[tiInstName i]) (getXducer $ tiTxName i)) is
-         Right (_, vs) -> map (XVar p) vs
+--collectVars :: (?spec::Spec) => Path -> Transducer -> [XVar]
+--collectVars p Transducer{..} = 
+--    case txBody of
+--         Left is       -> concatMap (\i -> collectVars (p++[tiInstName i]) (getXducer $ tiTxName i)) is
+--         Right (_, vs) -> map (XVar p) vs
 
 collectTypes :: (?spec::Spec) => Transducer -> Doc
 collectTypes x = vcat $ stenum:(map (uncurry mkType) $ foldl' add [] $ collectTypes' x)
@@ -88,8 +89,8 @@ collectTypesT t@(Array _ t' _) = nub $ t:(collectTypesT t')
 collectTypesT   (VarArray _ _) = error "VarArray type in transducer"
 collectTypesT   _              = []
 
-mkVar :: (?spec::Spec) => XVar -> Doc
-mkVar (XVar p v) = text "var" <+> xvName p (varName v) <+> char ':' <+> (typeName $ varType v)
+--mkVar :: (?spec::Spec) => XVar -> Doc
+--mkVar (XVar p v) = text "var" <+> xvName p (varName v) <+> char ':' <+> (typeName $ varType v)
 
 typeName :: Type -> Doc
 typeName (Bool _)            = text "bool"
@@ -99,6 +100,7 @@ typeName (Enum _ e)          = text e
 typeName (Struct Nothing _)  = error "Not implemented: anonymous struct in Spec2Boogie.hs"
 typeName (Struct (Just n) _) = text n
 typeName (Array _ _ _)       = error "Not implemented: arrays in Spec2Boogie.hs"
+typeName t                   = error $ "typeName " ++ show t
 
 
 mkEnumType :: String -> [String] -> Doc
@@ -188,12 +190,12 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
                       
     symbolType = exprType . sym2Expr
 
-    ([(initst,_)], states') = partition (null . fromJust . snd) $ filter (isJust . snd) states
+    ([(initst,_)], states') = partition (null . fromJustMsg "mkXducer" . snd) $ filter (isJust . snd) states
     -- transition CFAs
     (initSink, initCFA) = cfaAddUniqueSink $ cfaLocTransCFA cfa initst
     cfas::M.Map Symbol [(Loc,Loc,CFA)] 
     cfas = M.fromList
-           $ map (\ss -> (fromJust $ snd $ head ss, map ((\l -> let (sink, cfa') = cfaAddUniqueSink $ cfaLocTransCFA cfa l
+           $ map (\ss -> (fromJustMsg "mkXducer" $ snd $ head ss, map ((\l -> let (sink, cfa') = cfaAddUniqueSink $ cfaLocTransCFA cfa l
                                                                 in (l, sink, cfa')) . fst) ss))
            $ sortAndGroup snd states'
 
@@ -265,7 +267,7 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
                                                        mkCFA' (pdom, sink, cfa) to 
         where trans@((lab0,loc0):_) = cfaSuc from cfa
               -- postdominator of from
-              pdom = fromJust $ lookup from $ G.ipdom (sink, G.fromEdges $ IG.edges cfa)
+              pdom = fromJustMsg "mkCFA" $ lookup from $ G.ipdom (sink, G.fromEdges $ IG.edges cfa)
 
     mkTransition :: TranLabel -> Doc
     mkTransition (TranStat (SAssume e))   = text "assume" <> (parens $ mkExpr e) <> semi

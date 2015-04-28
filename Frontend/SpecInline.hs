@@ -1,7 +1,7 @@
 {-# LANGUAGE ImplicitParams, TupleSections, RecordWildCards, ScopedTypeVariables #-}
 
 -- Convert flattened spec to internal representation
-module Frontend.SpecInline (specSimplify, spec2Internal) where
+module Frontend.SpecInline (specSimplify, spec2Internal, specXducers2Internal) where
 
 import Data.List
 import Data.Maybe
@@ -9,6 +9,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad.State hiding (guard)
 import qualified Data.Graph.Inductive.Graph as G
+import Debug.Trace
 
 import TSLUtil
 import Util hiding (name, trace)
@@ -384,6 +385,18 @@ mkVars = mkErrVarDecl : mkContLVarDecl : mkMagicVarDecl : (wires ++ gvars ++ fva
 -- Transducers
 ----------------------------------------------------------------------
 
+specXducers2Internal :: Spec -> I.Spec
+specXducers2Internal s = 
+    let -- preprocessing
+        ?spec = s in
+    let specEnum    = mapMaybe (\d -> case tspec d of
+                                           EnumSpec _ es -> Just $ I.Enumeration (sname d) (map sname es)
+                                           _             -> Nothing) (specType ?spec)                                                     
+        specXducers        = map xducerToIXducer $ specTransducer s
+    in I.Spec {..}
+
+
+
 xducerToIXducer :: (?spec::Spec) => Transducer -> I.Transducer
 xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer outtype (sname n) is' b'
     where is' = map (\i -> (mkType $ Type ScopeTop $ txiType i, sname i)) is
@@ -398,7 +411,7 @@ xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer outtype (sname n) is' 
                             , ctxVar     = []
                             , ctxLabels  = []}
           b' = case b of
-                    Left  insts -> Left $ map (\i -> I.TxInstance (sname i) (sname $ tiInstName i) (map sname $ tiInputs i)) insts
+                    Left  insts -> Left $ map (\i -> I.TxInstance (sname $ tiTxName i) (sname $ tiInstName i) (map sname $ tiInputs i)) insts
                     Right st    -> let ?procs = []
                                        ?nestedmb = False in
                                    let stvars = map (\v -> I.Var False I.VarState (sname v) (mkType $ Type sc $ tspec v)) $ stmtVar st

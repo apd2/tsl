@@ -193,6 +193,8 @@ exprToIExpr' (ETerm _ ssym) _ = do
                  ObjEnum     _ e -> name e
                  ObjConst    _ c -> name c
                  ObjRArg     _ a -> name a
+                 ObjTxInput  _ i -> name i
+                 ObjTxOutput t   -> name t
     return $ case M.lookup n gmap of
                   Just e -> e
                   Nothing -> case M.lookup n lmap of

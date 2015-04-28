@@ -360,6 +360,7 @@ mkType t =
          Type s (PtrSpec      _ t')   -> I.Ptr alias $ mkType $ Type s t'
          Type s (ArraySpec    _ t' l) -> let ?scope = s in I.Array alias (mkType $ Type s t') (fromInteger $ evalInt l)
          Type s (VarArraySpec _ t')   -> let ?scope = s in I.VarArray alias (mkType $ Type s t')
+         Type s (SeqSpec _ t')        -> let ?scope = s in I.Seq alias (mkType $ Type s t')
          Type _ t'                    -> error $ "mkType: " ++ show t'
     where alias = case tspec t of
                        UserTypeSpec _ a -> Just $ render $ pp a

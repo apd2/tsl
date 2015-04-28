@@ -204,42 +204,44 @@ specMapTSpec f s =
 flatten :: (MonadError String me) => Spec -> me Spec
 flatten s = do
     let s' = mergeParents $ flattenConsts $ flattenTDecls s
-        mmain = find ((== "main") . sname) (specTemplate s')
-    assert (isJust mmain) nopos $ "\"main\" template not found"
-    let main = fromJust mmain
     let ?spec = s' 
-    mapM validateTmProcesses3 (filter isConcreteTemplate $ specTemplate s')
-    checkConcreteTemplate main (pos main)
-    assert (null $ tmPort main) (pos main) $ "The main template cannot have ports"
-    let gvars = concat $ mapInstTree tmFlattenGVars
-        wires = concat $ mapInstTree tmFlattenWires
-        inits = concat $ mapInstTree tmFlattenInits
-        prefs = concat $ mapInstTree tmFlattenPrefixes
-        procs = concat $ mapInstTree tmFlattenProcs
-        meths = concat $ mapInstTree tmFlattenMeths
-        goals = concat $ mapInstTree tmFlattenGoals
-        rels  = concat $ mapInstTree tmFlattenRels
-        apps  = concat $ mapInstTree tmFlattenApps
-        main' = Template (pos main)
-                         (name main)
-                         []              -- tmPort
-                         []              -- tmDerive
-                         []              -- tmConst
-                         []              -- tmTypeDecl
-                         gvars
-                         wires
-                         []              -- tmInst
-                         inits           -- tmInit
-                         prefs           -- tmPrefix
-                         procs
-                         meths
-                         goals
-                         rels
-                         apps
-        s'' = s'{specTemplate = [main']}
-    validateFlattenedSpec s''
-    return $ specSimplify s''
-    
+--    assert (isJust mmain) nopos $ "\"main\" template not found"
+--    let main = fromJust mmain
+    case find ((== "main") . sname) (specTemplate s') of
+         Nothing   -> return s'{specTemplate = []}
+         Just main -> do
+             mapM validateTmProcesses3 (filter isConcreteTemplate $ specTemplate s')
+             checkConcreteTemplate main (pos main)
+             assert (null $ tmPort main) (pos main) $ "The main template cannot have ports"
+             let gvars = concat $ mapInstTree tmFlattenGVars
+                 wires = concat $ mapInstTree tmFlattenWires
+                 inits = concat $ mapInstTree tmFlattenInits
+                 prefs = concat $ mapInstTree tmFlattenPrefixes
+                 procs = concat $ mapInstTree tmFlattenProcs
+                 meths = concat $ mapInstTree tmFlattenMeths
+                 goals = concat $ mapInstTree tmFlattenGoals
+                 rels  = concat $ mapInstTree tmFlattenRels
+                 apps  = concat $ mapInstTree tmFlattenApps
+                 main' = Template (pos main)
+                                  (name main)
+                                  []              -- tmPort
+                                  []              -- tmDerive
+                                  []              -- tmConst
+                                  []              -- tmTypeDecl
+                                  gvars
+                                  wires
+                                  []              -- tmInst
+                                  inits           -- tmInit
+                                  prefs           -- tmPrefix
+                                  procs
+                                  meths
+                                  goals
+                                  rels
+                                  apps
+                 s1 = specSimplify $ s'{specTemplate = [main']}
+             validateFlattenedSpec s1
+             return s1
+
 -- Remove all pure templates from the spec; merge concrete templates with their parents
 mergeParents :: Spec -> Spec
 mergeParents s = s{specTemplate = tms}
