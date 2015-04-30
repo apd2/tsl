@@ -149,7 +149,7 @@ data LocLabel = LInst    {locAct :: LocAction}
 instance PP LocLabel where
     pp (LInst  a)          = pp a
     pp (LPause a _ labs e) = text "WAIT" <> (brackets $ hcat $ punctuate comma $ map pp labs) <> (parens $ pp e) $$ pp a
-    pp (LAdvance a e)      = pp e <> text "++"                                                                   $$ pp a
+    pp (LAdvance a e)      = text "ADVANCE" <> pp e                                                              $$ pp a
     pp (LFinal a _ labs)   = text "F"    <> (brackets $ hcat $ punctuate comma $ map pp labs)                    $$ pp a
 
 instance Show LocLabel where
@@ -380,10 +380,12 @@ cfaSplitLoc loc cfa = (loc', cfa3)
 cfaLocTransCFA :: CFA -> Loc -> CFA
 cfaLocTransCFA cfa loc = cfa''
     where r = cfaReachInst cfa loc
+          dsts = filter (isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
           cfa' = cfaPrune cfa (S.insert loc r)
-          cfa'' = if null $ G.pre cfa' loc
-                     then cfa'
-                     else snd $ cfaSplitLoc loc cfa'
+          cfa'' = foldl' (\cfa0 (f,t,_) -> G.delEdge (f,t) cfa0) cfa' $ concatMap (G.out cfa') dsts
+          cfa''' = if null $ G.pre cfa'' loc
+                      then cfa''
+                      else snd $ cfaSplitLoc loc cfa''
 
 -- Atomic transitions originating from location
 -- Each returned CFA has a single source and a single sink location.
