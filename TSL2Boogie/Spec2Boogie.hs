@@ -267,7 +267,10 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
                                                        mkCFA' (pdom, sink, cfa) to 
         where trans@((lab0,loc0):_) = cfaSuc from cfa
               -- postdominator of from
-              pdom = fromJustMsg "mkCFA" $ lookup from $ G.ipdom (sink, G.fromEdges $ IG.edges cfa)
+              --doms = G.idom (sink, G.fromEdges $ map swap $ IG.edges cfa)
+              cfa'::CFA = IG.mkGraph (IG.labNodes cfa) $ map (\(from, to, l) -> (to,from,l)) $ IG.labEdges cfa
+              doms = IG.iDom cfa' sink
+              pdom = fromJustMsg "mkCFA" $ lookup from doms 
 
     mkTransition :: TranLabel -> Doc
     mkTransition (TranStat (SAssume e))   = text "assume" <> (parens $ mkExpr e) <> semi

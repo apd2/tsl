@@ -85,6 +85,7 @@ data Statement = SAssume  Expr
 instance PP Statement where
     pp (SAssume e)   = text "assume" <+> (parens $ pp e)
     pp (SAssign l r) = pp l <+> text ":=" <+> pp r
+    pp (SAdvance e)  = text "++" <> pp e
 
 instance Show Statement where
     show = render . pp
