@@ -378,8 +378,12 @@ cfaSplitLoc loc cfa = (loc', cfa3)
           cfa3         = foldl' (\cfa0 (f,_,l) -> G.insEdge (f,loc',l) cfa0) cfa2 i
 
 cfaLocTransCFA :: CFA -> Loc -> CFA
-cfaLocTransCFA cfa loc = cfaPrune cfa (S.insert loc r)
+cfaLocTransCFA cfa loc = cfa''
     where r = cfaReachInst cfa loc
+          cfa' = cfaPrune cfa (S.insert loc r)
+          cfa'' = if null $ G.pre cfa' loc
+                     then cfa'
+                     else snd $ cfaSplitLoc loc cfa'
 
 -- Atomic transitions originating from location
 -- Each returned CFA has a single source and a single sink location.
