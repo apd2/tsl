@@ -9,7 +9,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad.State hiding (guard)
 import qualified Data.Graph.Inductive.Graph as G
-import Debug.Trace
 
 import TSLUtil
 import Util hiding (name, trace)
@@ -404,7 +403,7 @@ xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer outtype (sname n) is' 
           sc = ScopeTransducer x
           ctx stat = CFACtx { ctxEPID    = Nothing 
                             , ctxStack   = [(sc, error "return from a transducer", Nothing, xducerLMap x)]
-                            , ctxCFA     = I.newCFA (ScopeTransducer x) stat I.true
+                            , ctxCFA     = I.newCFA sc stat I.true
                             , ctxBrkLocs = error "break outside a loop"
                             , ctxGNMap   = globalConstNMap
                             , ctxLastVar = 0
@@ -417,9 +416,11 @@ xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer outtype (sname n) is' 
                                    let stvars = map (\v -> I.Var False I.VarState (sname v) (mkType $ Type sc $ tspec v)) $ stmtVar st
                                        invars = map (\(t,nm) -> I.Var False I.VarState nm t) is'
                                        outvar = I.Var False I.VarState (sname n) outtype
-                                       vars = stvars ++ invars ++ [outvar] in
-                                   Right $ (ctxCFA $ execState (do aft <- procStatToCFA st I.cfaInitLoc
-                                                                   ctxFinal aft) (ctx st), vars)
+                                       vars = stvars ++ invars ++ [outvar] 
+                                       st' = let ?scope = sc in evalState (statSimplify st) (0,[])
+                                       cfa = ctxCFA $ execState (do aft <- procStatToCFA st' I.cfaInitLoc
+                                                                    ctxFinal aft) (ctx st')
+                                   in Right (cfa, vars)
 
 ----------------------------------------------------------------------
 -- CFA transformation
