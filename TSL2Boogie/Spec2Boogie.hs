@@ -30,13 +30,26 @@ type Symbol = [String]
 
 showSymbol s = render $ hcat $ punctuate (char '.') (map text s)
 
+sym2Expr :: Symbol -> Expr
+sym2Expr [port] = ESeqVal $ EVar port
+sym2Expr sym    = if last sym == "<>"
+                     then ESeqVal $ sym2Expr $ init sym
+                     else ESeqVal $ EField (sym2Expr $ init sym) (last sym)
+
+symbolType :: (?spec::Spec) => Symbol -> Type
+symbolType = exprType . sym2Expr
+
+
 spec2Boogie :: Spec -> Either String Doc
 spec2Boogie spec = if any ((== "main") . txName) $ specXducers spec
-                      then Right $ mkMainXducer spec
+                      then Right $ mkXducers spec
                       else Left "no main transducer found"
 
-mkMainXducer :: Spec -> Doc
-mkMainXducer spec = vcat $ [vcat $ map mkOpDecl ops, pp "", collectTypes spec, pp "" {-: map mkVar vs-}, xducers]
+mkXducers :: Spec -> Doc
+mkXducers spec = vcat $ punctuate (pp "") $ [ vcat $ map mkOpDecl ops
+                                            , collectTypes spec
+                                            , xducers
+                                            , mkMain spec]
     where -- vs      = collectVars [] $ getXducer "main"
           xducers = mkXducer spec [] (getXducer spec "main") []
           ops = collectOps spec $ getXducer spec "main"
@@ -143,6 +156,17 @@ mkType (Struct mn fs) as = (text "type" <+> text "{:datatype}" <+> pp n <> semi)
                  $ map (\(Field nm t) -> text nm <> colon <> typeName t)
                  $ filter (not . isSeq) fs
 
+-- Thread input port of a transducer to a list of simple transducer instances that implement this port
+-- also works if port is the name of a local instance
+findPortConns :: Spec -> Transducer -> Path -> String -> [(Path, String)]
+findPortConns spec x p port = 
+    case txBody x of
+         Left is -> concatMap (\TxInstance{..} -> let x' = getXducer spec tiTxName in
+                                                  concatMap (\(_,(_,prt)) -> findPortConns spec x' (p++[tiInstName]) prt) 
+                                                  $ filter ((== port) . fst) 
+                                                  $ zip tiInputs (txInput x')) is
+         Right _ -> [(p,port)]
+
 mkXducer :: Spec -> Path -> Transducer -> [(Path, String)] -> Doc
 mkXducer spec p x fanout =
     case txBody x of
@@ -156,18 +180,55 @@ mkXducer spec p x fanout =
                                      | otherwise           = ports
                                      where 
                                      name = tiInstName $ is !! id
-                                     ports = concatMap (\TxInstance{..} -> map (\(_,(_,port)) -> (p++[tiInstName], port)) 
-                                                                           $ filter ((== name) . fst) 
-                                                                           $ zip tiInputs (txInput $ getXducer spec tiTxName)) is
+                                     ports = findPortConns spec x p name
          -- simple transducer
          Right (_,vs) -> let ?spec = forXducer spec x in mkXducer' p x fanout
 
-forXducer :: Spec -> Transducer -> Spec
-forXducer spec x = let Right (_, vs) = txBody x
-                       invars = map (\(t,nm) -> Var False VarState nm t) $ txInput x
-                       outvar = Var False VarState (txName x) $ txOutType x
-                   in spec {specVar = vs ++ invars ++ [outvar]}
+mkMain :: Spec -> Doc
+mkMain spec = 
+    let main = getXducer spec "main" in
+    let ?spec = forXducer spec main in
+    let -- input port of the main xducer
+        (ptype, pname) = head $ txInput main
+        ports = findPortConns spec main [] pname
+        decls = vcat $ map (mkSymVar []) $ symChildrenRec ptype [pname]
+    in procedure (pp "main") [] $ decls $+$ mkGen main ports [pname]
 
+mkGen :: (?spec::Spec) => Transducer -> [(Path,String)] -> Symbol -> Doc
+mkGen x ports sym = while (pp "*") body
+    where 
+    body = (if isSeq $ symbolType sym
+               then empty
+               else (havoc $ symVarName [] sym)
+                    $+$
+                    (vcat $ map (\(path,port) -> call (handlerName path (port:tail sym)) [symVarName [] sym]) ports))
+           $+$
+           (vcat $ map (mkGen x ports) $ symChildren (symbolType sym) sym)
+
+symChildren :: Type -> Symbol -> [Symbol]
+symChildren t sym = 
+    case t of
+         Struct _ fs -> concatMap (\(Field fn ft) -> if' (isSeq ft) [sym++[fn]] []) fs
+         Seq    _ t  -> [sym ++ ["<>"]]
+         _           -> []
+
+symChildrenRec :: Type -> Symbol -> [Symbol]
+symChildrenRec (Seq _ (Struct _ fs)) ns = (concatMap (\(Field fn ft) -> symChildrenRec ft (ns++[fn])) fs) ++ [ns]
+symChildrenRec (Seq _ (Seq    _ t))  ns = symChildrenRec t (ns++["<>"])
+symChildrenRec (Seq _ t)             ns = [ns]
+symChildrenRec _                     _  = []
+
+forXducer :: Spec -> Transducer -> Spec
+forXducer spec x = let invars = map (\(t,nm) -> Var False VarState nm t) $ txInput x
+                       outvar = Var False VarState (txName x) $ txOutType x
+                   in case txBody x of
+                           Left _       -> spec {specVar = invars ++ [outvar]}
+                           Right (_,vs) -> spec {specVar = vs ++ invars ++ [outvar]}
+
+procedure :: Doc -> [(Doc, Doc)] -> Doc -> Doc
+procedure nm args body = (text "procedure" <+> nm <+> 
+                          (parens $ hcat $ punctuate (pp ", ") $ map (\(n,t) -> n <> colon <> t) args)) 
+                         $+$ lbrace $+$ (nest' body) $+$ rbrace
 
 call :: Doc -> [Doc] -> Doc
 call f args = text "call" <+> f <+> (parens $ hsep $ punctuate comma args) <> semi
@@ -175,8 +236,21 @@ call f args = text "call" <+> f <+> (parens $ hsep $ punctuate comma args) <> se
 assign :: Doc -> Doc -> Doc
 assign l r = l <+> text ":=" <+> r <> semi
 
+while :: Doc -> Doc -> Doc
+while cond body = (pp "while" <+> (parens cond) <+> lbrace)
+                  $+$
+                  (nest' body)
+                  $+$
+                  rbrace
+
+havoc :: Doc -> Doc
+havoc x = text "havoc" <+> x <> semi
+
 var :: Doc -> Doc -> Doc
 var n t = text "var" <+> n <+> char ':' <+> t <> semi
+
+mkSymVar :: (?spec::Spec) => Path -> Symbol -> Doc
+mkSymVar p s = var (symVarName p s) (typeName $ symbolType s)
 
 -- Print simple transducer:
 mkXducer' :: (?spec::Spec) => Path -> Transducer -> [(Path, String)] -> Doc
@@ -184,14 +258,8 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     where 
     Right (cfa, vs) = txBody
 
-    insymbols::[Symbol] = concatMap (\(t,n) -> symbols' t [n]) txInput
-    outsymbols::[Symbol] = symbols' txOutType [txName]
-
-    symbols' :: Type -> Symbol -> [Symbol]
-    symbols' (Seq _ (Struct _ fs)) ns = (concatMap (\(Field fn ft) -> symbols' ft (ns++[fn])) fs) ++ [ns]
-    symbols' (Seq _ (Seq    _ t))  ns = symbols' t (ns++["<>"])
-    symbols' (Seq _ t)             ns = [ns]
-    symbols' _                     _  = []
+    insymbols::[Symbol] = concatMap (\(t,n) -> symChildrenRec t [n]) txInput
+    outsymbols::[Symbol] = symChildrenRec txOutType [txName]
 
     -- states along with the symbol acceped in each state
     states :: [(Loc,Maybe Symbol)]
@@ -205,14 +273,6 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     expr2Sym (EVar n)               = [n]
     expr2Sym (EField (ESeqVal e) f) = (expr2Sym e)++[f]
     expr2Sym (ESeqVal e)            = (expr2Sym e)++["<>"]
-
-    sym2Expr :: Symbol -> Expr
-    sym2Expr [port] = ESeqVal $ EVar port
-    sym2Expr sym    = if last sym == "<>"
-                         then ESeqVal $ sym2Expr $ init sym
-                         else ESeqVal $ EField (sym2Expr $ init sym) (last sym)
-                      
-    symbolType = exprType . sym2Expr
 
     ([(initst,_)], states') = partition (null . fromJustMsg "mkXducer" . snd) $ filter (isJust . snd) states
     -- transition CFAs
@@ -235,26 +295,20 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     lvars = map (\v -> var (xvarName p $ varName v) (typeName $ varType v)) vs
 
     -- generate variables to store input and output symbols
-    invars  = map mkSymVar insymbols
-    outvars = map mkSymVar outsymbols
+    invars  = map (mkSymVar p) insymbols
+    outvars = map (mkSymVar p) outsymbols
 
     vars = vcat $ stvar : text "" : invars ++ text "" : outvars ++ text "" : lvars
 
-    mkSymVar :: Symbol -> Doc
-    mkSymVar s = var (symVarName p s) (typeName $ symbolType s)
-
     -- init method
-    initproc = (text "procedure" <+> initializerName p <+> (parens empty)) $+$ lbrace $+$ (nest' $ mkCFA (initst, initSink, initCFA)) $+$ rbrace
-
+    initproc = procedure (initializerName p) [] $ mkCFA (initst, initSink, initCFA) 
+    
     -- input handlers
     handlers = map mkHandler insymbols
 
     mkHandler :: Symbol -> Doc
-    mkHandler sym = sig $+$ lbrace $+$ nest' body $+$ rbrace
+    mkHandler sym = procedure (handlerName p sym) [(symVarName [] sym, typeName $ symbolType sym)] body
         where
-        -- procedure signature
-        sig =  text "procedure" <+> handlerName p sym 
-           <+> (parens $ symVarName [] sym <> colon <> (typeName $ symbolType sym))
         -- save input symbol and eof flag
         readinp = assign (symVarName p sym) (symVarName [] sym)
 
@@ -314,7 +368,7 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
                          $ map (\(path,port) -> call (handlerName path (port:tail s)) [symVarName p s])
                          $ fanout
               -- randomize it
-              randomize = text "havoc" <+> symVarName p sym <> semi
+              randomize = havoc $ symVarName p sym
 
     mkExpr :: Expr -> Doc
     mkExpr (ESeqVal e)             = symVarName p $ expr2Sym e
