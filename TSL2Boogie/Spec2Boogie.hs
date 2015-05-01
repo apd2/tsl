@@ -192,7 +192,13 @@ mkMain spec =
         (ptype, pname) = head $ txInput main
         ports = findPortConns spec main [] pname
         decls = vcat $ map (mkSymVar []) $ symChildrenRec ptype [pname]
-    in procedure (pp "main") [] $ decls $+$ mkGen main ports [pname]
+        inits = mkInit [] main
+        mkInit :: Path -> Transducer -> Doc
+        mkInit p x = case txBody x of
+                          Left is -> vcat $ map (\i -> mkInit (p++[tiInstName i]) (getXducer spec $ tiTxName i)) is
+                          Right _ -> call (initializerName p) []
+    in procedure (pp "main") [] $ decls $+$ inits $+$ mkGen main ports [pname]
+
 
 mkGen :: (?spec::Spec) => Transducer -> [(Path,String)] -> Symbol -> Doc
 mkGen x ports sym = while (pp "*") body
@@ -254,7 +260,7 @@ mkSymVar p s = var (symVarName p s) (typeName $ symbolType s)
 
 -- Print simple transducer:
 mkXducer' :: (?spec::Spec) => Path -> Transducer -> [(Path, String)] -> Doc
-mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
+mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:handlers)
     where 
     Right (cfa, vs) = txBody
 
