@@ -42,9 +42,8 @@ spec2Boogie spec = let ?spec = spec in
                       else Left "no main transducer found"
 
 mkMainXducer :: (?spec::Spec) => Doc
-mkMainXducer = vcat $ [types, pp "" {-: map mkVar vs-}, xducers]
+mkMainXducer = vcat $ [collectTypes, pp "" {-: map mkVar vs-}, xducers]
     where -- vs      = collectVars [] $ getXducer "main"
-          types   = vcat $ map collectTypes $ specXducers ?spec
           xducers = mkXducer [] (getXducer "main") []
 
 getXducer :: (?spec::Spec) => String -> Transducer
@@ -56,24 +55,26 @@ getXducer n = fromJustMsg ("fromJust Nothing getXducer" {-intercalate "," $ n : 
 --         Left is       -> concatMap (\i -> collectVars (p++[tiInstName i]) (getXducer $ tiTxName i)) is
 --         Right (_, vs) -> map (XVar p) vs
 
-collectTypes :: (?spec::Spec) => Transducer -> Doc
-collectTypes x = vcat $ stenum:(map (uncurry mkType) $ foldl' add [] $ collectTypes' x)
+collectTypes :: (?spec::Spec) => Doc
+collectTypes = vcat $ stenums ++ (map (uncurry mkType) $ foldl' add [] types)
     where add :: [(Type, [String])] -> Type -> [(Type, [String])]
           add []      t = [(t,[])]
           add ((t0,as):ts) t = case (t0,t) of
                                     (Struct _ fs1, Struct (Just n2) fs2) -> if' (fs1 == fs2) ((t0,n2:as):ts) ((t0,as):(add ts t))
                                     _                                    -> (t0,as):(add ts t)
+          types = nub $ concatMap collectTypes' $ specXducers ?spec
           -- state enum
-          stenum = case txBody x of
-                        Left _        -> empty
-                        Right (cfa,_) -> mkEnumType n $ map (render . stateName x) locs
-                                         where locs = delete cfaInitLoc (cfaDelayLocs cfa)
-                                               n = render $ stateTypeName x
+          stenums = mapMaybe (\x -> case txBody x of
+                                         Left _        -> Nothing
+                                         Right (cfa,_) -> Just $ mkEnumType n $ map (render . stateName x) locs
+                                                          where locs = delete cfaInitLoc (cfaDelayLocs cfa)
+                                                                n = render $ stateTypeName x)
+                    $ specXducers ?spec
 
 collectTypes' :: (?spec::Spec) => Transducer -> [Type]
 collectTypes' Transducer{..} = 
     case txBody of
-         Left _         -> []
+         Left _        -> []
          Right (_, vs) -> nub $ (concatMap (collectTypesT . varType) vs) ++ 
                                 (collectTypesT txOutType) ++ 
                                 (concatMap (collectTypesT . fst) txInput)
@@ -104,7 +105,7 @@ typeName t                   = error $ "typeName " ++ show t
 
 
 mkEnumType :: String -> [String] -> Doc
-mkEnumType n es = (text "type" <+> text "finite" <+> text n <> semi)
+mkEnumType n es = (text "type" <+> {-text "finite" <+>-} text n <> semi)
                   $$
                   (vcat $ map (\e -> text "const" <+> text "unique" <+> text e <> colon <+> text n <> semi) es)
                   $$
@@ -205,7 +206,7 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
         where (cfa',sink) = cfaInsLoc (LInst ActNone) cfa
 
     -- generate state var
-    stvar = text "var" <+> stateVarName p <+> char ':' <+> stateTypeName x
+    stvar = text "var" <+> stateVarName p <+> char ':' <+> stateTypeName x <> semi
 
     -- generate variables to store input and output symbols
 
@@ -287,13 +288,13 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
                            $ map (\(path,port) -> call (handlerName path (port:tail s)) [symVarName p s, text $ if' e "true" "false"])
                            $ fanout
               -- randomize it
-              randomize = text "havoc" <+> (parens $ symVarName p sym) <> semi
+              randomize = text "havoc" <+> symVarName p sym <> semi
 
     mkExpr :: Expr -> Doc
     mkExpr (ESeqVal e)             = symVarName p $ expr2Sym e
     mkExpr (EVar v)                = xvName p v
     mkExpr (EConst v)              = mkConst v
-    mkExpr (EField e f)            = text f <> char '#' <> mkExpr e
+    mkExpr (EField e f)            = let tn = typeName $ exprType e in text f <> char '#' <> tn <> (parens $ mkExpr e)
     mkExpr (EUnOp Not e)           = parens $ char '!' <> mkExpr e
     mkExpr (EUnOp BNeg e)          = text ("BV"++(show $ exprWidth e)++"_NOT") <> (parens $ mkExpr e)
     mkExpr (EBinOp Eq e1 e2)       = parens $ mkExpr e1 <+> text "==" <+> mkExpr e2
