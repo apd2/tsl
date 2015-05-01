@@ -410,7 +410,7 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:
     mkConst (EnumVal n)        = pp n
 
 xvarName :: Path -> String -> Doc
-xvarName p v = ppPath p <> char '$' <> pp v
+xvarName p v = ppPath p <> char '_' <> pp v
 
 symVarName :: Path -> Symbol -> Doc
 symVarName p s = xvarName p $ showSymbol s
@@ -419,16 +419,16 @@ handlerName :: Path -> Symbol -> Doc
 handlerName p s = xvarName p $ "handle_" ++ showSymbol s
 
 stateVarName :: Path -> Doc
-stateVarName p = xvarName p "$state"
+stateVarName p = xvarName p "_state"
 
 stateName :: Transducer -> Loc -> Doc
-stateName x l = (text $ txName x) <> pp "$$" <> pp l
+stateName x l = (text $ txName x) <> pp "_" <> pp l
 
 stateTypeName :: Transducer -> Doc
 stateTypeName x = (pp $ txName x) <> pp "_state_t"
 
 initializerName :: Path -> Doc 
-initializerName p = ppPath p <> pp "$$init"
+initializerName p = ppPath p <> pp "_init"
 
 mkOpDecl :: (Either UOp BOp, Int) -> Doc
 mkOpDecl (Right Lt      , w) = mkBOpDecl "bvult" (bvbopname Lt)       w "bool" 
