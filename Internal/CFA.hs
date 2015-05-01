@@ -78,12 +78,14 @@ import qualified Frontend.Method    as F
 
 -- Atomic statement
 data Statement = SAssume  Expr
+               | SAssert  Expr   -- in transducers only
                | SAssign  Expr Expr
                | SAdvance Expr
                deriving (Eq)
 
 instance PP Statement where
     pp (SAssume e)   = text "assume" <+> (parens $ pp e)
+    pp (SAssert e)   = text "assert" <+> (parens $ pp e)
     pp (SAssign l r) = pp l <+> text ":=" <+> pp r
     pp (SAdvance e)  = text "++" <> pp e
 
@@ -367,6 +369,7 @@ cfaMapStat cfa f = G.emap (\l -> case l of
 cfaMapExpr :: CFA -> (Expr -> Expr) -> CFA
 cfaMapExpr cfa f = cfaMapStat cfa f'
     where f' (SAssume e)   = SAssume $ f e
+          f' (SAssert e)   = SAssert $ f e
           f' (SAssign l r) = SAssign (f l) (f r)
 
 -- Split location into 2, one containing all outgoing edges and one containing

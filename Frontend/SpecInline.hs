@@ -160,6 +160,7 @@ mkWires | (null $ tmWire tmMain) = return Nothing
                      , ctxLabels  = []}
         ctx' = let ?procs =[] 
                    ?nestedmb = False 
+                   ?xducer = False
                in execState (procStatToCFA stat I.cfaInitLoc) ctx
     return $ Just $ {-I.cfaTraceFile (ctxCFA ctx') "wires_cfa" $-} ctxCFA ctx'
 
@@ -200,6 +201,7 @@ mkPrefix | (null $ tmPrefix tmMain) = return Nothing
                      , ctxLabels  = []}
         ctx' = let ?procs = [] 
                    ?nestedmb = False
+                   ?xducer = False
                in execState (procStatToCFA stat I.cfaInitLoc) ctx
     return $ Just $ {- I.cfaTraceFile (ctxCFA ctx') "prefix_cfa" $-} ctxCFA ctx'
 
@@ -293,6 +295,7 @@ mkCond descr s extra = do
                      , ctxLabels  = []}
         ctx' = let ?procs = [] 
                    ?nestedmb = False
+                   ?xducer = False
                in execState (do aft <- procStatToCFA stat I.cfaInitLoc
                                 ctxPause aft I.true I.ActNone) ctx
         trans = map snd $ I.cfaLocTrans (ctxCFA ctx') I.cfaInitLoc
@@ -332,6 +335,7 @@ mkCTran =  I.cfaTraceFile (ctxCFA ctx' ) "cont_cfa" $ (ctxCFA ctx', ctxVar ctx')
                         , ctxLabels  = []}
           ctx' = let ?procs = []
                      ?nestedmb = False
+                     ?xducer = False
                  in execState (mapM (\(t,s) -> do afttag <- ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume $ mkTagVar I.=== (I.EConst $ I.EnumVal t)
                                                   aftcont <- ctxInsTrans' afttag $ I.TranStat $ I.SAssume $ mkContLVar I.=== I.true
                                                   aftmag <- ctxInsTrans' aftcont $ I.TranStat $ I.SAssume $ mkMagicVar I.=== I.true
@@ -412,7 +416,8 @@ xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer outtype (sname n) is' 
           b' = case b of
                     Left  insts -> Left $ map (\i -> I.TxInstance (sname $ tiTxName i) (sname $ tiInstName i) (map sname $ tiInputs i)) insts
                     Right st    -> let ?procs = []
-                                       ?nestedmb = False in
+                                       ?nestedmb = False 
+                                       ?xducer = True in
                                    let stvars = map (\v -> I.Var False I.VarState (sname v) (mkType $ Type sc $ tspec v)) $ stmtVar st
                                        st' = let ?scope = sc in evalState (statSimplify st) (0,[])
                                        cfa = ctxCFA $ execState (do aft <- procStatToCFA st' I.cfaInitLoc
@@ -443,7 +448,9 @@ procToCFA pid@(PrID _ ps) lmap parscope stat =  {-I.cfaTraceFile (ctxCFA ctx') (
           ctx' = execState (do aftguard <- if guarded
                                               then ctxInsTrans' I.cfaInitLoc $ I.TranStat $ I.SAssume guard
                                               else return I.cfaInitLoc
-                               aft <- let ?nestedmb = False in procStatToCFA stat aftguard
+                               aft <- let ?nestedmb = False 
+                                          ?xducer = False in 
+                                      procStatToCFA stat aftguard
                                _   <- ctxFinal aft
                                modify $ \c -> c {ctxCFA = cfaShortcut $ ctxCFA c}
                                ctxUContInsertSuffixes

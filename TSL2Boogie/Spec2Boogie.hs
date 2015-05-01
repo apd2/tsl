@@ -267,6 +267,7 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
 
     mkTransition :: TranLabel -> Doc
     mkTransition (TranStat (SAssume e))   = text "assume" <> (parens $ mkExpr e) <> semi
+    mkTransition (TranStat (SAssert e))   = text "assert" <> (parens $ mkExpr e) <> semi
     mkTransition (TranStat (SAssign l r)) = assign (mkExpr l) (mkExpr r)
     mkTransition (TranStat (SAdvance e))  = mkAdvance e
     mkTransition TranNop                  = empty

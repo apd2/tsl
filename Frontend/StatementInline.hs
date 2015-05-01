@@ -96,14 +96,14 @@ statSimplify' st                          = return [st{stLab = Nothing}]
 ----------------------------------------------------------
 -- Convert statement to CFA
 ----------------------------------------------------------
-statToCFA :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool, ?xducer::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA before s = do
     when (isJust $ stLab s) $ ctxPushLabel (sname $ fromJust $ stLab s)
     after <- statToCFA0 before s
     when (isJust $ stLab s) ctxPopLabel
     return after
     
-statToCFA0 :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
+statToCFA0 :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool, ?xducer::Bool) => I.Loc -> Statement -> State CFACtx I.Loc
 statToCFA0 before   (SSeq _ _ ss)    = foldM statToCFA before ss
 statToCFA0 before s@(SAdvance _ _ e) = do sc <- gets ctxScope
                                           let ?scope = sc
@@ -139,7 +139,7 @@ statToCFA0 before s@stat             = do ctxLocSetAct before (I.ActStat s)
                                           return after
 
 -- Only safe to call from statToCFA.  Do not call this function directly!
-statToCFA' :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
+statToCFA' :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool, ?xducer::Bool) => I.Loc -> I.Loc -> Statement -> State CFACtx ()
 statToCFA' before _ (SReturn _ _ rval) = do
     -- add transition before before to return location
     mlhs  <- gets ctxLHS
@@ -251,6 +251,10 @@ statToCFA' before after s@(SInvoke _ _ mref mas) = do
     let meth = snd $ getMethod sc mref
     methInline before after meth mas Nothing (I.ActStat s)
 
+statToCFA' before after (SAssert _ _ cond) | ?xducer  = do
+    cond' <- exprToIExprDet cond
+    ctxInsTrans before after (I.TranStat $ I.SAssert cond')
+
 statToCFA' before after (SAssert _ _ cond) = do
     cond' <- exprToIExprDet cond
     when (cond' /= I.false) $ ctxInsTrans before after (I.TranStat $ I.SAssume cond')
@@ -336,7 +340,7 @@ statToCFA' before after (SDoNothing _ _) =
     ctxInsTrans before after $ I.TranNop
 
 
-methInline :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => I.Loc -> I.Loc -> Method -> [Maybe Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
+methInline :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool, ?xducer::Bool) => I.Loc -> I.Loc -> Method -> [Maybe Expr] -> Maybe Expr -> I.LocAction -> State CFACtx ()
 methInline before after meth margs mlhs act = do
     -- save current context
     mepid <- gets ctxEPID
@@ -414,7 +418,7 @@ statAddNullTypes _    s = s
 -- Top-level function: convert process statement to CFA
 ----------------------------------------------------------
 
-procStatToCFA :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool) => Statement -> I.Loc -> State CFACtx I.Loc
+procStatToCFA :: (?spec::Spec, ?procs::[I.Process], ?nestedmb::Bool, ?xducer::Bool) => Statement -> I.Loc -> State CFACtx I.Loc
 procStatToCFA stat before = do
     after <- statToCFA before stat
     ctxAddNullPtrTrans
