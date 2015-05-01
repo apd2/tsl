@@ -414,13 +414,10 @@ xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer outtype (sname n) is' 
                     Right st    -> let ?procs = []
                                        ?nestedmb = False in
                                    let stvars = map (\v -> I.Var False I.VarState (sname v) (mkType $ Type sc $ tspec v)) $ stmtVar st
-                                       invars = map (\(t,nm) -> I.Var False I.VarState nm t) is'
-                                       outvar = I.Var False I.VarState (sname n) outtype
-                                       vars = stvars ++ invars ++ [outvar] 
                                        st' = let ?scope = sc in evalState (statSimplify st) (0,[])
                                        cfa = ctxCFA $ execState (do aft <- procStatToCFA st' I.cfaInitLoc
                                                                     ctxFinal aft) (ctx st')
-                                   in Right (cfa, vars)
+                                   in Right (cfa, stvars)
 
 ----------------------------------------------------------------------
 -- CFA transformation

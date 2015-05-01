@@ -28,12 +28,7 @@ ppPath p = hcat $ punctuate (char '.') (map text p)
 -- alphabet symbol: input port name:field names. [] = init symbol
 type Symbol = [String]
 
-ppSymbol s = hcat $ punctuate (char '.') (map text s)
-
---data XVar = XVar Path Var
-
-xvName :: Path -> String -> Doc
-xvName p v = hcat $ punctuate (char '.') (map text $ p ++ [v])
+showSymbol s = render $ hcat $ punctuate (char '.') (map text s)
 
 spec2Boogie :: Spec -> Either String Doc
 spec2Boogie spec = let ?spec = spec in
@@ -48,12 +43,6 @@ mkMainXducer = vcat $ [collectTypes, pp "" {-: map mkVar vs-}, xducers]
 
 getXducer :: (?spec::Spec) => String -> Transducer
 getXducer n = fromJustMsg ("fromJust Nothing getXducer" {-intercalate "," $ n : (map txName $ specXducers ?spec)-}) $ find ((== n) . txName) $ specXducers ?spec
-
---collectVars :: (?spec::Spec) => Path -> Transducer -> [XVar]
---collectVars p Transducer{..} = 
---    case txBody of
---         Left is       -> concatMap (\i -> collectVars (p++[tiInstName i]) (getXducer $ tiTxName i)) is
---         Right (_, vs) -> map (XVar p) vs
 
 collectTypes :: (?spec::Spec) => Doc
 collectTypes = vcat $ stenums ++ (map (uncurry mkType) $ foldl' add [] types)
@@ -89,9 +78,6 @@ collectTypesT   (Seq _ t)      = collectTypesT t
 collectTypesT t@(Array _ t' _) = nub $ t:(collectTypesT t')
 collectTypesT   (VarArray _ _) = error "VarArray type in transducer"
 collectTypesT   _              = []
-
---mkVar :: (?spec::Spec) => XVar -> Doc
---mkVar (XVar p v) = text "var" <+> xvName p (varName v) <+> char ':' <+> (typeName $ varType v)
 
 typeName :: Type -> Doc
 typeName (Bool _)            = text "bool"
@@ -143,8 +129,10 @@ mkXducer p x fanout =
                                                                            $ filter ((== name) . fst) 
                                                                            $ zip tiInputs (txInput $ getXducer tiTxName)) is
          -- simple transducer
-         Right (_,vs) -> let spec = ?spec in
-                         let ?spec = spec {specVar = vs} in
+         Right (_,vs) -> let spec = ?spec 
+                             invars = map (\(t,nm) -> Var False VarState nm t) $ txInput x
+                             outvar = Var False VarState (txName x) $ txOutType x in
+                         let ?spec = spec {specVar = vs ++ invars ++ [outvar]} in
                          mkXducer' p x fanout
          
 
@@ -154,6 +142,8 @@ call f args = text "call" <+> f <+> (parens $ hsep $ punctuate comma args) <> se
 assign :: Doc -> Doc -> Doc
 assign l r = l <+> text ":=" <+> r <> semi
 
+var :: Doc -> Doc -> Doc
+var n t = text "var" <+> n <+> char ':' <+> t <> semi
 
 -- Print simple transducer:
 mkXducer' :: (?spec::Spec) => Path -> Transducer -> [(Path, String)] -> Doc
@@ -205,18 +195,20 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     cfaAddUniqueSink cfa = (sink, foldl' (\c loc -> cfaInsTrans loc sink TranNop c) cfa' $ cfaSink cfa)
         where (cfa',sink) = cfaInsLoc (LInst ActNone) cfa
 
-    -- generate state var
-    stvar = text "var" <+> stateVarName p <+> char ':' <+> stateTypeName x <> semi
+    -- state var
+    stvar = var (stateVarName p) (stateTypeName x)
+
+    -- local vars
+    lvars = map (\v -> var (xvarName p $ varName v) (typeName $ varType v)) vs
 
     -- generate variables to store input and output symbols
-
     invars  = map mkSymVar insymbols
     outvars = map mkSymVar outsymbols
 
-    vars = vcat $ stvar : text "" : invars ++ text "" : outvars
+    vars = vcat $ stvar : text "" : invars ++ text "" : outvars ++ text "" : lvars
 
     mkSymVar :: Symbol -> Doc
-    mkSymVar s = (text "var" <+> symVarName p s <+> char ':' <+> (typeName $ symbolType s) <> semi)
+    mkSymVar s = var (symVarName p s) (typeName $ symbolType s)
 
     -- init method
     initproc = (text "procedure" <+> initializerName p <+> (parens empty)) $+$ lbrace $+$ (nest' $ mkCFA (initst, initSink, initCFA)) $+$ rbrace
@@ -283,16 +275,16 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     mkAdvance exp = out $+$ randomize
         where sym = expr2Sym exp
               -- output current symbol value
-              out = output sym False
-              output s e = vcat 
-                           $ map (\(path,port) -> call (handlerName path (port:tail s)) [symVarName p s, text $ if' e "true" "false"])
-                           $ fanout
+              out = output sym
+              output s = vcat 
+                         $ map (\(path,port) -> call (handlerName path (port:tail s)) [symVarName p s])
+                         $ fanout
               -- randomize it
               randomize = text "havoc" <+> symVarName p sym <> semi
 
     mkExpr :: Expr -> Doc
     mkExpr (ESeqVal e)             = symVarName p $ expr2Sym e
-    mkExpr (EVar v)                = xvName p v
+    mkExpr (EVar v)                = xvarName p v
     mkExpr (EConst v)              = mkConst v
     mkExpr (EField e f)            = let tn = typeName $ exprType e in text f <> char '#' <> tn <> (parens $ mkExpr e)
     mkExpr (EUnOp Not e)           = parens $ char '!' <> mkExpr e
@@ -323,14 +315,17 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     mkConst (UIntVal w v)      = pp v <> text "bv" <> pp w
     mkConst (EnumVal n)        = pp n
 
+xvarName :: Path -> String -> Doc
+xvarName p v = ppPath p <> char '$' <> pp v
+
 symVarName :: Path -> Symbol -> Doc
-symVarName p s = ppPath p <> char '$' <> ppSymbol s
+symVarName p s = xvarName p $ showSymbol s
 
 handlerName :: Path -> Symbol -> Doc
-handlerName p s = ppPath p <> char '$' <> pp "handle_" <> ppSymbol s
+handlerName p s = xvarName p $ "handle_" ++ showSymbol s
 
 stateVarName :: Path -> Doc
-stateVarName p = ppPath p <> pp "$$state"
+stateVarName p = xvarName p "$state"
 
 stateName :: Transducer -> Loc -> Doc
 stateName x l = (text $ txName x) <> pp "$$" <> pp l
