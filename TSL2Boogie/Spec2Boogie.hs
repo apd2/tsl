@@ -31,36 +31,67 @@ type Symbol = [String]
 showSymbol s = render $ hcat $ punctuate (char '.') (map text s)
 
 spec2Boogie :: Spec -> Either String Doc
-spec2Boogie spec = let ?spec = spec in
-                   if any ((== "main") . txName) $ specXducers spec
-                      then Right mkMainXducer
+spec2Boogie spec = if any ((== "main") . txName) $ specXducers spec
+                      then Right $ mkMainXducer spec
                       else Left "no main transducer found"
 
-mkMainXducer :: (?spec::Spec) => Doc
-mkMainXducer = vcat $ [collectTypes, pp "" {-: map mkVar vs-}, xducers]
+mkMainXducer :: Spec -> Doc
+mkMainXducer spec = vcat $ [vcat $ map mkOpDecl ops, pp "", collectTypes spec, pp "" {-: map mkVar vs-}, xducers]
     where -- vs      = collectVars [] $ getXducer "main"
-          xducers = mkXducer [] (getXducer "main") []
+          xducers = mkXducer spec [] (getXducer spec "main") []
+          ops = collectOps spec $ getXducer spec "main"
 
-getXducer :: (?spec::Spec) => String -> Transducer
-getXducer n = fromJustMsg ("fromJust Nothing getXducer" {-intercalate "," $ n : (map txName $ specXducers ?spec)-}) $ find ((== n) . txName) $ specXducers ?spec
+getXducer :: Spec -> String -> Transducer
+getXducer spec n = fromJustMsg ("fromJust Nothing getXducer" {-intercalate "," $ n : (map txName $ specXducers ?spec)-}) $ find ((== n) . txName) $ specXducers spec
 
-collectTypes :: (?spec::Spec) => Doc
-collectTypes = vcat $ stenums ++ (map (uncurry mkType) $ foldl' add [] types)
+collectOps :: Spec -> Transducer -> [(Either UOp BOp, Int)]
+collectOps spec x = 
+    case txBody x of
+         Left is       -> nub $ concatMap (collectOps spec . getXducer spec . tiTxName) is
+         Right (cfa,_) -> let ?spec = forXducer spec x in collectOpsCFA cfa
+
+collectOpsCFA :: (?spec::Spec) => CFA -> [(Either UOp BOp, Int)]
+collectOpsCFA cfa = nub $ concatMap (\e -> case sel3 e of
+                                                TranStat s -> collectOpsStat s
+                                                _          -> [])
+                        $ IG.labEdges cfa
+
+collectOpsStat :: (?spec::Spec) => Statement -> [(Either UOp BOp, Int)]
+collectOpsStat (SAssume e)   = collectOpsExpr e
+collectOpsStat (SAssert e)   = collectOpsExpr e
+collectOpsStat (SAssign l r) = nub $ collectOpsExpr l ++ collectOpsExpr r
+collectOpsStat (SAdvance e)  = collectOpsExpr e
+
+collectOpsExpr :: (?spec::Spec) => Expr -> [(Either UOp BOp, Int)]
+collectOpsExpr (EVar _)          = []
+collectOpsExpr (EConst _)        = []
+collectOpsExpr (EField e _)      = collectOpsExpr e
+collectOpsExpr (EIndex a i)      = nub $ collectOpsExpr a ++ collectOpsExpr i
+collectOpsExpr (ERange e (f,t))  = nub $ collectOpsExpr e ++ collectOpsExpr f ++ collectOpsExpr t
+collectOpsExpr (ERange e (f,t))  = nub $ collectOpsExpr e ++ collectOpsExpr f ++ collectOpsExpr t
+collectOpsExpr (ELength e)       = collectOpsExpr e
+collectOpsExpr (EUnOp op e)      = nub $ (Left op, exprWidth e) : collectOpsExpr e
+collectOpsExpr (EBinOp op e1 e2) = nub $ (Right op, exprWidth e1) : collectOpsExpr e1 ++ collectOpsExpr e2
+collectOpsExpr (ESlice e _)      = collectOpsExpr e
+collectOpsExpr (ESeqVal e)       = collectOpsExpr e
+
+collectTypes :: Spec -> Doc
+collectTypes spec = vcat $ stenums ++ (map (let ?spec = spec in uncurry mkType) $ foldl' add [] types)
     where add :: [(Type, [String])] -> Type -> [(Type, [String])]
           add []      t = [(t,[])]
           add ((t0,as):ts) t = case (t0,t) of
                                     (Struct _ fs1, Struct (Just n2) fs2) -> if' (fs1 == fs2) ((t0,n2:as):ts) ((t0,as):(add ts t))
                                     _                                    -> (t0,as):(add ts t)
-          types = nub $ concatMap collectTypes' $ specXducers ?spec
+          types = nub $ concatMap collectTypes' $ specXducers spec
           -- state enum
           stenums = mapMaybe (\x -> case txBody x of
                                          Left _        -> Nothing
                                          Right (cfa,_) -> Just $ mkEnumType n $ map (render . stateName x) locs
                                                           where locs = delete cfaInitLoc (cfaDelayLocs cfa)
                                                                 n = render $ stateTypeName x)
-                    $ specXducers ?spec
+                    $ specXducers spec
 
-collectTypes' :: (?spec::Spec) => Transducer -> [Type]
+collectTypes' :: Transducer -> [Type]
 collectTypes' Transducer{..} = 
     case txBody of
          Left _        -> []
@@ -70,7 +101,7 @@ collectTypes' Transducer{..} =
 
 -- Bools and bitvectors are builtins in Boogie - ignore them.
 -- Strip sequence types.
-collectTypesT :: (?spec::Spec) => Type -> [Type]
+collectTypesT :: Type -> [Type]
 collectTypesT t@(Enum _ _)     = [t]
 collectTypesT t@(Struct _ fs)  = nub $ t:(concatMap (\(Field _ t) -> collectTypesT t) fs)
 collectTypesT   (Ptr _ _)      = error "Pointer type in transducer"
@@ -112,13 +143,13 @@ mkType (Struct mn fs) as = (text "type" <+> text "{:datatype}" <+> pp n <> semi)
                  $ map (\(Field nm t) -> text nm <> colon <> typeName t)
                  $ filter (not . isSeq) fs
 
-mkXducer :: (?spec::Spec) => Path -> Transducer -> [(Path, String)] -> Doc
-mkXducer p x fanout =
+mkXducer :: Spec -> Path -> Transducer -> [(Path, String)] -> Doc
+mkXducer spec p x fanout =
     case txBody x of
          -- composite transducer
          Left is -> -- print instances; route each instance output to other instance inputs or to the top-level output
                     vcat $ punctuate (text "") 
-                    $ (mapIdx (\i id -> mkXducer (p++[tiInstName i]) (getXducer $ tiTxName i) (connect id)) is)
+                    $ (mapIdx (\i id -> mkXducer spec(p++[tiInstName i]) (getXducer spec $ tiTxName i) (connect id)) is)
                     where -- compute list of ports that an instance is connected to
                           connect :: Int -> [(Path, String)]
                           connect id | id == length is - 1 = fanout ++ ports
@@ -127,14 +158,16 @@ mkXducer p x fanout =
                                      name = tiInstName $ is !! id
                                      ports = concatMap (\TxInstance{..} -> map (\(_,(_,port)) -> (p++[tiInstName], port)) 
                                                                            $ filter ((== name) . fst) 
-                                                                           $ zip tiInputs (txInput $ getXducer tiTxName)) is
+                                                                           $ zip tiInputs (txInput $ getXducer spec tiTxName)) is
          -- simple transducer
-         Right (_,vs) -> let spec = ?spec 
-                             invars = map (\(t,nm) -> Var False VarState nm t) $ txInput x
-                             outvar = Var False VarState (txName x) $ txOutType x in
-                         let ?spec = spec {specVar = vs ++ invars ++ [outvar]} in
-                         mkXducer' p x fanout
-         
+         Right (_,vs) -> let ?spec = forXducer spec x in mkXducer' p x fanout
+
+forXducer :: Spec -> Transducer -> Spec
+forXducer spec x = let Right (_, vs) = txBody x
+                       invars = map (\(t,nm) -> Var False VarState nm t) $ txInput x
+                       outvar = Var False VarState (txName x) $ txOutType x
+                   in spec {specVar = vs ++ invars ++ [outvar]}
+
 
 call :: Doc -> [Doc] -> Doc
 call f args = text "call" <+> f <+> (parens $ hsep $ punctuate comma args) <> semi
@@ -292,23 +325,23 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:handlers)
     mkExpr (EUnOp BNeg e)          = text ("BV"++(show $ exprWidth e)++"_NOT") <> (parens $ mkExpr e)
     mkExpr (EBinOp Eq e1 e2)       = parens $ mkExpr e1 <+> text "==" <+> mkExpr e2
     mkExpr (EBinOp Neq e1 e2)      = parens $ mkExpr e1 <+> text "!=" <+> mkExpr e2
-    mkExpr (EBinOp Lt e1 e2)       = bvbop "ULT" e1 e2
-    mkExpr (EBinOp Gt e1 e2)       = bvbop "UGT" e1 e2
-    mkExpr (EBinOp Lte e1 e2)      = bvbop "ULEQ" e1 e2
-    mkExpr (EBinOp Gte e1 e2)      = bvbop "UGEQ" e1 e2
+    mkExpr (EBinOp Lt e1 e2)       = bvbop Lt e1 e2
+    mkExpr (EBinOp Gt e1 e2)       = bvbop Gt e1 e2
+    mkExpr (EBinOp Lte e1 e2)      = bvbop Lte e1 e2
+    mkExpr (EBinOp Gte e1 e2)      = bvbop Gte e1 e2
     mkExpr (EBinOp And e1 e2)      = parens $ mkExpr e1 <+> text "&&" <+> mkExpr e2
     mkExpr (EBinOp Or e1 e2)       = parens $ mkExpr e1 <+> text "||" <+> mkExpr e2
     mkExpr (EBinOp Imp e1 e2)      = parens $ mkExpr e1 <+> text "==>" <+> mkExpr e2
-    mkExpr (EBinOp BAnd e1 e2)     = bvbop "AND" e1 e2
-    mkExpr (EBinOp BOr e1 e2)      = bvbop "OR" e1 e2
-    mkExpr (EBinOp BXor e1 e2)     = bvbop "XOR" e1 e2
+    mkExpr (EBinOp BAnd e1 e2)     = bvbop BAnd e1 e2
+    mkExpr (EBinOp BOr e1 e2)      = bvbop BOr e1 e2
+    mkExpr (EBinOp BXor e1 e2)     = bvbop BXor e1 e2
     mkExpr (EBinOp BConcat e1 e2)  = parens $ mkExpr e2 <+> text "++" <+> mkExpr e1
-    mkExpr (EBinOp Plus e1 e2)     = bvbop "ADD" e1 e2
-    mkExpr (EBinOp BinMinus e1 e2) = bvbop "SUB" e1 e2
-    mkExpr (EBinOp Mul e1 e2)      = bvbop "MULT" e1 e2
+    mkExpr (EBinOp Plus e1 e2)     = bvbop Plus e1 e2
+    mkExpr (EBinOp BinMinus e1 e2) = bvbop BinMinus e1 e2
+    mkExpr (EBinOp Mul e1 e2)      = bvbop Mul e1 e2
     mkExpr (ESlice e (l,h))        = mkExpr e <> (brackets $ pp h <> char ':' <> pp l)
 
-    bvbop op e1 e2 = text ("BV"++(show $ exprWidth e1)++op) <> (parens $ mkExpr e1 <> comma <+> mkExpr e2)
+    bvbop op e1 e2 = text ("BV"++(show $ exprWidth e1)++"_"++bvbopname op) <> (parens $ mkExpr e1 <> comma <+> mkExpr e2)
 
     mkConst :: Val -> Doc
     mkConst (BoolVal True)     = pp "true"
@@ -336,3 +369,33 @@ stateTypeName x = (pp $ txName x) <> pp "_state_t"
 
 initializerName :: Path -> Doc 
 initializerName p = ppPath p <> pp "$$init"
+
+mkOpDecl :: (Either UOp BOp, Int) -> Doc
+mkOpDecl (Right Lt      , w) = mkBOpDecl "bvult" (bvbopname Lt)       w "bool" 
+mkOpDecl (Right Gt      , w) = mkBOpDecl "bvugt" (bvbopname Gt)       w "bool" 
+mkOpDecl (Right Lte     , w) = mkBOpDecl "bvule" (bvbopname Lte)      w "bool" 
+mkOpDecl (Right Gte     , w) = mkBOpDecl "bvuge" (bvbopname Gte)      w "bool" 
+mkOpDecl (Right BAnd    , w) = mkBOpDecl "bvand" (bvbopname BAnd)     w (bvtname w)
+mkOpDecl (Right BOr     , w) = mkBOpDecl "bvor"  (bvbopname BOr)      w (bvtname w)
+mkOpDecl (Right BXor    , w) = mkBOpDecl "bvxor" (bvbopname BXor)     w (bvtname w)
+mkOpDecl (Right Plus    , w) = mkBOpDecl "bvadd" (bvbopname Plus)     w (bvtname w)
+mkOpDecl (Right BinMinus, w) = mkBOpDecl "bvsub" (bvbopname BinMinus) w (bvtname w)
+mkOpDecl (Right Mul     , w) = mkBOpDecl "bvmul" (bvbopname Mul)      w (bvtname w)
+mkOpDecl (Left  BNeg    , w) = mkUOpDecl "bvnot" "BNOT"               w (bvtname w)
+mkOpDecl _                   = empty
+
+mkBOpDecl builtin opname w retname = pp $ "function {:bvbuiltin \"" ++ builtin ++ "\"} BV" ++ show w ++ "_" ++ opname ++ "(x:" ++ bvtname w ++ ", " ++ "y:" ++ bvtname w ++ ")" ++ " returns (" ++ retname ++ ");"
+mkUOpDecl builtin opname w retname = pp $ "function {:bvbuiltin \"" ++ builtin ++ "\"} BV" ++ show w ++ "_" ++ opname ++ "(x:" ++ bvtname w ++ ")" ++ " returns (" ++ retname ++ ");"
+
+bvbopname Lt       = "ULT"
+bvbopname Gt       = "UGT"
+bvbopname Lte      = "ULEQ"
+bvbopname Gte      = "UGEQ"
+bvbopname BAnd     = "AND"
+bvbopname BOr      = "OR"
+bvbopname BXor     = "XOR"
+bvbopname Plus     = "ADD"
+bvbopname BinMinus = "SUB"
+bvbopname Mul      = "MULT"
+
+bvtname w = "bv" ++ show w
