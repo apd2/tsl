@@ -38,12 +38,12 @@ instance WithTypeSpec TxPort where
 data TxInstance = TxInstance { tipos      :: Pos
                              , tiTxName   :: Ident
                              , tiInstName :: Ident
-                             , tiInputs   :: [TxPortRef]
+                             , tiInputs   :: [Maybe TxPortRef]
                              }
 
 instance PP TxInstance where
     pp TxInstance{..} = text "instance" <+> pp tiTxName <+> pp tiInstName 
-                             <> (parens $ hsep $ punctuate comma $ map pp tiInputs)
+                             <> (parens $ hsep $ punctuate comma $ map (maybe (pp "*") pp) tiInputs)
     
 instance Show TxInstance where
     show      = render . pp

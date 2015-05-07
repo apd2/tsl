@@ -49,8 +49,9 @@ mkXducers spec = vcat $ punctuate (pp "") $ [ vcat $ map mkOpDecl ops
                                             , xducers
                                             , mkMain spec]
     where -- vs      = collectVars [] $ getXducer "main"
-          xducers = mkXducer spec [] (getXducer spec "main") []
-          ops = collectOps spec $ getXducer spec "main"
+          main = getXducer spec "main"
+          xducers = mkXducer spec [] main (replicate (length $ txInput main) True) (replicate (length $ txOutput main) [])
+          ops = collectOps spec main
 
 getXducer :: Spec -> String -> Transducer
 getXducer spec n = fromJustMsg ("fromJust Nothing getXducer" {-intercalate "," $ n : (map txName $ specXducers ?spec)-}) $ find ((== n) . txName) $ specXducers spec
@@ -161,24 +162,24 @@ findPortConns spec x p fanout port =
                              let x' = getXducer spec tiTxName 
                                  fanout' = map (\(_, o) -> findPortConns spec x p fanout (TxLocalRef tiTxName o)) $ txOutput x' in
                              concatMap (\(_,(_,prt)) -> findPortConns spec x' (p++[tiInstName]) fanout' (TxInputRef prt)) 
-                                       $ filter ((== port) . fst) 
+                                       $ filter ((== Just port) . fst) 
                                        $ zip tiInputs (txInput x')) is) ++
                             (concatMap snd $ filter ((== port) . fst) $ zip refs fanout)
          Right _ -> let TxInputRef n = port in [(p,n)]
 
-mkXducer :: Spec -> Path -> Transducer -> [[(Path, String)]] -> Doc
-mkXducer spec p x fanout =
+mkXducer :: Spec -> Path -> Transducer -> [Bool] -> [[(Path, String)]] -> Doc
+mkXducer spec p x fanin fanout =
     case txBody x of
          -- composite transducer
          Left (ref,is) -> -- print instances; route each instance output to other instance inputs or to the top-level output
                     vcat $ punctuate (text "") 
-                    $ (mapIdx (\i id -> mkXducer spec (p++[tiInstName i]) (getXducer spec $ tiTxName i) (connect i)) is)
+                    $ (mapIdx (\i id -> mkXducer spec (p++[tiInstName i]) (getXducer spec $ tiTxName i) (map isJust (tiInputs i)) (connect i)) is)
                     where -- compute list of ports that an instance is connected to
                           connect :: TxInstance -> [[(Path, String)]]
                           connect i = map (\(_,o) -> findPortConns spec x p fanout (TxLocalRef (tiInstName i) o)) $ txOutput x'
                                      where x' = getXducer spec (tiTxName i)
          -- simple transducer
-         Right (_,vs) -> let ?spec = forXducer spec x in mkXducer' p x fanout
+         Right (_,vs) -> let ?spec = forXducer spec x in mkXducer' p x fanin fanout
 
 mkMain :: Spec -> Doc
 mkMain spec = 
@@ -253,21 +254,26 @@ mkSymVar :: (?spec::Spec) => Symbol -> Doc
 mkSymVar s = var (showSymbol s) (typeName $ symbolType s)
 
 -- Print simple transducer:
-mkXducer' :: (?spec::Spec) => Path -> Transducer -> [[(Path, String)]] -> Doc
-mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:handlers)
+mkXducer' :: (?spec::Spec) => Path -> Transducer -> [Bool] -> [[(Path, String)]] -> Doc
+mkXducer' p x@Transducer{..} fanin fanout = vcat $ punctuate (text "") (vars:initproc:handlers)
     where 
     Right (cfa, vs) = txBody
+
+    isConnected :: Expr -> Bool
+    isConnected e = fanin !! (fromJust $ findIndex ((==(head $ expr2Sym e)) . snd) txInput)
 
     insymbols::[Symbol] = concatMap (\(t,n) -> symChildrenRec t [n]) txInput
     outsymbols::[Symbol] = concatMap (\(t,n) -> symChildrenRec t [n]) txOutput
 
     -- states along with the symbol acceped in each state
     states :: [(Loc,Maybe Symbol)]
-    states = map (\loc -> if' (loc == cfaInitLoc) (loc, Just [])
-                              (case cfaLocLabel loc cfa of
-                                    LFinal _ _ _ -> (loc, Nothing)
-                                    LIn _ _ r    -> (loc, Just $ expr2Sym r)))
-             $ cfaDelayLocs cfa 
+    states = mapMaybe  (\loc -> if' (loc == cfaInitLoc) (Just (loc, Just []))
+                                    (case cfaLocLabel loc cfa of
+                                          LFinal _ _ _ -> Just (loc, Nothing)
+                                          LIn _ _ r    -> if isConnected r
+                                                             then Just (loc, Just $ expr2Sym r)
+                                                             else Nothing))
+             $ cfaDelayLocs cfa
 
     expr2Sym :: Expr -> Symbol
     expr2Sym (EVar n)     = [n]
@@ -275,10 +281,10 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:
 
     ([(initst,_)], states') = partition (null . fromJustMsg "mkXducer" . snd) $ filter (isJust . snd) states
     -- transition CFAs
-    (initSink, initCFA) = cfaAddUniqueSink $ cfaLocTransCFA cfa initst
+    (initSink, initCFA) = cfaAddUniqueSink $ cfaLocTransCFA cfa (map fst states) initst
     cfas::M.Map Symbol [(Loc,Loc,CFA)] 
     cfas = M.fromList
-           $ map (\ss -> (fromJustMsg "mkXducer" $ snd $ head ss, map ((\l -> let (sink, cfa') = cfaAddUniqueSink $ cfaLocTransCFA cfa l
+           $ map (\ss -> (fromJustMsg "mkXducer" $ snd $ head ss, map ((\l -> let (sink, cfa') = cfaAddUniqueSink $ cfaLocTransCFA cfa (map fst states) l
                                                                 in (l, sink, cfa')) . fst) ss))
            $ sortAndGroup snd states'
 
@@ -334,9 +340,9 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:
     mkCFA' :: (Loc, Loc, CFA) -> Loc -> Doc
     mkCFA' (from, sink, cfa) to | from == to        = empty                                             -- stop at the "to" node
                                 | loc0 == sink      = assign (stateVarName p) (stateName x from)        -- final location
-                                | null (tail trans) = mkTransition lab0 $+$ mkCFA' (loc0, sink, cfa) to -- single successor
+                                | null (tail trans) = mkTransition lab0 loc0 $+$ mkCFA' (loc0, sink, cfa) to -- single successor
                                 | otherwise         = (mkSwitch 
-                                                        $ map (\(tlab,loc) -> (text "*", mkTransition tlab $+$ mkCFA' (loc, sink,cfa) pdom)) trans)
+                                                        $ map (\(tlab,loc) -> (text "*", mkTransition tlab loc $+$ mkCFA' (loc, sink,cfa) pdom)) trans)
                                                        $+$
                                                        mkCFA' (pdom, sink, cfa) to 
         where trans@((lab0,loc0):_) = cfaSuc from cfa
@@ -346,12 +352,20 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:
               doms = IG.iDom cfa' sink
               pdom = fromJustMsg "mkCFA" $ lookup from doms 
 
-    mkTransition :: TranLabel -> Doc
-    mkTransition (TranStat (SAssume e))   = text "assume" <> (parens $ mkExpr e) <> semi
-    mkTransition (TranStat (SAssert e))   = text "assert" <> (parens $ mkExpr e) <> semi
-    mkTransition (TranStat (SAssign l r)) = mkAssign l r
-    mkTransition (TranStat (SOut l r))    = mkOut l r
-    mkTransition TranNop                  = empty
+    mkTransition :: TranLabel -> Loc -> Doc
+    mkTransition lab loc = mkTransition' lab $+$ rand
+        where rand = case cfaLocLabel loc cfa of
+                          LIn  _ l r -> if isConnected r
+                                           then empty
+                                           else havoc $ mkExpr l
+                          _          -> empty
+
+    mkTransition' :: TranLabel -> Doc
+    mkTransition' (TranStat (SAssume e))   = text "assume" <> (parens $ mkExpr e) <> semi
+    mkTransition' (TranStat (SAssert e))   = text "assert" <> (parens $ mkExpr e) <> semi
+    mkTransition' (TranStat (SAssign l r)) = mkAssign l r
+    mkTransition' (TranStat (SOut l r))    = mkOut l r
+    mkTransition' TranNop                  = empty
 
     mkAssign :: Expr -> Expr -> Doc
     mkAssign l r = mkAssign' l [] r

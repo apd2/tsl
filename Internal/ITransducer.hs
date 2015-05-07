@@ -14,7 +14,7 @@ data TxPortRef = TxInputRef String
 
 data TxInstance = TxInstance { tiTxName   :: String
                              , tiInstName :: String
-                             , tiInputs   :: [TxPortRef]
+                             , tiInputs   :: [Maybe TxPortRef]
                              }
 
 data Transducer = Transducer { txName           :: String

@@ -40,10 +40,10 @@ validateTxConnections tx@Transducer{txBody=Left (es,is)} = do
     -- the matching type
     mapIdxM_ (\inst iid -> do
         x <- checkTransducer (tiTxName inst)
-        mapIdxM_ (\i id -> do let t = Type ScopeTop $ tspec $ txInput x !! id
-                              p <- txCheckPort tx i
-                              let t' = Type ScopeTop $ tspec p
-                              checkTypeMatch i t t')
+        mapIdxM_ (\mi id -> when (isJust mi) $ do let t = Type ScopeTop $ tspec $ txInput x !! id
+                                                  p <- txCheckPort tx (fromJust mi)
+                                                  let t' = Type ScopeTop $ tspec p
+                                                  checkTypeMatch (fromJust mi) t t')
                  $ tiInputs inst)
              $ is
     -- typecheck exports

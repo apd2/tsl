@@ -265,7 +265,7 @@ transducerComposite = braces $ many1 $ transducerInstance <* semi
 transducerInstance = withPos $ TxInstance nopos <$ reserved "instance"
                                                <*> ident
                                                <*> ident
-                                               <*> (parens $ commaSep portRef)
+                                               <*> (parens $ commaSep $ choice [Nothing <$ reservedOp "*", Just <$> portRef])
 
 portRef = choice [try $ TxLocalRef <$> ident <* dot <*> ident, try $ TxInputRef <$> ident]
 

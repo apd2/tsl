@@ -418,7 +418,7 @@ xducerToIXducer x@(Transducer _ n is os b) = I.Transducer (sname n) is' os' b'
           reftoiref (TxLocalRef i p) = I.TxLocalRef (sname i) (sname p)
           b' = case b of
                     Left  (refs, insts) -> Left ( map reftoiref refs
-                                                , map (\i -> I.TxInstance (sname $ tiTxName i) (sname $ tiInstName i) (map reftoiref $ tiInputs i)) insts) 
+                                                , map (\i -> I.TxInstance (sname $ tiTxName i) (sname $ tiInstName i) (map (fmap reftoiref) $ tiInputs i)) insts) 
                     Right st    -> let ?procs = []
                                        ?nestedmb = False 
                                        ?xducer = True in

@@ -342,17 +342,17 @@ cfaPruneUnreachable cfa keep =
 
 -- locations reachable from specified location before reaching the next delay location
 -- (the from location is not included in the result)
-cfaReachInst :: CFA -> Loc -> S.Set Loc
-cfaReachInst cfa from = cfaReachInst' cfa S.empty (S.singleton from)
+cfaReachInst :: CFA -> (Loc->Bool) -> Loc -> S.Set Loc
+cfaReachInst cfa isdelay from = cfaReachInst' cfa isdelay S.empty (S.singleton from)
 
-cfaReachInst' :: CFA -> S.Set Loc -> S.Set Loc -> S.Set Loc
-cfaReachInst' cfa found frontier = if S.null frontier'
+cfaReachInst' :: CFA -> (Loc->Bool) -> S.Set Loc -> S.Set Loc -> S.Set Loc
+cfaReachInst' cfa isdelay found frontier = if S.null frontier'
                                      then found'
-                                     else cfaReachInst' cfa found' frontier'
+                                     else cfaReachInst' cfa isdelay found' frontier'
     where new       = suc frontier
           found'    = S.union found new
           -- frontier' - all newly discovered states that are not pause or final states
-          frontier' = S.filter (not . isDelayLabel . fromJust . G.lab cfa) $ new S.\\ found
+          frontier' = S.filter (not . isdelay) $ new S.\\ found
           suc locs  = S.unions $ map suc1 (S.toList locs)
           suc1 loc  = S.fromList $ G.suc cfa loc
 
@@ -381,10 +381,10 @@ cfaSplitLoc loc cfa = (loc', cfa3)
           (cfa2, loc') = cfaInsLoc (LInst ActNone) cfa1
           cfa3         = foldl' (\cfa0 (f,_,l) -> G.insEdge (f,loc',l) cfa0) cfa2 i
 
-cfaLocTransCFA :: CFA -> Loc -> CFA
-cfaLocTransCFA cfa loc = cfa''
-    where r = cfaReachInst cfa loc
-          dsts = filter (isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
+cfaLocTransCFA :: CFA -> [Loc] -> Loc -> CFA
+cfaLocTransCFA cfa locs loc = cfa''
+    where r = cfaReachInst cfa ((flip elem) locs) loc
+          dsts = filter ((flip elem) locs) $ S.toList r 
           cfa' = cfaPrune cfa (S.insert loc r)
           cfa'' = foldl' (\cfa0 (f,t,_) -> G.delEdge (f,t) cfa0) cfa' $ concatMap (G.out cfa') dsts
           cfa''' = if null $ G.pre cfa'' loc
@@ -396,12 +396,13 @@ cfaLocTransCFA cfa loc = cfa''
 cfaLocTrans :: CFA -> Loc -> [(Loc, CFA)]
 cfaLocTrans cfa loc =
     let -- compute all reachable locations before pause
-        r = cfaReachInst cfa loc
+        isdelay = isDelayLabel . fromJust . G.lab cfa
+        r = cfaReachInst cfa isdelay loc
         -- construct subgraph with only these nodes
         cfa' = cfaPrune cfa (S.insert loc r)
         -- (This is a good place to check for loop freedom.)
         -- for each final location, compute a subgraph that connects the two
-        dsts = filter (isDelayLabel . fromJust . G.lab cfa) $ S.toList r 
+        dsts = filter isdelay $ S.toList r 
     in map (\dst -> let cfa'' = pruneTrans cfa' loc dst in
                     if' (dst == loc) (dst, snd $ cfaSplitLoc loc cfa'') (dst, cfa'')) 
            dsts
