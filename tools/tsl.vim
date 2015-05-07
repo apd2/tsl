@@ -20,6 +20,7 @@ syn region tslComment	start="/\*"  end="\*/" contains=tslTodo
 syn region tslComment   start="//" skip="\\$" end="$" keepend contains=tslTodo
 
 "Operators !, ?, ~, &, |, ^, ->, ||, &&, =, ==, !=, <, <=, >, >=, %, +, -, *, ...
+syn match  tslDelimiter         "->"
 syn match  tslDelimiter         "||"
 syn match  tslDelimiter         "&&"
 syn match  tslDelimiter         "=="

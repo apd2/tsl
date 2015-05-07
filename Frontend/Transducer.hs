@@ -1,7 +1,8 @@
 {-# LANGUAGE RecordWildCards #-}
 
-module Frontend.Transducer(Transducer(Transducer, txOutType, txInput, txBody),
-                           TxInput(TxInput, txiType, txiName),
+module Frontend.Transducer(Transducer(Transducer, txInput, txOutput, txBody),
+                           TxPort(TxPort, tpType, tpName),
+                           TxPortRef(..),
                            TxInstance(TxInstance, tiTxName, tiInstName, tiInputs)) where
 
 import Text.PrettyPrint
@@ -13,31 +14,31 @@ import Frontend.Statement
 import Frontend.Type
 
 
-data TxInput = TxInput { txipos         :: Pos
-                       , txiType        :: TypeSpec
-                       , txiName        :: Ident
-                       }
+data TxPort = TxPort { tppos         :: Pos
+                     , tpType        :: TypeSpec
+                     , tpName        :: Ident
+                     }
 
-instance PP TxInput where
-    pp TxInput{..} = pp txiType <+> pp txiName
+instance PP TxPort where
+    pp TxPort{..} = pp tpType <+> pp tpName
     
-instance Show TxInput where
+instance Show TxPort where
     show      = render . pp
 
-instance WithName TxInput where
-    name = txiName
+instance WithName TxPort where
+    name = tpName
 
-instance WithPos TxInput where
-    pos       = txipos
-    atPos i p = i{txipos = p}
+instance WithPos TxPort where
+    pos       = tppos
+    atPos i p = i{tppos = p}
 
-instance WithTypeSpec TxInput where 
-    tspec = txiType
+instance WithTypeSpec TxPort where 
+    tspec = tpType
 
 data TxInstance = TxInstance { tipos      :: Pos
                              , tiTxName   :: Ident
                              , tiInstName :: Ident
-                             , tiInputs   :: [Ident]
+                             , tiInputs   :: [TxPortRef]
                              }
 
 instance PP TxInstance where
@@ -54,18 +55,35 @@ instance WithPos TxInstance where
     pos       = tipos
     atPos i p = i{tipos = p}
 
-data Transducer = Transducer { txpos            :: Pos
-                             , txOutType        :: TypeSpec
-                             , txName           :: Ident
-                             , txInput          :: [TxInput]
-                             , txBody           :: Either [TxInstance] Statement
+data TxPortRef = TxInputRef Ident
+               | TxLocalRef Ident Ident
+
+instance PP TxPortRef where
+    pp (TxInputRef p)   = pp p
+    pp (TxLocalRef i p) = pp i <> char '.' <> pp p
+    
+instance Show TxPortRef where
+    show      = render . pp
+
+instance WithPos TxPortRef where
+    pos  (TxInputRef p)   = pos p
+    pos  (TxLocalRef i _) = pos i
+    atPos _ _ = error "atPos TxPortRef"
+
+data Transducer = Transducer { tpos            :: Pos
+                             , txName          :: Ident
+                             , txInput         :: [TxPort]
+                             , txOutput        :: [TxPort]
+                             , txBody          :: Either ([TxPortRef], [TxInstance]) Statement
                              }
 
 instance PP Transducer where
-    pp Transducer{..} = text "transducer" <+> pp txOutType <+> pp txName 
+    pp Transducer{..} = text "transducer" <+> pp txName <+> (parens $ hsep $ punctuate comma $ map pp txInput) 
+                                          <+> text "->" <+> (parens $ hsep $ punctuate comma $ map pp txOutput)
                      $$ case txBody of
-                             Left is -> lbrace $$ (nest' $ vcat $ map pp is) $$ rbrace
-                             Right s -> pp s
+                             Left (rs, is) -> (pp "export" <+> (parens $ hsep $ punctuate comma $ map pp rs)) 
+                                              $$ lbrace $$ (nest' $ vcat $ map pp is) $$ rbrace
+                             Right s       -> pp s
 
 instance Show Transducer where
     show      = render . pp
@@ -74,5 +92,5 @@ instance WithName Transducer where
     name = txName
 
 instance WithPos Transducer where
-    pos       = txpos
-    atPos t p = t{txpos = p}
+    pos       = tpos
+    atPos t p = t{tpos = p}

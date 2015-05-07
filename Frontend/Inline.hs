@@ -303,9 +303,9 @@ procLMap :: Process -> NameMap
 procLMap p = M.fromList $ map (\v -> (name v, mkVar (NSID (Just $ PrID (sname p) []) Nothing) v)) (procVar p)
 
 xducerLMap :: Transducer -> NameMap
-xducerLMap x@Transducer{..} = M.fromList $ inputs ++ [output] ++ locals
+xducerLMap x@Transducer{..} = M.fromList $ inputs ++ outputs ++ locals
     where inputs = map (\i -> (name i, I.EVar $ sname i)) txInput
-          output = (name x, I.EVar $ sname x)
+          outputs = map (\o -> (name o, I.EVar $ sname o)) txOutput
           locals = case txBody of
                         Left _   -> []
                         Right st -> map (\v -> (name v, I.EVar $ sname v)) $ stmtVar st

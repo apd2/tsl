@@ -66,7 +66,6 @@ reservedNames = ["after",
                  "do", 
                  "else", 
                  "endtemplate",
-                 "endtransducer",
                  "enum",
                  "export",
                  "false",
@@ -251,20 +250,24 @@ imp = withPos $ Import nopos <$ reserved "import" <*> (reservedOp "<" *> (withPo
 -- Transducer
 ------------------------------------------------------------------------
 
-transducer = withPos $ Transducer nopos <$ reserved "transducer"
-                                       <*> typeSpec False
-                                       <*> ident
-                                       <*> (parens $ commaSep1 transducerInput)
-                                       <*> (choice [try $ Left <$> transducerComposite, try $ Right <$> statement])
+transducer = withPos $ Transducer nopos <$ reserved "transducer" <*> ident
+                                       <*> (parens $ commaSep1 transducerPort)
+                                       <*  reservedOp "->"
+                                       <*> (parens $ commaSep transducerPort)
+                                       <*> (choice [(\x y -> Left (x,y)) <$> transducerExport <*> transducerComposite, Right <$> statement])
 
-transducerInput = withPos $ TxInput nopos <$> typeSpec False <*> ident
+transducerExport = reserved "export" *> (parens $ commaSep portRef)
+
+transducerPort = withPos $ TxPort nopos <$> typeSpec False <*> ident
 
 transducerComposite = braces $ many1 $ transducerInstance <* semi
 
 transducerInstance = withPos $ TxInstance nopos <$ reserved "instance"
                                                <*> ident
                                                <*> ident
-                                               <*> (parens $ commaSep ident)
+                                               <*> (parens $ commaSep portRef)
+
+portRef = choice [try $ TxLocalRef <$> ident <* dot <*> ident, try $ TxInputRef <$> ident]
 
 ------------------------------------------------------------------------
 -- Template scope

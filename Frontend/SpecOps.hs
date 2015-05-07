@@ -184,8 +184,8 @@ specMapTSpec :: (Scope -> TypeSpec -> TypeSpec) -> Spec -> Spec
 specMapTSpec f s =
     let ?spec = s
     in let tm' = map (tmMapTSpec f) (specTemplate s)
-           tx' = map (\t -> t{ txOutType = mapTSpec f ScopeTop $ txOutType t
-                             , txInput   = map (\i -> i{txiType = mapTSpec f ScopeTop $ txiType i}) $ txInput t
+           tx' = map (\t -> t{ txInput   = map (\i -> i{tpType = mapTSpec f ScopeTop $ tpType i}) $ txInput t
+                             , txOutput  = map (\o -> o{tpType = mapTSpec f ScopeTop $ tpType o}) $ txOutput t
                              , txBody    = case txBody t of
                                                 Left is -> Left is
                                                 Right s -> Right $ statMapTSpec f (ScopeTransducer t) s}) 

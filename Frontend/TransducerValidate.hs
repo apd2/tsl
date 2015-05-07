@@ -35,29 +35,23 @@ validateTxImplementation2 t = do
          Right s -> validateTxStatement t
 
 validateTxConnections :: (?spec::Spec, MonadError String me) => Transducer -> me ()
-validateTxConnections tx@Transducer{txBody=Left is} = do
-    let otype = Type ScopeTop $ txOutType tx
+validateTxConnections tx@Transducer{txBody=Left (es,is)} = do
     -- every instance input refers to another local instance or global input of 
     -- the matching type
     mapIdxM_ (\inst iid -> do
-        let x = getTransducer (tiTxName inst)
-            xtype = Type ScopeTop $ txOutType x
-        mapIdxM (\i id -> do let t = Type ScopeTop $ tspec $ txInput x !! id
-                                 ptypes = (map (\i' -> (sname i', Type ScopeTop $ txOutType $ getTransducer $ tiTxName i')) is)
-                                       ++ (map (\i' -> (sname i', Type ScopeTop $ tspec i')) $ txInput tx)
-                             assert (elem (sname i) $ map fst ptypes) (pos i) 
-                                    $ "Input stream name " ++ sname i ++ " does not refer to a transducer instance or input port"
-                             let t' = fromJust $ lookup (sname i) ptypes
-                             assert (typeIso t t') (pos i) 
-                                    $ "Expected type " ++ (show $ tspec t) ++ " but " ++ sname i ++ " has type " ++ (show $ tspec t'))
-                $ tiInputs inst
-        -- the last transducer matches the output type of the composition
-        when (iid == length is - 1) 
-             $ assert (typeIso otype xtype) (pos inst) 
-             $ "Expected output type " ++ (show $ tspec otype) ++ " but " ++ sname inst ++ " has output type " ++ (show $ tspec xtype))
-        is
-
-
+        x <- checkTransducer (tiTxName inst)
+        mapIdxM_ (\i id -> do let t = Type ScopeTop $ tspec $ txInput x !! id
+                              p <- txCheckPort tx i
+                              let t' = Type ScopeTop $ tspec p
+                              checkTypeMatch i t t')
+                 $ tiInputs inst)
+             $ is
+    -- typecheck exports
+    mapM_ (\(ref, port) -> do port' <- txCheckPort tx ref
+                              let t = Type ScopeTop $ tspec port
+                                  t' = Type ScopeTop $ tspec port'
+                              checkTypeMatch ref t t')
+          $ zip es (txOutput tx)
     -- TODO: no circular connections
 
 validateTxStatement :: (?spec::Spec, MonadError String me) => Transducer -> me ()

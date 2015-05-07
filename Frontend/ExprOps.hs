@@ -321,11 +321,11 @@ applyNoSideEffects mref mas =  (all isLocalLHS $ catMaybes oargs)
 isPureExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isPureExpr (ETerm   _ t)            = (\o -> (not $ isObjMutable o) ||
                                              case o of
-                                                  ObjArg _ _     -> True
-                                                  ObjVar  _ _    -> True
-                                                  ObjTxInput _ _ -> True
-                                                  ObjTxOutput _  -> True
-                                                  _              -> False)
+                                                  ObjArg _ _      -> True
+                                                  ObjVar  _ _     -> True
+                                                  ObjTxInput _ _  -> True
+                                                  ObjTxOutput _ _ -> True
+                                                  _               -> False)
                                       $ getTerm ?scope t
 isPureExpr (ELit    _ _ _ _ _)      = True
 isPureExpr (EBool   _ _)            = True

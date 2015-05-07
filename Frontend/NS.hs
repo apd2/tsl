@@ -156,8 +156,8 @@ data Obj = ObjSpec
          | ObjPort       Template Port
          | ObjInstance   Template Instance
          | ObjTransducer Transducer
-         | ObjTxInput    Transducer TxInput
-         | ObjTxOutput   Transducer
+         | ObjTxInput    Transducer TxPort
+         | ObjTxOutput   Transducer TxPort
          | ObjTxInstance Transducer TxInstance
          | ObjProcess    Template Process
          | ObjMethod     Template Method
@@ -179,7 +179,7 @@ instance WithPos Obj where
     pos (ObjPort     _ p)   = pos p
     pos (ObjInstance _ i)   = pos i
     pos (ObjTransducer t)   = pos t
-    pos (ObjTxOutput t)     = pos $ name t
+    pos (ObjTxOutput _ o)   = pos o
     pos (ObjTxInput _ i)    = pos i
     pos (ObjTxInstance _ i) = pos i
     pos (ObjProcess  _ p)   = pos p
@@ -204,7 +204,7 @@ instance WithScope Obj where
     scope (ObjInstance t _)   = ScopeTemplate t
     scope (ObjTransducer _)   = ScopeTop
     scope (ObjTxInput t _)    = ScopeTransducer t
-    scope (ObjTxOutput t)     = ScopeTransducer t
+    scope (ObjTxOutput t _)   = ScopeTransducer t
     scope (ObjTxInstance t _) = ScopeTransducer t     
     scope (ObjProcess t _)    = ScopeTemplate t
     scope (ObjMethod t _)     = ScopeTemplate t
@@ -227,7 +227,7 @@ instance WithName Obj where
     name (ObjInstance _ i)   = name i
     name (ObjTransducer t)   = name t
     name (ObjTxInput  _ i)   = name i
-    name (ObjTxOutput  t)    = name t
+    name (ObjTxOutput _ o)   = name o
     name (ObjTxInstance _ i) = name i
     name (ObjProcess  _ p)   = name p
     name (ObjMethod   _ m)   = name m
@@ -249,7 +249,7 @@ objType (ObjPort     _ p)   = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplat
 objType (ObjInstance _ i)   = Type ScopeTop $ TemplateTypeSpec (pos $ getTemplate $ instTemplate i) $ instTemplate i
 objType (ObjTransducer _)   = error $ "requesting objType of ObjTransducer"
 objType (ObjTxInput  _ i)   = Type ScopeTop $ tspec i
-objType (ObjTxOutput t)     = Type ScopeTop $ txOutType t
+objType (ObjTxOutput _ o)   = Type ScopeTop $ tspec o
 objType (ObjTxInstance _ i) = error $ "requesting objType of ObjTxInstance"
 objType (ObjProcess  _ _)   = error $ "requesting objType of ObjProcess"
 objType (ObjMethod   _ _)   = error $ "requesting objType of ObjMethod"
@@ -276,7 +276,7 @@ isObjMutable (ObjPort _ _)       = True
 isObjMutable (ObjInstance _ _)   = True
 isObjMutable (ObjTransducer _)   = False
 isObjMutable (ObjTxInput _ _)    = True
-isObjMutable (ObjTxOutput _)     = True
+isObjMutable (ObjTxOutput _ _)   = True
 isObjMutable (ObjTxInstance _ _) = True
 isObjMutable (ObjProcess _ _)    = False
 isObjMutable (ObjMethod _ _)     = False
@@ -293,8 +293,8 @@ isObjMutable (ObjGoal _ _)       = False
 isObjMutable (ObjRelation _ _)   = False
 
 isObjTxOutput :: Obj -> Bool
-isObjTxOutput (ObjTxOutput _) = True
-isObjTxOutput _               = False
+isObjTxOutput (ObjTxOutput _ _) = True
+isObjTxOutput _                 = False
 
 objLookup :: (?spec::Spec) => Obj -> Ident -> Maybe Obj
 objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c,e,x]
@@ -328,17 +328,17 @@ objLookup (ObjTemplate t) n = listToMaybe $ catMaybes $ [p,v,w,i,pr,m,d,c,r,e,g,
           -- search parent templates
           par = listToMaybe $ catMaybes $ map (\d' -> objLookup (ObjTemplate $ getTemplate $ drvTemplate d') n) (tmDerive t)
 
-objLookup (ObjTransducer t) n = listToMaybe $ catMaybes $ [inp,inst,v,o]
+objLookup (ObjTransducer t) n = listToMaybe $ catMaybes $ [inp,inst,v,outp]
     where inp  = fmap (ObjTxInput t) $ find ((== n) . name) (txInput t)
+          outp = fmap (ObjTxOutput t) $ find ((== n) . name) (txOutput t)
           inst = case txBody t of
-                      Left is -> fmap (ObjTxInstance t) $ find ((== n) . name) is
-                      Right _ -> Nothing
+                      Left (_,is) -> fmap (ObjTxInstance t) $ find ((== n) . name) is
+                      Right _     -> Nothing
           v    = case txBody t of
                       Left _  -> Nothing
                       Right s -> fmap (ObjVar (ScopeTransducer t)) $ find ((== n) . name) $ stmtVar s
-          o    = if' (n == name t) (Just $ ObjTxOutput t) Nothing
 objLookup (ObjTxInput t i)  n = objLookup (ObjType $ Type ScopeTop (tspec i)) n
-objLookup (ObjTxOutput t)   n = objLookup (ObjType $ Type ScopeTop (txOutType t)) n
+objLookup (ObjTxOutput t o) n = objLookup (ObjType $ Type ScopeTop (tspec o)) n
 objLookup (ObjPort _ p)     n = case objLookup ObjSpec (portTemplate p) of
                                      Just o@(ObjTemplate _)  -> objLookup o n
                                      Nothing                 -> Nothing

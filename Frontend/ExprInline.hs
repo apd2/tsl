@@ -194,7 +194,7 @@ exprToIExpr' (ETerm _ ssym) _ = do
                  ObjConst    _ c -> name c
                  ObjRArg     _ a -> name a
                  ObjTxInput  _ i -> name i
-                 ObjTxOutput t   -> name t
+                 ObjTxOutput _ o -> name o
     return $ case M.lookup n gmap of
                   Just e -> e
                   Nothing -> case M.lookup n lmap of

@@ -401,9 +401,9 @@ specXducers2Internal s =
 
 
 xducerToIXducer :: (?spec::Spec) => Transducer -> I.Transducer
-xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer outtype (sname n) is' b'
-    where is' = map (\i -> (mkType $ Type ScopeTop $ txiType i, sname i)) is
-          outtype = mkType $ Type ScopeTop ot
+xducerToIXducer x@(Transducer _ n is os b) = I.Transducer (sname n) is' os' b'
+    where is' = map (\i -> (mkType $ Type ScopeTop $ tpType i, sname i)) is
+          os' = map (\o -> (mkType $ Type ScopeTop $ tpType o, sname o)) os
           sc = ScopeTransducer x
           ctx stat = CFACtx { ctxEPID    = Nothing 
                             , ctxStack   = [(sc, error "return from a transducer", Nothing, xducerLMap x)]
@@ -413,8 +413,12 @@ xducerToIXducer x@(Transducer _ ot n is b) = I.Transducer outtype (sname n) is' 
                             , ctxLastVar = 0
                             , ctxVar     = []
                             , ctxLabels  = []}
+          reftoiref :: TxPortRef -> I.TxPortRef
+          reftoiref (TxInputRef p)   = I.TxInputRef $ sname p
+          reftoiref (TxLocalRef i p) = I.TxLocalRef (sname i) (sname p)
           b' = case b of
-                    Left  insts -> Left $ map (\i -> I.TxInstance (sname $ tiTxName i) (sname $ tiInstName i) (map sname $ tiInputs i)) insts
+                    Left  (refs, insts) -> Left ( map reftoiref refs
+                                                , map (\i -> I.TxInstance (sname $ tiTxName i) (sname $ tiInstName i) (map reftoiref $ tiInputs i)) insts) 
                     Right st    -> let ?procs = []
                                        ?nestedmb = False 
                                        ?xducer = True in

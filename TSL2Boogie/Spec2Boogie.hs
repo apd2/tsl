@@ -60,8 +60,8 @@ getXducer spec n = fromJustMsg ("fromJust Nothing getXducer" {-intercalate "," $
 collectOps :: Spec -> Transducer -> [(Either UOp BOp, Int)]
 collectOps spec x = 
     case txBody x of
-         Left is       -> nub $ concatMap (collectOps spec . getXducer spec . tiTxName) is
-         Right (cfa,_) -> let ?spec = forXducer spec x in collectOpsCFA cfa
+         Left (_,is) -> nub $ concatMap (collectOps spec . getXducer spec . tiTxName) is
+         Right (cfa,_)  -> let ?spec = forXducer spec x in collectOpsCFA cfa
 
 collectOpsCFA :: (?spec::Spec) => CFA -> [(Either UOp BOp, Int)]
 collectOpsCFA cfa = nub $ concatMap (\e -> case sel3 e of
@@ -80,7 +80,6 @@ collectOpsExpr (EVar _)          = []
 collectOpsExpr (EConst _)        = []
 collectOpsExpr (EField e _)      = collectOpsExpr e
 collectOpsExpr (EIndex a i)      = nub $ collectOpsExpr a ++ collectOpsExpr i
-collectOpsExpr (ERange e (f,t))  = nub $ collectOpsExpr e ++ collectOpsExpr f ++ collectOpsExpr t
 collectOpsExpr (ERange e (f,t))  = nub $ collectOpsExpr e ++ collectOpsExpr f ++ collectOpsExpr t
 collectOpsExpr (ELength e)       = collectOpsExpr e
 collectOpsExpr (EUnOp op e)      = nub $ (Left op, exprWidth e) : collectOpsExpr e
@@ -109,7 +108,7 @@ collectTypes' Transducer{..} =
     case txBody of
          Left _        -> []
          Right (_, vs) -> nub $ (concatMap (collectTypesT . varType) vs) ++ 
-                                (collectTypesT txOutType) ++ 
+                                (concatMap (collectTypesT . fst) txOutput) ++
                                 (concatMap (collectTypesT . fst) txInput)
 
 -- Bools and bitvectors are builtins in Boogie - ignore them.
@@ -158,29 +157,29 @@ mkType (Struct mn fs) as = (text "type" <+> text "{:datatype}" <+> pp n <> semi)
 
 -- Thread input port of a transducer to a list of simple transducer instances that implement this port
 -- also works if port is the name of a local instance
-findPortConns :: Spec -> Transducer -> Path -> String -> [(Path, String)]
-findPortConns spec x p port = 
+findPortConns :: Spec -> Transducer -> Path -> [[(Path, String)]] -> TxPortRef -> [(Path, String)]
+findPortConns spec x p fanout port = 
     case txBody x of
-         Left is -> concatMap (\TxInstance{..} -> let x' = getXducer spec tiTxName in
-                                                  concatMap (\(_,(_,prt)) -> findPortConns spec x' (p++[tiInstName]) prt) 
-                                                  $ filter ((== port) . fst) 
-                                                  $ zip tiInputs (txInput x')) is
-         Right _ -> [(p,port)]
+         Left (refs, is) -> (concatMap (\TxInstance{..} -> 
+                             let x' = getXducer spec tiTxName 
+                                 fanout' = map (\(_, o) -> findPortConns spec x p fanout (TxLocalRef tiTxName o)) $ txOutput x' in
+                             concatMap (\(_,(_,prt)) -> findPortConns spec x' (p++[tiInstName]) fanout' (TxInputRef prt)) 
+                                       $ filter ((== port) . fst) 
+                                       $ zip tiInputs (txInput x')) is) ++
+                            (concatMap snd $ filter ((== port) . fst) $ zip refs fanout)
+         Right _ -> let TxInputRef n = port in [(p,n)]
 
-mkXducer :: Spec -> Path -> Transducer -> [(Path, String)] -> Doc
+mkXducer :: Spec -> Path -> Transducer -> [[(Path, String)]] -> Doc
 mkXducer spec p x fanout =
     case txBody x of
          -- composite transducer
-         Left is -> -- print instances; route each instance output to other instance inputs or to the top-level output
+         Left (ref,is) -> -- print instances; route each instance output to other instance inputs or to the top-level output
                     vcat $ punctuate (text "") 
-                    $ (mapIdx (\i id -> mkXducer spec(p++[tiInstName i]) (getXducer spec $ tiTxName i) (connect id)) is)
+                    $ (mapIdx (\i id -> mkXducer spec (p++[tiInstName i]) (getXducer spec $ tiTxName i) (connect i)) is)
                     where -- compute list of ports that an instance is connected to
-                          connect :: Int -> [(Path, String)]
-                          connect id | id == length is - 1 = fanout ++ ports
-                                     | otherwise           = ports
-                                     where 
-                                     name = tiInstName $ is !! id
-                                     ports = findPortConns spec x p name
+                          connect :: TxInstance -> [[(Path, String)]]
+                          connect i = map (\(_,o) -> findPortConns spec x p fanout (TxLocalRef (tiInstName i) o)) $ txOutput x'
+                                     where x' = getXducer spec (tiTxName i)
          -- simple transducer
          Right (_,vs) -> let ?spec = forXducer spec x in mkXducer' p x fanout
 
@@ -190,13 +189,13 @@ mkMain spec =
     let ?spec = forXducer spec main in
     let -- input port of the main xducer
         (ptype, pname) = head $ txInput main
-        ports = findPortConns spec main [] pname
+        ports = findPortConns spec main [] (map (\_ -> []) $ txOutput main) (TxInputRef pname)
         decls = vcat $ map (mkSymVar []) $ symChildrenRec ptype [pname]
         inits = mkInit [] main
         mkInit :: Path -> Transducer -> Doc
         mkInit p x = case txBody x of
-                          Left is -> vcat $ map (\i -> mkInit (p++[tiInstName i]) (getXducer spec $ tiTxName i)) is
-                          Right _ -> call (initializerName p) []
+                          Left (_, is) -> vcat $ map (\i -> mkInit (p++[tiInstName i]) (getXducer spec $ tiTxName i)) is
+                          Right _      -> call (initializerName p) []
     in procedure (pp "main") [] $ decls $+$ inits $+$ mkGen main ports [pname]
 
 
@@ -226,10 +225,10 @@ symChildrenRec _                     _  = []
 
 forXducer :: Spec -> Transducer -> Spec
 forXducer spec x = let invars = map (\(t,nm) -> Var False VarState nm t) $ txInput x
-                       outvar = Var False VarState (txName x) $ txOutType x
+                       outvars = map (\(t,nm) -> Var False VarState nm t) $ txOutput x
                    in case txBody x of
-                           Left _       -> spec {specVar = invars ++ [outvar]}
-                           Right (_,vs) -> spec {specVar = vs ++ invars ++ [outvar]}
+                           Left _       -> spec {specVar = invars ++ outvars}
+                           Right (_,vs) -> spec {specVar = vs ++ invars ++ outvars}
 
 procedure :: Doc -> [(Doc, Doc)] -> Doc -> Doc
 procedure nm args body = (text "procedure" <+> nm <+> 
@@ -259,13 +258,13 @@ mkSymVar :: (?spec::Spec) => Path -> Symbol -> Doc
 mkSymVar p s = var (symVarName p s) (typeName $ symbolType s)
 
 -- Print simple transducer:
-mkXducer' :: (?spec::Spec) => Path -> Transducer -> [(Path, String)] -> Doc
+mkXducer' :: (?spec::Spec) => Path -> Transducer -> [[(Path, String)]] -> Doc
 mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:handlers)
     where 
     Right (cfa, vs) = txBody
 
     insymbols::[Symbol] = concatMap (\(t,n) -> symChildrenRec t [n]) txInput
-    outsymbols::[Symbol] = symChildrenRec txOutType [txName]
+    outsymbols::[Symbol] = concatMap (\(t,n) -> symChildrenRec t [n]) txOutput
 
     -- states along with the symbol acceped in each state
     states :: [(Loc,Maybe Symbol)]
@@ -368,11 +367,11 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:
     mkAdvance :: Expr -> Doc
     mkAdvance exp = out $+$ randomize
         where sym = expr2Sym exp
+              portidx = fromJust $ findIndex ((==head sym) . snd) txOutput
               -- output current symbol value
-              out = output sym
-              output s = vcat 
-                         $ map (\(path,port) -> call (handlerName path (port:tail s)) [symVarName p s])
-                         $ fanout
+              out = vcat 
+                    $ map (\(path,port) -> call (handlerName path (port:tail sym)) [symVarName p sym])
+                    $ fanout !! portidx
               -- randomize it
               randomize = havoc $ symVarName p sym
 
