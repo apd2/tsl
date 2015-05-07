@@ -1,6 +1,6 @@
 module Frontend.Statement(Statement(SVarDecl,SReturn,SSeq,SPar,SForever,SDo,
                            SWhile,SFor,SChoice,SPause,SWait,SStop,SBreak,SInvoke,
-                           SAssert,SAssume,SAssign,SITE,SCase,SAdvance,SMagic,SMagExit,SDoNothing,stLab),
+                           SAssert,SAssume,SAssign,SITE,SCase,SIn, SOut,SMagic,SMagExit,SDoNothing,stLab),
                  stmtVar,
                  sSeq) where
 
@@ -33,7 +33,8 @@ data Statement = SVarDecl   {stpos::Pos, stLab::Maybe Ident, svar::Var}
                | SAssign    {stpos::Pos, stLab::Maybe Ident, lhs::Expr, rhs::Expr}
                | SITE       {stpos::Pos, stLab::Maybe Ident, cond::Expr, sthen::Statement, selse::(Maybe Statement)}     -- if () then {..} [else {..}]
                | SCase      {stpos::Pos, stLab::Maybe Ident, caseexpr::Expr, cases::[(Expr, Statement)], def::(Maybe Statement)}
-               | SAdvance   {stpos::Pos, stLab::Maybe Ident, arg::Expr}
+               | SIn        {stpos::Pos, stLab::Maybe Ident, lhs::Expr, rhs::Expr}
+               | SOut       {stpos::Pos, stLab::Maybe Ident, lhs::Expr, rhs::Expr}
                | SMagic     {stpos::Pos, stLab::Maybe Ident}
                | SMagExit   {stpos::Pos, stLab::Maybe Ident}
                | SDoNothing {stpos::Pos, stLab::Maybe Ident}
@@ -68,7 +69,8 @@ instance PP Statement where
                                                        ppdef = case def of 
                                                                     Nothing -> empty
                                                                     Just s  -> text "default" <> colon <+> pp s <> semi
-        pp' (SAdvance _ _ e)                   = text "++" <> pp e
+        pp' (SIn _ _ l r)                      = pp l <+> text "<<" <+> pp r
+        pp' (SOut _ _ l r)                     = pp l <+> text ">>" <+> pp r
         pp' (SMagic   _ _)                     = text "..."
         pp' (SMagExit _ _)                     = text "exit"
         pp' (SDoNothing _ _)                   = text "do_nothing"

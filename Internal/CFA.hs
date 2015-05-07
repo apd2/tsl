@@ -80,14 +80,14 @@ import qualified Frontend.Method    as F
 data Statement = SAssume  Expr
                | SAssert  Expr   -- in transducers only
                | SAssign  Expr Expr
-               | SAdvance Expr
+               | SOut     Expr Expr
                deriving (Eq)
 
 instance PP Statement where
     pp (SAssume e)   = text "assume" <+> (parens $ pp e)
     pp (SAssert e)   = text "assert" <+> (parens $ pp e)
     pp (SAssign l r) = pp l <+> text ":=" <+> pp r
-    pp (SAdvance e)  = text "++" <> pp e
+    pp (SOut l r)    = pp l <+> text ">>" <+> pp r
 
 instance Show Statement where
     show = render . pp
@@ -146,13 +146,13 @@ stackSetLoc ((Frame sc _):frs) l' = (Frame sc l') : frs
 
 data LocLabel = LInst    {locAct :: LocAction}
               | LPause   {locAct :: LocAction, locStack :: Stack, locLabels :: [String], locExpr :: Expr}
-              | LAdvance {locAct :: LocAction, locExpr :: Expr}
+              | LIn      {locAct :: LocAction, locLHS :: Expr, locRHS :: Expr}
               | LFinal   {locAct :: LocAction, locStack :: Stack, locLabels :: [String]}
 
 instance PP LocLabel where
     pp (LInst  a)          = pp a
     pp (LPause a _ labs e) = text "WAIT" <> (brackets $ hcat $ punctuate comma $ map pp labs) <> (parens $ pp e) $$ pp a
-    pp (LAdvance a e)      = text "ADVANCE" <> pp e                                                              $$ pp a
+    pp (LIn a l r)         = pp l <+> pp "<<" <+> pp r                                                           $$ pp a
     pp (LFinal a _ labs)   = text "F"    <> (brackets $ hcat $ punctuate comma $ map pp labs)                    $$ pp a
 
 instance Show LocLabel where
@@ -211,7 +211,7 @@ cfaSave cfa title tmp = graphSave cfa ("cfa_" ++ title) tmp
 isDelayLabel :: LocLabel -> Bool
 isDelayLabel (LPause _ _ _ _) = True
 isDelayLabel (LFinal _ _ _)   = True
-isDelayLabel (LAdvance _ _)   = True
+isDelayLabel (LIn _ _ _)      = True
 isDelayLabel (LInst _)        = False
 
 isDeadendLoc :: CFA -> Loc -> Bool

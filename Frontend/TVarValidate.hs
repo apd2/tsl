@@ -29,7 +29,7 @@ validateVar2 s v = do
     case varInit v of
          Just e -> do let ?scope = s
                           ?privoverride = False
-                      validateRHSExpr' e
+                      validateRegExpr' e
                       checkTypeMatch e (varType v) (exprType e)
          _      -> return ()
 

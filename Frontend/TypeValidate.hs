@@ -32,7 +32,7 @@ validateTypeSpec sc (StructSpec _ fs) = do
 validateTypeSpec sc (ArraySpec _ t _)  = validateTypeSpec sc t
 validateTypeSpec sc (VarArraySpec _ t) = validateTypeSpec sc t
 validateTypeSpec sc (PtrSpec _ t)      = validateTypeSpec sc t
-
+validateTypeSpec sc (SeqSpec _ t)      = validateTypeSpec sc t
 
 -- * user-defined type names refer to valid types
 validateTypeSpec sc (UserTypeSpec _ n) = do {checkTypeDecl sc n; return ()}
@@ -58,6 +58,8 @@ validateTypeSpec2 s (StructSpec _ fs) = do
     return ()
 
 validateTypeSpec2 s (PtrSpec _ t) = validateTypeSpec2 s t
+validateTypeSpec2 s (SeqSpec _ t) = do validateTypeSpec2 s t
+                                       assert (isSequence (Type s t)) (pos t) $ "Sequence of sequences is not allowed.  Possible solution: embed the nested sequence in a struct"
 
 validateTypeSpec2 _ _ = return ()
 

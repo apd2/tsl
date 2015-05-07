@@ -28,16 +28,14 @@ ppPath p = hcat $ punctuate (char '.') (map text p)
 -- alphabet symbol: input port name:field names. [] = init symbol
 type Symbol = [String]
 
-showSymbol s = render $ hcat $ punctuate (char '.') (map text s)
+showSymbol s = hcat $ punctuate (char '.') (map text s)
 
 sym2Expr :: Symbol -> Expr
-sym2Expr [port] = ESeqVal $ EVar port
-sym2Expr sym    = if last sym == "<>"
-                     then ESeqVal $ sym2Expr $ init sym
-                     else ESeqVal $ EField (sym2Expr $ init sym) (last sym)
+sym2Expr [port] = EVar port
+sym2Expr sym    = EField (sym2Expr $ init sym) (last sym)
 
 symbolType :: (?spec::Spec) => Symbol -> Type
-symbolType = exprType . sym2Expr
+symbolType sym = let Seq _ t = exprType $ sym2Expr sym in t 
 
 
 spec2Boogie :: Spec -> Either String Doc
@@ -73,7 +71,7 @@ collectOpsStat :: (?spec::Spec) => Statement -> [(Either UOp BOp, Int)]
 collectOpsStat (SAssume e)   = collectOpsExpr e
 collectOpsStat (SAssert e)   = collectOpsExpr e
 collectOpsStat (SAssign l r) = nub $ collectOpsExpr l ++ collectOpsExpr r
-collectOpsStat (SAdvance e)  = collectOpsExpr e
+collectOpsStat (SOut l r)    = nub $ collectOpsExpr l ++ collectOpsExpr r
 
 collectOpsExpr :: (?spec::Spec) => Expr -> [(Either UOp BOp, Int)]
 collectOpsExpr (EVar _)          = []
@@ -85,7 +83,6 @@ collectOpsExpr (ELength e)       = collectOpsExpr e
 collectOpsExpr (EUnOp op e)      = nub $ (Left op, exprWidth e) : collectOpsExpr e
 collectOpsExpr (EBinOp op e1 e2) = nub $ (Right op, exprWidth e1) : collectOpsExpr e1 ++ collectOpsExpr e2
 collectOpsExpr (ESlice e _)      = collectOpsExpr e
-collectOpsExpr (ESeqVal e)       = collectOpsExpr e
 
 collectTypes :: Spec -> Doc
 collectTypes spec = vcat $ stenums ++ (map (let ?spec = spec in uncurry mkType) $ foldl' add [] types)
@@ -190,7 +187,7 @@ mkMain spec =
     let -- input port of the main xducer
         (ptype, pname) = head $ txInput main
         ports = findPortConns spec main [] (map (\_ -> []) $ txOutput main) (TxInputRef pname)
-        decls = vcat $ map (mkSymVar []) $ symChildrenRec ptype [pname]
+        decls = vcat $ map mkSymVar $ symChildrenRec ptype [pname]
         inits = mkInit [] main
         mkInit :: Path -> Transducer -> Doc
         mkInit p x = case txBody x of
@@ -204,9 +201,9 @@ mkGen x ports sym = while (pp "*") body
     where 
     body = (if isSeq $ symbolType sym
                then empty
-               else (havoc $ symVarName [] sym)
+               else (havoc $ showSymbol sym)
                     $+$
-                    (vcat $ map (\(path,port) -> call (handlerName path (port:tail sym)) [symVarName [] sym]) ports))
+                    (vcat $ map (\(path,port) -> call (handlerName path (port:tail sym)) [showSymbol sym]) ports))
            $+$
            (vcat $ map (mkGen x ports) $ symChildren (symbolType sym) sym)
 
@@ -214,12 +211,10 @@ symChildren :: Type -> Symbol -> [Symbol]
 symChildren t sym = 
     case t of
          Struct _ fs -> concatMap (\(Field fn ft) -> if' (isSeq ft) [sym++[fn]] []) fs
-         Seq    _ t  -> [sym ++ ["<>"]]
          _           -> []
 
 symChildrenRec :: Type -> Symbol -> [Symbol]
 symChildrenRec (Seq _ (Struct _ fs)) ns = (concatMap (\(Field fn ft) -> symChildrenRec ft (ns++[fn])) fs) ++ [ns]
-symChildrenRec (Seq _ (Seq    _ t))  ns = symChildrenRec t (ns++["<>"])
 symChildrenRec (Seq _ t)             ns = [ns]
 symChildrenRec _                     _  = []
 
@@ -254,8 +249,8 @@ havoc x = text "havoc" <+> x <> semi
 var :: Doc -> Doc -> Doc
 var n t = text "var" <+> n <+> char ':' <+> t <> semi
 
-mkSymVar :: (?spec::Spec) => Path -> Symbol -> Doc
-mkSymVar p s = var (symVarName p s) (typeName $ symbolType s)
+mkSymVar :: (?spec::Spec) => Symbol -> Doc
+mkSymVar s = var (showSymbol s) (typeName $ symbolType s)
 
 -- Print simple transducer:
 mkXducer' :: (?spec::Spec) => Path -> Transducer -> [[(Path, String)]] -> Doc
@@ -271,13 +266,12 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:
     states = map (\loc -> if' (loc == cfaInitLoc) (loc, Just [])
                               (case cfaLocLabel loc cfa of
                                     LFinal _ _ _ -> (loc, Nothing)
-                                    LAdvance _ e -> (loc, Just $ expr2Sym e)))
+                                    LIn _ _ r    -> (loc, Just $ expr2Sym r)))
              $ cfaDelayLocs cfa 
 
     expr2Sym :: Expr -> Symbol
-    expr2Sym (EVar n)               = [n]
-    expr2Sym (EField (ESeqVal e) f) = (expr2Sym e)++[f]
-    expr2Sym (ESeqVal e)            = (expr2Sym e)++["<>"]
+    expr2Sym (EVar n)     = [n]
+    expr2Sym (EField e f) = (expr2Sym e)++[f]
 
     ([(initst,_)], states') = partition (null . fromJustMsg "mkXducer" . snd) $ filter (isJust . snd) states
     -- transition CFAs
@@ -299,11 +293,7 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:
     -- local vars
     lvars = map (\v -> var (xvarName p $ varName v) (typeName $ varType v)) vs
 
-    -- generate variables to store input and output symbols
-    invars  = map (mkSymVar p) insymbols
-    outvars = map (mkSymVar p) outsymbols
-
-    vars = vcat $ stvar : text "" : invars ++ text "" : outvars ++ text "" : lvars
+    vars = vcat $ stvar : text "" : lvars
 
     -- init method
     initproc = procedure (initializerName p) [] $ mkCFA (initst, initSink, initCFA) 
@@ -312,24 +302,23 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:
     handlers = map mkHandler insymbols
 
     mkHandler :: Symbol -> Doc
-    mkHandler sym = procedure (handlerName p sym) [(symVarName [] sym, typeName $ symbolType sym)] body
+    mkHandler sym = procedure (handlerName p sym) [(showSymbol sym, typeName $ symbolType sym)] body
         where
-        -- save input symbol and eof flag
-        readinp = assign (symVarName p sym) (symVarName [] sym)
-
         -- for each state where sym is handled, generate code from CFA
         handlers = maybe [] 
-                         (map (\(loc, sink, cfa) -> (stateVarName p <+> pp "==" <+> stateName x loc, mkCFA (loc, sink, cfa))))
+                         (map (\(loc, sink, cfa') -> let LIn _ l _ = cfaLocLabel loc cfa in
+                                                     (stateVarName p <+> pp "==" <+> stateName x loc, 
+                                                     assign (mkExpr l) (showSymbol sym) $+$ mkCFA (loc, sink, cfa'))))
                          (M.lookup sym cfas)
 
         -- generate empty handlers (loop transitions) for all states where sym's parent is handled
-        parents = init $ tail $ inits sym
-        parentlocs = concatMap (\sym' -> maybe [] (map sel1) $ M.lookup sym' cfas) parents
-        loops = if null parents 
-                   then []
-                   else [(hsep $ punctuate (text "&&") $ map (\loc -> stateVarName p <+> text "==" <+> stateName x loc) parentlocs, empty)]
+--        parents = init $ tail $ inits sym
+--        parentlocs = concatMap (\sym' -> maybe [] (map sel1) $ M.lookup sym' cfas) parents
+--        loops = if null parents 
+--                   then []
+--                   else [(hsep $ punctuate (text "&&") $ map (\loc -> stateVarName p <+> text "==" <+> stateName x loc) parentlocs, empty)]
 
-        body = mkSwitch (handlers ++ loops ++ [(undefined, text "assert(false);")])
+        body = mkSwitch (handlers ++ {-loops ++-} [(undefined, text "assert(false);")])
 
     mkSwitch :: [(Doc, Doc)] -> Doc
     mkSwitch [(_,defaction)]       = defaction -- throw error otherwise
@@ -360,23 +349,33 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:
     mkTransition :: TranLabel -> Doc
     mkTransition (TranStat (SAssume e))   = text "assume" <> (parens $ mkExpr e) <> semi
     mkTransition (TranStat (SAssert e))   = text "assert" <> (parens $ mkExpr e) <> semi
-    mkTransition (TranStat (SAssign l r)) = assign (mkExpr l) (mkExpr r)
-    mkTransition (TranStat (SAdvance e))  = mkAdvance e
+    mkTransition (TranStat (SAssign l r)) = mkAssign l r
+    mkTransition (TranStat (SOut l r))    = mkOut l r
     mkTransition TranNop                  = empty
 
-    mkAdvance :: Expr -> Doc
-    mkAdvance exp = out $+$ randomize
-        where sym = expr2Sym exp
+    mkAssign :: Expr -> Expr -> Doc
+    mkAssign l r = mkAssign' l [] r
+    
+    mkAssign' :: Expr -> [String] -> Expr -> Doc
+    mkAssign' (EField e f) fs r = mkAssign' e (fs ++ [f]) r
+    mkAssign' l fs r            = assign (mkExpr l) $ mkAssignRHS l fs r
+
+    mkAssignRHS :: Expr -> [String] -> Expr -> Doc
+    mkAssignRHS _ [] r = mkExpr r
+    mkAssignRHS l (f:fs) r = pp n <> (parens $ hsep $ punctuate comma 
+                                      $ map (\(Field fn ft) -> if' (fn == f) (mkAssignRHS l' fs r) (mkExpr $ EField l fn)) fts)
+        where l' = EField l f
+              Struct (Just n) fts = exprType l
+
+    mkOut :: Expr -> Expr -> Doc
+    mkOut l r = out
+        where sym = expr2Sym r
               portidx = fromJust $ findIndex ((==head sym) . snd) txOutput
-              -- output current symbol value
               out = vcat 
-                    $ map (\(path,port) -> call (handlerName path (port:tail sym)) [symVarName p sym])
+                    $ map (\(path,port) -> call (handlerName path (port:tail sym)) [mkExpr l])
                     $ fanout !! portidx
-              -- randomize it
-              randomize = havoc $ symVarName p sym
 
     mkExpr :: Expr -> Doc
-    mkExpr (ESeqVal e)             = symVarName p $ expr2Sym e
     mkExpr (EVar v)                = xvarName p v
     mkExpr (EConst v)              = mkConst v
     mkExpr (EField e f)            = let tn = typeName $ exprType e in text f <> char '#' <> tn <> (parens $ mkExpr e)
@@ -411,11 +410,8 @@ mkXducer' p x@Transducer{..} fanout = vcat $ punctuate (text "") (vars:initproc:
 xvarName :: Path -> String -> Doc
 xvarName p v = ppPath p <> char '_' <> pp v
 
-symVarName :: Path -> Symbol -> Doc
-symVarName p s = xvarName p $ showSymbol s
-
 handlerName :: Path -> Symbol -> Doc
-handlerName p s = xvarName p $ "handle_" ++ showSymbol s
+handlerName p s = xvarName p $ "handle_" ++ (render $ showSymbol s)
 
 stateVarName :: Path -> Doc
 stateVarName p = xvarName p "_state"

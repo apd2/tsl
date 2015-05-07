@@ -9,6 +9,7 @@ module Frontend.ExprOps(mapExpr,
                         isInstExpr,
                         isPureExpr,
                         isXInputExpr,
+                        isXOutputExpr,
                         eval,
                         evalInt,
                         exprNoSideEffects,
@@ -64,7 +65,6 @@ mapExpr f s e =
          ESlice p e (l,h)       -> ESlice  p (mapExpr f s e) (mapExpr f s l, mapExpr f s h)
          EStruct p n (Left fs)  -> EStruct p n (Left $ map (mapSnd $ mapExpr f s) fs)
          EStruct p n (Right fs) -> EStruct p n (Right $ map (mapExpr f s) fs)
-         ESeqVal p sq           -> ESeqVal p (mapExpr f s sq)
          ERel p n as            -> ERel    p n (map (mapExpr f s) as)
          e'                     -> e'
 
@@ -87,7 +87,6 @@ exprCallees s (ECond   _ cs md)         = concatMap (\(e1,e2) -> exprCallees s e
 exprCallees s (ESlice  _ e (l,h))       = exprCallees s e ++ exprCallees s l ++ exprCallees s h
 exprCallees s (EStruct _ _ (Left fs))   = concatMap (exprCallees s . snd) fs
 exprCallees s (EStruct _ _ (Right fs))  = concatMap (exprCallees s) fs
-exprCallees s (ESeqVal _ sq)            = exprCallees s sq
 exprCallees s (ERel    _ _ as)          = concatMap (exprCallees s) as
 exprCallees _ _                         = []
 
@@ -167,11 +166,12 @@ evalBool e = let BoolVal b = val $ eval e
 -- L-expression: variable, field, array element,
 isLExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
 isLExpr (ETerm _ n)           = case getTerm ?scope n of
-                                     ObjConst _ _   -> False
-                                     ObjEnum  _ _   -> False
-                                     ObjWire  _ _   -> False
-                                     ObjTxInput _ _ -> False
-                                     _              -> True
+                                     ObjConst _ _    -> False
+                                     ObjEnum  _ _    -> False
+                                     ObjWire  _ _    -> False
+                                     ObjTxInput _ _  -> False
+                                     ObjTxOutput _ _ -> False
+                                     _               -> True
 isLExpr (EField  _       e f) = isLExpr e &&
                                 case objGet (ObjType $ exprType e) f of
                                      ObjWire  _ _ -> False
@@ -181,7 +181,6 @@ isLExpr (EIndex  _       e _) = isLExpr e
 isLExpr (ERange  _ _ _)       = False -- TODO: support range expressions in LHS if needed
 isLExpr (ESlice  _       e _) = isLExpr e
 isLExpr (EUnOp   _ Deref e  ) = True
-isLExpr (ESeqVal _ e)         = not $ isXInputExpr e
 isLExpr _                     = False
 
 -- Mem-expression: like L-expression, but must additionally
@@ -255,7 +254,6 @@ isConstExpr (ESlice _ e (l,h))       = isConstExpr e && isConstExpr l && isConst
 isConstExpr (EStruct _ _ (Left fs))  = and $ map (isConstExpr . snd) fs
 isConstExpr (EStruct _ _ (Right fs)) = and $ map isConstExpr fs
 isConstExpr (ERel _ _ _)             = False
-isConstExpr (ESeqVal _ _)            = False
 isConstExpr (ENonDet _ _)            = False
 
 -- Expression refers to part of an input argument to a transducer
@@ -268,8 +266,19 @@ isXInputExpr (EPField _ s _) = isXInputExpr s
 isXInputExpr (EIndex _ a _)  = isXInputExpr a
 isXInputExpr (ERange _ a _)  = isXInputExpr a
 isXInputExpr (ESlice _ e _)  = isXInputExpr e
-isXInputExpr (ESeqVal _ s)   = isXInputExpr s
 isXInputExpr _               = False
+
+-- Expression refers to part of an input argument to a transducer
+isXOutputExpr :: (?spec::Spec, ?scope::Scope) => Expr -> Bool
+isXOutputExpr (ETerm _ n)     = case getTerm ?scope n of
+                                    ObjTxOutput _ _ -> True
+                                    _               -> False
+isXOutputExpr (EField _ s _)  = isXOutputExpr s
+isXOutputExpr (EPField _ s _) = isXOutputExpr s
+isXOutputExpr (EIndex _ a _)  = isXOutputExpr a
+isXOutputExpr (ERange _ a _)  = isXOutputExpr a
+isXOutputExpr (ESlice _ e _)  = isXOutputExpr e
+isXOutputExpr _               = False
 
 -- Side-effect free expressions
 
@@ -301,7 +310,6 @@ exprNoSideEffects' (ESlice _ e (l,h))       = exprNoSideEffects' e && exprNoSide
 exprNoSideEffects' (EStruct _ _ (Left fs))  = all (exprNoSideEffects' . snd) fs 
 exprNoSideEffects' (EStruct _ _ (Right fs)) = all exprNoSideEffects' fs 
 exprNoSideEffects' (ERel _ _ as)            = all exprNoSideEffects' as
-exprNoSideEffects' (ESeqVal _ e)            = exprNoSideEffects' e
 exprNoSideEffects' _                        = True
 
 -- Check that method call is side-effect-free:
@@ -346,7 +354,6 @@ isPureExpr (EStruct _ _ (Left fs))  = all isPureExpr $ map snd fs
 isPureExpr (EStruct _ _ (Right fs)) = all isPureExpr fs
 isPureExpr (EAtLab  _ _)            = False
 isPureExpr (ERel    _ _ as)         = all isPureExpr as
-isPureExpr (ESeqVal _ _)            = False
 isPureExpr (ENonDet _ _)            = False
 
 -- True if expression _can_ terminate instantaneously 
@@ -375,7 +382,6 @@ isInstExpr (ESlice  _ e _)          = isInstExpr e
 isInstExpr (EStruct _ _ (Left fs))  = all isInstExpr $ map snd fs
 isInstExpr (EStruct _ _ (Right fs)) = all isInstExpr fs
 isInstExpr (ERel _ _ as)            = all isInstExpr as
-isInstExpr (ESeqVal _ _)            = True
 isInstExpr (ENonDet _ _)            = True
 
 -- Objects referred to by the expression
@@ -401,7 +407,6 @@ exprObjs (ESlice  _ e (l,h))      = exprObjs e ++ exprObjs l ++ exprObjs h
 exprObjs (EStruct _ _ (Left fs))  = concatMap (exprObjs . snd) fs
 exprObjs (EStruct _ _ (Right fs)) = concatMap exprObjs fs
 exprObjs (ERel    _ n as)         = uncurry ObjRelation (getRelation ?scope n) : concatMap exprObjs as
-exprObjs (ESeqVal _ s)            = exprObjs s
 exprObjs _                        = []
 
 -- recursive version
@@ -465,7 +470,6 @@ exprType (ESlice p e (l,h))      = Type ?scope $ UIntSpec p (fromInteger (evalIn
 exprType (EStruct p tn _)        = Type ?scope $ UserTypeSpec p tn
 exprType (EAtLab p l)            = Type ?scope $ BoolSpec p
 exprType (ERel   p _ _)          = Type ?scope $ BoolSpec p
-exprType (ESeqVal p s)           = Type sc t where Type sc (SeqSpec _ t) = typ' $ exprType s
 exprType (ENonDet p _)           = Type ?scope $ FlexTypeSpec p
 
 

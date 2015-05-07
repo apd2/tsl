@@ -48,7 +48,7 @@ statementParser   = removeTabs *> statement
 statementsParser  = removeTabs *> statements
 statements1Parser = removeTabs *> ((optional whiteSpace) *> statements1)
 
-reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", "==>", "<==", ">", ">=", "%", "+", "-", "*", "++", "...", "::", "->", "@", "#", "##", "_"]
+reservedOpNames = ["!", "?", "~", "&", "|", "^", "=>", "||", "&&", "=", "==", "!=", "<", "<=", "<=>", "==>", "<==", ">", ">=", "%", "+", "-", "*", "<<", ">>", "...", "::", "->", "@", "#", "##", "_"]
 reservedNames = ["after",
                  "apply",
                  "prefix",
@@ -437,7 +437,8 @@ statement' =  withPos $
          <|> sassume
          <|> site
          <|> scase
-         <|> sadvance
+         <|> sinp
+         <|> sout
          <|> sinvoke
          <|> sassign
          <?> "statement")
@@ -469,7 +470,10 @@ site     = SITE     nopos Nothing <$ reserved "if" <*> (parens expr) <*> stateme
 scase    = (fmap uncurry (SCase nopos Nothing <$ reserved "case" <*> (parens detexpr))) 
            <*> (braces $ (,) <$> (many $ (,) <$> detexpr <* colon <*> statement <* semi) 
                              <*> optionMaybe (reserved "default" *> colon *> statement <* semi))
-sadvance = SAdvance nopos Nothing <$ reservedOp "++" <*> detexpr             
+sinp     = SIn nopos Nothing <$ isin <*> detexpr <* reservedOp "<<" <*> detexpr
+    where isin = try $ lookAhead $ detexpr *> reservedOp "<<"
+sout     = SOut nopos Nothing <$ isout <*> expr <* reservedOp ">>" <*> detexpr
+    where isout = try $ lookAhead $ expr *> reservedOp ">>"
 smagic   = SMagic   nopos Nothing <$ ismagic
                         <* (withPos $ nopos <$ reservedOp "...") 
                         -- <*> ((Left <$ reserved "using" <*> ident) <|> (Right <$ reserved "post" <*> detexpr))
@@ -487,7 +491,6 @@ relterm = parens relexpr <|> relterm'
 term' = withPos $
        ( elabel
      <|> erel
-     <|> eseqval
      <|> estruct True
      <|> etern   True
      <|> eapply  True
@@ -500,7 +503,6 @@ term' = withPos $
 detterm' = withPos $
           ( elabel
         <|> erel
-        <|> eseqval
         <|> estruct False
         <|> etern   False
         <|> eapply  False
@@ -524,7 +526,6 @@ relterm' = withPos $
 
 elabel      = EAtLab nopos <$> (reservedOp "@" *> ident)
 erel        = ERel nopos <$ (reservedOp "?") <*> ident <*> (parens $ commaSep detexpr)
-eseqval     = ESeqVal nopos <$> squares detexpr
 estruct det = EStruct nopos <$ isstruct <*> staticsym <*> (braces $ option (Left []) ((Left <$> namedfields) <|> (Right <$> anonfields)))
     where isstruct = try $ lookAhead $ staticsym *> symbol "{"
           anonfields = commaSep1 (expr' det)

@@ -1,6 +1,6 @@
 {-# LANGUAGE ImplicitParams, TupleSections, FlexibleContexts, RecordWildCards #-}
 
-module Frontend.ExprValidate(validateExpr, validateExpr', validateRHSExpr',
+module Frontend.ExprValidate(validateExpr, validateExpr', validateRegExpr',
                              validateCall, validateApply) where
 
 import Control.Monad.Error
@@ -22,15 +22,16 @@ import Frontend.TemplateOps
 import Frontend.Relation
 import Frontend.RelationOps
 
+validateRegExpr' :: (?spec::Spec, ?scope::Scope, ?privoverride::Bool, MonadError String me) => Expr -> me ()
+validateRegExpr' e = do
+    validateExpr' e
+    assert (not $ any isObjTxOutput $ exprObjs e) (pos e) $ "Illegal read access to transducer output port"
+    assert (not $ any isObjTxInput $ exprObjs e) (pos e) $ "Illegal read access to transducer input port"
+
+
 validateExpr :: (?spec::Spec, ?privoverride::Bool, MonadError String me) => Scope -> Expr -> me ()
 validateExpr s e = let ?scope = s 
                    in validateExpr' e
-
-
-validateRHSExpr' :: (?spec::Spec, ?scope::Scope, ?privoverride::Bool, MonadError String me) => Expr -> me ()
-validateRHSExpr' e = do
-    validateExpr' e
-    assert (not $ any isObjTxOutput $ exprObjs e) (pos e) $ "Illegal read access to the transducer output stream"
 
 validateExpr' :: (?spec::Spec, ?scope::Scope, ?privoverride::Bool, MonadError String me) => Expr -> me ()
 
@@ -235,10 +236,6 @@ validateExpr' (EStruct p tn mes) = do
                                                  "Could not match expected type " ++ (show $ tspec f) ++ " with actual type " ++ (show $ exprTypeSpec e) ++ " in expression " ++ show e)
                                   $ zip es fs
     return ()
-
-validateExpr' (ESeqVal _ e) = do
-    validateExpr' e
-    assert (isSequence $ exprType e) (pos e) $ "Not a sequence expression " ++ show e
 
 validateExpr' (ERel p n as) = 
     case ?scope of

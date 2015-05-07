@@ -68,17 +68,17 @@ validateStat' _ (SForever _ _ b) = do
     checkLoopBody b
 
 validateStat' _ (SDo _ _ b c) = do
-    validateRHSExpr' c
+    validateRegExpr' c
     assert (isBool $ exprType c) (pos c) "loop condition is not of boolean type"
     checkLoopBody b
 
 validateStat' _ (SWhile _ _ c b) = do
-    validateRHSExpr' c
+    validateRegExpr' c
     assert (isBool $ exprType c) (pos c) "loop condition is not of boolean type"
     checkLoopBody b
 
 validateStat' _ (SFor _ _ (mi, c, s) b) = do
-    validateRHSExpr' c
+    validateRegExpr' c
     assert (isBool $ exprType c) (pos c) "loop condition is not of boolean type"
     case mi of
          Just i  -> validateStat' False i
@@ -142,20 +142,20 @@ validateStat' _ (SWait p _ e) = do
 validateStat' l (SBreak p _) = assert l p "break outside a loop"
 validateStat' _ (SInvoke p _ m as) = validateCall p m as
 validateStat' _ (SAssert _ _ e) = do
-    validateRHSExpr' e
+    validateRegExpr' e
     assert (isBool $ exprType e) (pos e) "Assertion must be a boolean expression"
     assert (exprNoSideEffects e) (pos e) "Assertion must be side-effect free"
     assert (not $ isFunctionScope ?scope) (pos e) "Assertions not allowed inside functions"
     assert (not $ isTemplateScope ?scope) (pos e) "Assertions not allowed inside always-blocks"
 
 validateStat' _ (SAssume _ _ e) = do
-    validateRHSExpr' e
+    validateRegExpr' e
     assert (isBool $ exprType e) (pos e) "Assumption must be a boolean expression"
     assert (exprNoSideEffects e) (pos e) "Assumption must be side-effect free"
 
 validateStat' _ (SAssign _ _ lhs rhs) = do
     validateExpr' lhs
-    validateRHSExpr' rhs
+    validateRegExpr' rhs
     assert (isLExpr lhs) (pos lhs)   $ "Left-hand side of assignment is not an L-value"
     assert (not $ isSeqContainer $ exprType lhs) (pos lhs) $ "Left-hand side of assignment (or one of its members) is a sequence"
     checkTypeMatch rhs (exprType lhs) (exprType rhs)
@@ -165,7 +165,7 @@ validateStat' _ (SAssign _ _ lhs rhs) = do
        else return ()
 
 validateStat' l (SITE _ _ i t e) = do
-    validateRHSExpr' i
+    validateRegExpr' i
     checkTypeMatch i (Type ?scope $ BoolSpec nopos) (exprType i)
     validateStat' l t
     case e of 
@@ -173,9 +173,9 @@ validateStat' l (SITE _ _ i t e) = do
          Nothing -> return ()
 
 validateStat' l (SCase p _ c cs md) = do
-    validateRHSExpr' c
+    validateRegExpr' c
     assert (length cs > 0) p "Empty case statement"
-    mapM (\(e,s) -> do validateRHSExpr' e
+    mapM (\(e,s) -> do validateRegExpr' e
                        validateStat' l s
                        assert (exprNoSideEffects e) (pos e) "Case label must be side-effect free") cs
     case md of
@@ -183,9 +183,18 @@ validateStat' l (SCase p _ c cs md) = do
          Nothing -> return ()
     mapM_ (\(e1,_) -> checkTypeMatch e1 (exprType c) (exprType e1)) cs
 
-validateStat' _ (SAdvance _ _ e) = do
-    validateExpr' e
-    assert (isSequence $ exprType e) (pos e) $ "Not a sequence expression " ++ show e
+validateStat' _ (SIn _ _ l r) = do
+    validateRegExpr' l
+    validateExpr' r
+    assert (isLExpr l) (pos l) $ show l ++ " is not an L-value"
+    assert (isSequence $ exprType r) (pos r) $ "Not a sequence expression " ++ show r
+    assert (isXInputExpr r) (pos r) $ "Right-hand side of << must refer to an input port"
+
+validateStat' _ (SOut _ _ l r) = do
+    validateRegExpr' l
+    validateExpr' r
+    assert (isSequence $ exprType r) (pos r) $ "Not a sequence expression " ++ show r
+    assert (isXOutputExpr r) (pos r) $ "Right-hand side of >> must refer to an output port"
 
 validateStat' l (SMagic p _) = do
     case ?scope of
@@ -246,7 +255,8 @@ findInstPath b     s@(SITE _ _ c t e)    = if not $ isInstExpr c
                                                         Just st -> shortest $ catMaybes $ map (findInstPath b) $ [t,st]
 findInstPath b     s@(SCase _ _ _ cs md) = shortest $ catMaybes $ map (findInstPath b) $ (map snd cs) ++ maybeToList md
 findInstPath _       (SMagic _ _)        = Nothing
-findInstPath _     s@(SAdvance _ _ e)    = if isXInputExpr e then Nothing else Just [Left s]
+findInstPath _       (SIn _ _ _ _)       = Nothing
+findInstPath _     s@(SOut _ _ _ _)      = Just [Left s]
 
 
 isBreak :: Either Statement Expr -> Bool

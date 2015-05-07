@@ -18,7 +18,7 @@ module Frontend.NS(Scope(..),
           lookupGoal      , checkGoal      , getGoal,
           lookupWire      , checkWire      , getWire,
           lookupRelation  , checkRelation  , getRelation,
-          Obj(..), objType, objLookup, objGet, isObjMutable, isObjTxOutput,
+          Obj(..), objType, objLookup, objGet, isObjMutable, isObjTxInput, isObjTxOutput,
           specNamespace) where
 
 import Control.Monad.Error
@@ -296,6 +296,10 @@ isObjTxOutput :: Obj -> Bool
 isObjTxOutput (ObjTxOutput _ _) = True
 isObjTxOutput _                 = False
 
+isObjTxInput :: Obj -> Bool
+isObjTxInput (ObjTxInput _ _) = True
+isObjTxInput _                = False
+
 objLookup :: (?spec::Spec) => Obj -> Ident -> Maybe Obj
 objLookup ObjSpec n = listToMaybe $ catMaybes $ [t,d,c,e,x]
     where s = ScopeTop
@@ -359,7 +363,7 @@ objLookup (ObjRArg s a)     n = objLookup (ObjType $ Type s                 (tsp
 objLookup (ObjTypeDecl s t) n = objLookup (ObjType $ Type s                 (tspec t)) n
 
 objLookup (ObjType (Type s (StructSpec _ fs))) n = fmap (ObjType . Type s . tspec) $ find ((==n) . name) fs
-
+objLookup (ObjType (Type s (SeqSpec _ t))) n     = objLookup (ObjType (Type s t)) n
 objLookup (ObjType (Type _ (TemplateTypeSpec _ tn))) n = case objLookup ObjSpec tn of
                                                               Just o@(ObjTemplate _) -> objLookup o n
                                                               Nothing                -> Nothing
